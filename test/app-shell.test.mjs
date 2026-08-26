@@ -90,3 +90,17 @@ test('body text meets WCAG AA against its own background', () => {
     assert.ok(ratio >= 4.5, `${theme}: body text at ${ratio.toFixed(2)}:1 is below AA`);
   }
 });
+
+test("AO3's screen-reader landmarks are hidden visually but kept for assistive tech", () => {
+  // "Chapter Text" and "Work" are navigation landmarks, not headings for the
+  // eye; display:none would take them out of the accessibility tree entirely
+  const rule = css.match(/\.ao3page \.landmark \{([^}]*)\}/)?.[1] ?? '';
+  assert.ok(/font-size:\s*0/.test(rule), 'hidden by size, as AO3 does it');
+  assert.ok(/opacity:\s*0/.test(rule));
+  assert.ok(!/display:\s*none/.test(rule), 'display:none would remove it from screen readers');
+});
+
+test('the app is named consistently wherever a person can see it', () => {
+  assert.ok(html.includes('<title>Fan Folio</title>'));
+  assert.ok(!/Fan-folio/.test(html), 'no hyphenated spelling in the markup');
+});

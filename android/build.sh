@@ -52,7 +52,7 @@ if [ ! -f "$KEYSTORE" ]; then
   echo "     generating $KEYSTORE — keep it, updates must use the same key"
   keytool -genkeypair -keystore "$KEYSTORE" -storepass "$KEYSTORE_PASS" \
     -keypass "$KEYSTORE_PASS" -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 \
-    -validity 10000 -dname "CN=Fan-folio, O=Personal, C=GB" >/dev/null 2>&1
+    -validity 10000 -dname "CN=Fan Folio, O=Personal, C=GB" >/dev/null 2>&1
 fi
 rm -f "$OUT"
 apksigner sign --ks "$KEYSTORE" --ks-pass "pass:$KEYSTORE_PASS" \

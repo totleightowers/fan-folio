@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Fan-folio — your AO3 bookmarks and history, offline and searchable",
+  "description": "Fan Folio — your AO3 bookmarks and history, offline and searchable",
   "license": "MIT",
   "scripts": {
     "test": "node --test test/*.test.mjs",
