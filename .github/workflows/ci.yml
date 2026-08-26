@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - name: Every JavaScript file parses
+        run: npm run check
+      - name: Core logic tests
+        run: npm test
+
+  lint:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Lint the workflows themselves
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+
+      # semgrep/semgrep-action is archived, so pin and run the CLI instead.
+      - name: Semgrep
+        env:
+          SEMGREP_VERSION: 1.174.0
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/semgrep
+          /tmp/semgrep/bin/pip install --quiet "semgrep==${SEMGREP_VERSION}"
+          /tmp/semgrep/bin/semgrep scan --error --quiet \
+            --config p/javascript \
+            --config p/security-audit \
+            --config p/secrets \
+            --config p/java
+
+      - name: Secret scan
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks dir . --redact --verbose --no-banner
+          rm -f gitleaks gitleaks.tar.gz
+
+      - name: Nothing private may be committed
+        run: |
+          set -e
+          bad=$(git ls-files | grep -Ei '\.(jks|keystore)$|(^|/)data/|shopdata/|android\.jar$' || true)
+          if [ -n "$bad" ]; then
+            echo "these must never be committed:"; echo "$bad"; exit 1
+          fi
+          echo "no keystores, archive data or vendored SDK in the tree"
+
+  android:
+    name: Build the APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - name: Build
+        env:
+          KEYSTORE_PASS: ci-ephemeral
+        run: |
+          set -e
+          export PATH="$ANDROID_HOME/build-tools/34.0.0:$PATH"
+          mkdir -p android/sdk
+          cp "$ANDROID_HOME/platforms/android-34/android.jar" android/sdk/android.jar
+          cd android
+          # CI signs with a throwaway key purely to prove the build works.
+          # A release APK is signed with the real key — see release.yml.
+          ./build.sh
+
+      - name: Check the APK is installable
+        run: |
+          set -e
+          cd android
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose fanfolio.apk
+          node - <<'NODE'
+          const fs = require('fs');
+          const b = fs.readFileSync('fanfolio.apk');
+          let e = -1;
+          for (let i = b.length - 22; i >= 0; i--) if (b.readUInt32LE(i) === 0x06054b50) { e = i; break; }
+          let p = b.readUInt32LE(e + 16), n = b.readUInt16LE(e + 10), bad = 0, seen = new Set();
+          for (let i = 0; i < n; i++) {
+            const nl = b.readUInt16LE(p + 28), el = b.readUInt16LE(p + 30), cl = b.readUInt16LE(p + 32);
+            const name = b.subarray(p + 46, p + 46 + nl).toString();
+            const method = b.readUInt16LE(p + 10), off = b.readUInt32LE(p + 42);
+            seen.add(name);
+            if (method === 0) {
+              const lnl = b.readUInt16LE(off + 26), lel = b.readUInt16LE(off + 28);
+              if ((off + 30 + lnl + lel) % 4) { console.error('misaligned: ' + name); bad++; }
+            }
+            p += 46 + nl + el + cl;
+          }
+          for (const need of ['AndroidManifest.xml', 'classes.dex', 'resources.arsc', 'assets/web/app.js'])
+            if (!seen.has(need)) { console.error('missing from apk: ' + need); bad++; }
+          if (bad) process.exit(1);
+          console.log('apk structure ok — ' + seen.size + ' entries, all stored entries aligned');
+          NODE
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fanfolio-debug-apk
+          path: android/fanfolio.apk
+          if-no-files-found: error

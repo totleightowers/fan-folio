@@ -1,0 +1,20 @@
+node_modules/
+
+# the archive itself: hundreds of megabytes of other people's fiction,
+# and none of it belongs in version control
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# build output and signing material
+android/build/
+android/sdk/
+android/assets/
+*.apk
+*.idsig
+*.jks
+keystore*
+
+# a session cookie is a credential
+cookies.txt

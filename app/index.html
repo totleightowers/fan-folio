@@ -1,0 +1,115 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fanfolio</title>
+<link rel="stylesheet" href="/ao3-work.css">
+<link rel="stylesheet" href="/styles.css">
+
+<header id="bar">
+  <button id="back" class="icon" hidden aria-label="Back">←</button>
+  <input id="q" type="search" placeholder="Search your archive…" autocomplete="off" spellcheck="false">
+  <button id="typo" class="icon" aria-label="Reading settings">Aa</button>
+</header>
+
+<main id="main">
+
+  <!-- first run: there is no archive to read yet -->
+  <section id="setup" class="view" hidden>
+    <div class="setup-card">
+      <h1>Your archive isn't here yet</h1>
+      <p>This app reads a single <code>fanfolio.db</code> file holding your works,
+         their text, and the search index. Pick it and it will be copied in.</p>
+      <button id="import" class="primary">Choose fanfolio.db</button>
+      <p class="hint" id="setup-hint"></p>
+    </div>
+  </section>
+
+  <section id="library" class="view" hidden>
+    <div id="toolbar">
+      <div id="chips" class="chips"></div>
+      <label class="sort">
+        <span>Sort</span>
+        <select id="sort">
+          <option value="title">Title</option>
+          <option value="updated">Recently updated</option>
+          <option value="added">Recently added</option>
+          <option value="recent">Recently read</option>
+          <option value="words">Longest</option>
+          <option value="shortest">Shortest</option>
+        </select>
+      </label>
+    </div>
+    <div id="continue"></div>
+    <div id="works" class="list"></div>
+    <div id="more" class="more"></div>
+  </section>
+
+  <section id="results" class="view" hidden></section>
+  <section id="detail" class="view ao3page" hidden></section>
+
+  <section id="reader" class="view ao3page" hidden>
+    <style id="workskin-css"></style>
+    <article id="workskin"></article>
+    <aside id="endnotes" hidden></aside>
+    <nav id="chapnav">
+      <button id="prev" aria-label="Previous chapter">←</button>
+      <button id="chappos" aria-label="Jump to chapter"></button>
+      <button id="next" aria-label="Next chapter">→</button>
+    </nav>
+    <div id="progress"><div id="progress-bar"></div></div>
+  </section>
+</main>
+
+<dialog id="chapters-dialog">
+  <h2>Chapters</h2>
+  <div id="chapter-list"></div>
+  <button class="close" data-close="chapters-dialog">Done</button>
+</dialog>
+
+<dialog id="typography">
+  <h2>Reading</h2>
+  <label>Preset
+    <select id="theme">
+      <option value="system">Follow system</option>
+      <option value="light">Light</option>
+      <option value="sepia">Sepia</option>
+      <option value="dark">Dark</option>
+      <option value="black">Black</option>
+      <option value="custom">Custom</option>
+    </select>
+  </label>
+  <label>Background <input id="bg" type="color"></label>
+  <label>Text <input id="fg" type="color"></label>
+  <label>Typeface
+    <input id="face" list="fonts" spellcheck="false" autocapitalize="words" placeholder="any Google font">
+  </label>
+  <datalist id="fonts">
+    <option>Georgia</option><option>Literata</option><option>Merriweather</option>
+    <option>Lora</option><option>EB Garamond</option><option>Crimson Pro</option>
+    <option>Source Serif 4</option><option>PT Serif</option><option>Bitter</option>
+    <option>Noto Serif</option><option>Vollkorn</option><option>Spectral</option>
+    <option>Atkinson Hyperlegible</option><option>Inter</option><option>Nunito</option>
+    <option>Roboto</option><option>Open Sans</option><option>Lato</option>
+  </datalist>
+  <label>Weight
+    <select id="weight">
+      <option value="300">Light</option><option value="400">Regular</option>
+      <option value="500">Medium</option><option value="600">Semibold</option>
+    </select>
+  </label>
+  <label>Size <input id="size" type="range" min="12" max="34" step="1"></label>
+  <label>Line spacing <input id="lh" type="range" min="110" max="250" step="5"></label>
+  <label>Side margin <input id="margin" type="range" min="0" max="48" step="2"></label>
+  <label>Top margin <input id="vmargin" type="range" min="0" max="64" step="4"></label>
+  <label>Alignment
+    <select id="align"><option value="start">Left</option><option value="justify">Justified</option></select>
+  </label>
+  <p class="sample">She read the last line twice, and the room was very quiet. Outside, the rain
+    had stopped without either of them noticing, and the light through the window
+    had gone the colour of weak tea.</p>
+  <button class="close" data-close="typography">Done</button>
+</dialog>
+
+<div id="toast" hidden></div>
+
+<script type="module" src="/app.js"></script>
