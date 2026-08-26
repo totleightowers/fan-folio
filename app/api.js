@@ -49,7 +49,8 @@ const FILTERS = {
 };
 
 const LOCAL = {
-  '/api/works': ({ limit = 50, offset = 0, sort = 'title', filter = 'all', fandom = '' }) => {
+  '/api/works': ({ limit = 50, offset = 0, sort = 'title', filter = 'all', fandom = '', tag = '', rating = '' }) => {
+    fandom = tag || fandom;
     const order = SORTS[sort] ?? SORTS.title;
     const where = [FILTERS[filter] ?? FILTERS.all];
     const args = [];
@@ -57,6 +58,7 @@ const LOCAL = {
       where.push("EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' AND t.name = ?)");
       args.push(fandom);
     }
+    if (rating) { where.push('w.rating = ?'); args.push(rating); }
     const from = `FROM works w LEFT JOIN reading r ON r.work_id = w.work_id WHERE ${where.join(' AND ')}`;
     return {
       total: sql(`SELECT count(*) AS n ${from}`, args)[0].n,

@@ -351,3 +351,32 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   border: 1px solid var(--rule); border-radius: 999px; padding: .3rem .7rem; cursor: pointer;
 }
 .fandom-list button .n { color: var(--muted); margin-left: .3rem; }
+
+/* ------------------------------------------------------------ start here */
+
+.start-row {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 11rem; gap: .55rem;
+  overflow-x: auto; scrollbar-width: none; margin: .7rem -.7rem .2rem; padding-inline: .7rem;
+}
+.start-row::-webkit-scrollbar { display: none; }
+.start-tile {
+  text-align: left; font: inherit; cursor: pointer; color: inherit;
+  background: linear-gradient(140deg,
+    color-mix(in srgb, var(--accent) 16%, var(--pane)), var(--pane));
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--rule));
+  border-radius: 12px; padding: .8rem .75rem; min-height: 4.6rem;
+  display: flex; flex-direction: column; gap: .2rem;
+}
+.start-tile b { font-size: .9rem; font-weight: 650; }
+.start-tile span { font-size: .72rem; color: var(--muted); line-height: 1.35; }
+
+/* --------------------------------------------------------- browse by tag */
+
+.browse-tabs { display: flex; gap: .35rem; overflow-x: auto; scrollbar-width: none; margin-bottom: .6rem; }
+.browse-tabs::-webkit-scrollbar { display: none; }
+.browse-tab {
+  flex: 0 0 auto; font: inherit; font-size: .8rem; background: none; border: 0;
+  color: var(--muted); cursor: pointer; padding: .25rem .1rem; border-bottom: 2px solid transparent;
+}
+.browse-tab.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.fandom-block { margin-bottom: 1rem; }
