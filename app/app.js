@@ -155,31 +155,67 @@ let offset = 0;
 let total = 0;
 let loading = false;
 
+/**
+ * One work in the library list.
+ *
+ * Modelled on what a reader actually scans for: the title, who wrote it, which
+ * fandom and pairing, then the numbers that decide whether tonight is the
+ * night — rating, length, chapters, whether it is finished. The summary comes
+ * last and is clamped, because it is the slowest thing to read and the least
+ * decisive.
+ */
 function workRow(w) {
   const node = document.createElement('div');
-  node.className = 'work';
-  const authors = authorsOf(w.authors);
+  node.className = 'work-card';
+  node.style.setProperty('--spine', spineColour(w.fandom || w.title));
   const p = progressOf(w);
+  const tags = [w.fandom, w.relationship].filter(Boolean);
+
+  const stats = [
+    w.rating,
+    `${fmt(w.words)} words`,
+    `${w.chapter_count}${w.chapters_planned ? '/' + w.chapters_planned : ''} ch`,
+    w.complete ? 'Complete' : 'WIP',
+  ].filter(Boolean).join('  ·  ');
 
   node.innerHTML = `
     <h3></h3>
     <div class="by"></div>
-    <div class="meta">
-      <span class="pill">${fmt(w.words)} words</span>
-      <span class="pill">${w.chapter_count} ch</span>
-      ${w.complete ? '' : '<span class="pill wip">WIP</span>'}
-      ${w.rating ? `<span class="pill">${w.rating}</span>` : ''}
-      ${w.marked_later ? '<span class="pill later">later</span>' : ''}
-      ${w.has_skin ? '<span class="pill skin">styled</span>' : ''}
-    </div>
+    <div class="tagrow"></div>
+    <div class="statline"></div>
     ${w.summary ? '<p class="sum"></p>' : ''}
     ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>
-           <div class="progress-note">${p.read} of ${p.total} chapters read</div>` : ''}`;
+           <div class="progress-note">${p.read} of ${p.total} chapters read</div>` : ''}
+    <div class="rowactions">
+      <button data-act="open">${p ? 'Continue' : 'Read'}</button>
+      <button data-act="details">Details</button>
+      <button data-act="ao3">AO3</button>
+    </div>`;
 
-  // textContent, never innerHTML: titles and summaries are author-written
-  node.querySelector('h3').textContent = w.title ?? '(untitled)';
-  node.querySelector('.by').textContent = authors.join(', ') || 'Anonymous';
+  // textContent, never innerHTML: titles, summaries and tags are author-written
+  node.querySelector('h3').textContent = (w.marked_later ? '★ ' : '') + (w.title ?? '(untitled)');
+  node.querySelector('.by').textContent = 'by ' + (authorsOf(w.authors).join(', ') || 'Anonymous');
+  node.querySelector('.statline').textContent = stats;
   if (w.summary) node.querySelector('.sum').textContent = w.summary;
+
+  const tagrow = node.querySelector('.tagrow');
+  for (const t of tags) {
+    const pill = document.createElement('button');
+    pill.className = 'tagpill';
+    pill.textContent = t;
+    pill.onclick = (e) => { e.stopPropagation(); openTag(t, null); };
+    tagrow.append(pill);
+  }
+
+  const act = {
+    open: () => (p ? openChapter(w.work_id, w.at_chapter ?? 1) : openChapter(w.work_id, 1)),
+    details: () => openWork(w.work_id),
+    // the one place the app leaves itself: the work as AO3 has it now
+    ao3: () => window.open(`https://archiveofourown.org/works/${w.work_id}`, '_blank', 'noopener'),
+  };
+  for (const b of node.querySelectorAll('.rowactions button')) {
+    b.onclick = (e) => { e.stopPropagation(); act[b.dataset.act](); };
+  }
   node.onclick = () => openWork(w.work_id);
   return node;
 }
