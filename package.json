@@ -1,0 +1,14 @@
+{
+  "name": "fanfolio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fanfolio — your AO3 bookmarks and history, offline and searchable",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "for f in $(find app tools test -name '*.js' -o -name '*.mjs'); do node --check \"$f\" || exit 1; done && echo 'all javascript parses'",
+    "scan": "node tools/scan-library.mjs"
+  },
+  "engines": { "node": ">=20" }
+}
