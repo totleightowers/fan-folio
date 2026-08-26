@@ -53,13 +53,20 @@ public class MainActivity extends Activity {
     private static final int PICK_DATABASE = 1;
     private static final int MAX_ROWS = 2000;
 
+    /* Statements that read nothing useful and reach outside this archive. */
+    private static final java.util.regex.Pattern PRAGMA_OR_ATTACH =
+        java.util.regex.Pattern.compile("\\b(pragma|attach|detach|vacuum|load_extension)\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     private WebView web;
+    private WebView signInView;
+    private FrameLayout root;
     private SQLiteDatabase db;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
 
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
 
         web = new WebView(this);
@@ -75,6 +82,7 @@ public class MainActivity extends Activity {
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
         web.setBackgroundColor(0xFF000000);
         web.addJavascriptInterface(new Bridge(), "ArchiveNative");
+        android.webkit.CookieManager.getInstance().setAcceptCookie(true);
 
         web.setWebViewClient(new WebViewClient() {
             @Override public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
@@ -176,6 +184,83 @@ public class MainActivity extends Activity {
         }
     }
 
+    /* ------------------------------------------------------------- signing in */
+
+    private static final String LOGIN_URL = "https://archiveofourown.org/users/login";
+
+    /**
+     * Sign in on the archive's own page.
+     *
+     * A second WebView is opened on the real login form over HTTPS. It is
+     * given no JavascriptInterface and no way to talk to this app: the reader
+     * types their password into the archive, and nothing here can see it. What
+     * we keep afterwards is the session cookie the archive sets, which expires
+     * on its own and dies when they sign out.
+     *
+     * The app's own page is never navigated away from, so the bridge it uses
+     * stays available and stays refused to everything else.
+     */
+    private void openSignIn() {
+        if (signInView != null) return;
+
+        signInView = new WebView(this);
+        WebSettings s = signInView.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setAllowFileAccess(false);
+        s.setAllowContentAccess(false);
+        signInView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String url) {
+                // the archive redirects away from /users/login once it accepts
+                if (url != null && !url.contains("/users/login") && isSignedIn()) {
+                    closeSignIn(true);
+                }
+            }
+        });
+
+        FrameLayout panel = new FrameLayout(this);
+        panel.setBackgroundColor(0xFF101010);
+
+        android.widget.Button close = new android.widget.Button(this);
+        close.setText("Close");
+        close.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { closeSignIn(isSignedIn()); }
+        });
+
+        FrameLayout.LayoutParams full = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        full.topMargin = 140;
+        panel.addView(signInView, full);
+        FrameLayout.LayoutParams top = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        panel.addView(close, top);
+
+        root.addView(panel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        signInPanel = panel;
+        signInView.loadUrl(LOGIN_URL);
+    }
+
+    private FrameLayout signInPanel;
+
+    private void closeSignIn(boolean signedIn) {
+        if (signInPanel != null) { root.removeView(signInPanel); signInPanel = null; }
+        if (signInView != null) { signInView.destroy(); signInView = null; }
+        android.webkit.CookieManager.getInstance().flush();
+        web.evaluateJavascript("window.__signedIn && window.__signedIn(" + signedIn + ")", null);
+    }
+
+    /** The archive's session cookies, as the browser holds them. */
+    private String archiveCookies() {
+        String cookies = android.webkit.CookieManager.getInstance().getCookie(LOGIN_URL);
+        return cookies == null ? "" : cookies;
+    }
+
+    private boolean isSignedIn() {
+        String c = archiveCookies();
+        return c.contains("remember_user_token") || c.contains("user_credentials");
+    }
+
     /* ------------------------------------------------------------- routing */
 
     private WebResourceResponse route(Uri uri) {
@@ -263,6 +348,12 @@ public class MainActivity extends Activity {
         c.setConnectTimeout(20000);
         c.setReadTimeout(30000);
         c.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(this));
+        // the session travels only to the archive, never to the font host
+        String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
+        if (host.endsWith("archiveofourown.org")) {
+            String cookies = archiveCookies();
+            if (!cookies.isEmpty()) c.setRequestProperty("Cookie", cookies);
+        }
         return c;
     }
 
@@ -310,6 +401,7 @@ public class MainActivity extends Activity {
             StringBuilder b = new StringBuilder("{");
             b.append("\"hasDatabase\":").append(db != null);
             b.append(",\"search\":").append(hasSearch());
+            b.append(",\"signedIn\":").append(isSignedIn());
             b.append(",\"path\":").append(quote(databaseFile().getPath()));
             b.append("}");
             return b.toString();
@@ -328,9 +420,28 @@ public class MainActivity extends Activity {
             mustBeOurPage();
             if (db == null) return "{\"error\":\"no database\"}";
             String trimmed = sql == null ? "" : sql.trim();
+
+            /*
+             * The page composes its own queries, so this is the boundary that
+             * decides what it may ask for. Reading only is the point; these
+             * checks make "reading only" hard to talk your way around.
+             *
+             * A statement separator would allow a second statement to ride
+             * along behind the SELECT, and a comment marker can hide the rest
+             * of a line from a reader while SQLite still executes it. Neither
+             * appears in any query this app makes.
+             */
             if (!trimmed.regionMatches(true, 0, "SELECT", 0, 6)
                     && !trimmed.regionMatches(true, 0, "WITH", 0, 4)) {
                 return "{\"error\":\"read-only\"}";
+            }
+            if (trimmed.length() > 8000) return "{\"error\":\"query too long\"}";
+            if (trimmed.indexOf(';') >= 0) return "{\"error\":\"one statement only\"}";
+            if (trimmed.contains("--") || trimmed.contains("/*")) {
+                return "{\"error\":\"comments are not allowed in a query\"}";
+            }
+            if (PRAGMA_OR_ATTACH.matcher(trimmed).find()) {
+                return "{\"error\":\"not a read of this archive\"}";
             }
             String[] args = parseArgs(argsJson);
             StringBuilder out = new StringBuilder("{\"rows\":[");
@@ -441,6 +552,33 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
             }
+        }
+
+        /** Open the archive's login page. */
+        @JavascriptInterface
+        public void signIn() {
+            mustBeOurPage();
+            runOnUiThread(new Runnable() {
+                @Override public void run() { openSignIn(); }
+            });
+        }
+
+        /** Forget the session. The archive still has it until it expires there. */
+        @JavascriptInterface
+        public void signOut() {
+            mustBeOurPage();
+            runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    android.webkit.CookieManager.getInstance().removeAllCookies(null);
+                    android.webkit.CookieManager.getInstance().flush();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public boolean signedIn() {
+            mustBeOurPage();
+            return isSignedIn();
         }
 
         /** Let the reader hand over an archive.db built elsewhere. */

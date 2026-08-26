@@ -139,3 +139,31 @@ test('a chapter with a skin renders scoped css and the work markup together', ()
   assert.equal((out.css.match(/#workskin/g) || []).length, 1, 'and is not double-scoped');
   assert.ok(out.html.includes('class="twtchat"'), 'the markup the skin targets survives');
 });
+
+test('a single sanitising pass is not enough, and nesting proves it', () => {
+  // removing the inner tag joins the outer halves into a real one, so one
+  // pass creates the very tag it was meant to delete
+  const attacks = [
+    '<scr<script>ipt>alert(1)</scr</script>ipt>',
+    '<<script>script>alert(1)<</script>/script>',
+    '<scr<iframe>ipt>alert(1)</scr</iframe>ipt>',
+  ];
+  for (const attack of attacks) {
+    const out = sanitiseHtml(attack);
+    assert.ok(!/<script|<iframe/i.test(out), `nested tag survived: ${attack} → ${out}`);
+  }
+});
+
+test('nested event handlers do not reassemble either', () => {
+  const out = sanitiseHtml('<img src=x onerror=onerror=alert(1)>');
+  assert.ok(!/onerror\s*=/i.test(out), `handler survived: ${out}`);
+});
+
+test('sanitising terminates on pathological input', () => {
+  // deeply nested markup must not spin; bounded iteration guarantees it
+  const nasty = '<scr'.repeat(200) + '<script>' + 'ipt>'.repeat(200);
+  const started = Date.now();
+  const out = sanitiseHtml(nasty);
+  assert.ok(Date.now() - started < 2000, 'must not hang');
+  assert.equal(typeof out, 'string');
+});

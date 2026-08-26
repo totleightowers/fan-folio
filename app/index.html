@@ -95,6 +95,10 @@
   <input id="addwork-url" type="url" inputmode="url" spellcheck="false"
          autocomplete="off" placeholder="https://…/works/12345">
   <p id="addwork-status" class="addwork-status" hidden></p>
+  <div id="addwork-signin" class="addwork-signin" hidden>
+    <p>Restricted works need you to be signed in to the archive.</p>
+    <button id="addwork-signin-go">Sign in</button>
+  </div>
   <div class="addwork-actions">
     <button class="close" data-close="addwork">Cancel</button>
     <button id="addwork-go" class="primary">Add</button>
@@ -145,6 +149,9 @@
   <label>Line spacing <input id="lh" type="range" min="110" max="250" step="5"></label>
   <label>Side margin <input id="margin" type="range" min="0" max="48" step="2"></label>
   <label>Top margin <input id="vmargin" type="range" min="0" max="64" step="4"></label>
+  <label>Archive account
+    <button id="account" class="account-btn">Sign in</button>
+  </label>
   <label>Alignment
     <select id="align"><option value="start">Left</option><option value="justify">Justified</option></select>
   </label>
