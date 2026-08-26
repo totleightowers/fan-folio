@@ -72,6 +72,15 @@ function loadGoogleFont(family, weight = 400) {
   document.head.append(link);
 }
 
+/** Perceived lightness of a hex colour, by the usual luminance weights. */
+function isDark(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? ''));
+  if (!m) return false;
+  const n = parseInt(m[1], 16);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128;
+}
+
 const faceStack = (family) => SYSTEM_FACES[family] ?? `'${String(family).replace(/'/g, '')}', Georgia, serif`;
 
 function applyPrefs() {
@@ -83,8 +92,15 @@ function applyPrefs() {
     r.style.setProperty('--bg', prefs.bg);
     r.style.setProperty('--fg', prefs.fg);
     r.style.setProperty('--pane', prefs.bg);
+    // a custom theme sets no data-theme, so the browser would otherwise paint
+    // sliders and selects to the system's taste — which is how a black theme
+    // ended up with a white dropdown in it
+    const dark = isDark(prefs.bg);
+    r.style.setProperty('color-scheme', dark ? 'dark' : 'light');
+    // links must stay legible against whatever background was chosen
+    r.style.setProperty('--link', dark ? '#7fb2ef' : '#1f5fa9');
   } else {
-    for (const v of ['--bg', '--fg', '--pane']) r.style.removeProperty(v);
+    for (const v of ['--bg', '--fg', '--pane', 'color-scheme', '--link']) r.style.removeProperty(v);
   }
 
   loadGoogleFont(prefs.face, prefs.weight);
@@ -340,31 +356,36 @@ const WORD_PRESETS = [
   ['20000', '80000', '20–80k'], ['80000', '', 'Over 80k'],
 ];
 
+/* Which sections are open. Remembered, so reopening the panel is not a reset. */
+const openSections = new Set(['state']);
+const sectionSearch = {};
+const SHOW_AT_FIRST = 12;
+
 /**
  * The filter panel.
  *
+ * Sections collapse. A flat list of every fandom, pairing, character and tag
+ * is thousands of chips long and answers no question quickly — so each section
+ * shows what is selected in its header, opens on demand, and offers a search
+ * box and a "show all" once it has more options than anyone wants to scan.
+ *
  * Counts come from /api/facets computed against the filters already applied,
- * so every number shown is what you would actually get — and the button says
- * how many works are left before you commit to seeing them.
+ * so every number is what you would actually get.
  */
 async function buildFilterPanel() {
   const body = $('#filter-body');
-  body.innerHTML = '<p class="empty">Counting…</p>';
-  $('#filters').showModal();
+  if (!body.dataset.painted) body.innerHTML = '<p class="empty">Counting…</p>';
 
   let facets;
   try { facets = await api(`/api/facets?${filterParams()}`); }
-  catch (e) { body.innerHTML = '<p class="empty"></p>'; body.querySelector('.empty').textContent = e.message; return; }
+  catch (e) {
+    body.innerHTML = '<p class="empty"></p>';
+    body.querySelector('.empty').textContent = e.message;
+    return;
+  }
 
   body.textContent = '';
-  const section = (title) => {
-    const el = document.createElement('section');
-    el.className = 'filter-section';
-    el.innerHTML = '<h3></h3><div class="opts"></div>';
-    el.querySelector('h3').textContent = title;
-    body.append(el);
-    return el.querySelector('.opts');
-  };
+  body.dataset.painted = '1';
 
   const chip = (label, n, state, onclick) => {
     const b = document.createElement('button');
@@ -376,50 +397,150 @@ async function buildFilterPanel() {
     return b;
   };
 
-  const states = section('Reading');
-  for (const [key, label] of Object.entries({
-    all: 'All', reading: 'Reading', unread: 'Unread', finished: 'Finished', later: 'Marked for later',
-  })) {
-    states.append(chip(label, facets.counts?.[key], view.state === key ? 'on' : '', () => {
-      view.state = key; save(VIEW_KEY, view);
-    }));
+  /** One collapsible section. `selected` is what its header should advertise. */
+  function section(key, title, selected, fill) {
+    const el = document.createElement('section');
+    el.className = 'filter-section' + (openSections.has(key) ? ' open' : '');
+    el.innerHTML = `<button class="sec-head">
+        <span class="sec-title"></span>
+        <span class="sec-sel"></span>
+        <span class="sec-chev">›</span>
+      </button><div class="sec-body"></div>`;
+    el.querySelector('.sec-title').textContent = title;
+    const sel = el.querySelector('.sec-sel');
+    if (selected.length) {
+      sel.textContent = selected.length === 1 ? selected[0] : `${selected.length} selected`;
+      sel.classList.add('has');
+    }
+    el.querySelector('.sec-head').onclick = () => {
+      if (openSections.has(key)) openSections.delete(key); else openSections.add(key);
+      el.classList.toggle('open');
+    };
+    fill(el.querySelector('.sec-body'));
+    body.append(el);
   }
 
-  const completion = section('Status');
-  for (const [value, label] of [['', 'Any'], ['1', 'Complete'], ['0', 'Work in progress']]) {
-    completion.append(chip(label, null, view.complete === value ? 'on' : '', () => {
-      view.complete = value; save(VIEW_KEY, view);
-    }));
-  }
+  /* --- the short sections: every option fits, so none of them collapse --- */
 
-  const length = section('Length');
-  for (const [min, max, label] of WORD_PRESETS) {
-    const on = view.wordsMin === min && view.wordsMax === max ? 'on' : '';
-    length.append(chip(label, null, on, () => {
-      view.wordsMin = min; view.wordsMax = max; save(VIEW_KEY, view);
-    }));
-  }
-
-  if (facets.tags?.rating || facets.languages) {
-    const ratings = section('Rating');
-    for (const r of facets.tags?.rating ?? []) {
-      ratings.append(chip(r.name, r.n, view.rating.includes(r.name) ? 'on' : '', () => {
-        view.rating = view.rating.includes(r.name)
-          ? view.rating.filter((x) => x !== r.name) : [...view.rating, r.name];
-        save(VIEW_KEY, view);
+  section('state', 'Reading', view.state === 'all' ? [] : [view.state], (box) => {
+    const opts = document.createElement('div');
+    opts.className = 'opts';
+    for (const [key, label] of Object.entries({
+      all: 'All', reading: 'Reading', unread: 'Unread', finished: 'Finished', later: 'Marked for later',
+    })) {
+      opts.append(chip(label, facets.counts?.[key], view.state === key ? 'on' : '', () => {
+        view.state = key; save(VIEW_KEY, view);
       }));
     }
+    box.append(opts);
+  });
+
+  section('status', 'Status', view.complete ? [view.complete === '1' ? 'Complete' : 'WIP'] : [], (box) => {
+    const opts = document.createElement('div');
+    opts.className = 'opts';
+    for (const [value, label] of [['', 'Any'], ['1', 'Complete'], ['0', 'Work in progress']]) {
+      opts.append(chip(label, null, view.complete === value ? 'on' : '', () => {
+        view.complete = value; save(VIEW_KEY, view);
+      }));
+    }
+    box.append(opts);
+  });
+
+  const lengthLabel = WORD_PRESETS.find(([a, b]) => a === view.wordsMin && b === view.wordsMax);
+  section('length', 'Length', view.wordsMin || view.wordsMax ? [lengthLabel?.[2] ?? 'custom'] : [], (box) => {
+    const opts = document.createElement('div');
+    opts.className = 'opts';
+    for (const [min, max, label] of WORD_PRESETS) {
+      const on = view.wordsMin === min && view.wordsMax === max ? 'on' : '';
+      opts.append(chip(label, null, on, () => {
+        view.wordsMin = min; view.wordsMax = max; save(VIEW_KEY, view);
+      }));
+    }
+    box.append(opts);
+  });
+
+  if (facets.tags?.rating?.length) {
+    section('rating', 'Rating', view.rating, (box) => {
+      const opts = document.createElement('div');
+      opts.className = 'opts';
+      for (const r of facets.tags.rating) {
+        opts.append(chip(r.name, r.n, view.rating.includes(r.name) ? 'on' : '', () => {
+          view.rating = view.rating.includes(r.name)
+            ? view.rating.filter((x) => x !== r.name) : [...view.rating, r.name];
+          save(VIEW_KEY, view);
+        }));
+      }
+      box.append(opts);
+    });
   }
+
+  /* --- the long ones: searchable, and capped until asked otherwise --- */
 
   for (const [kind, title] of FILTER_SECTIONS) {
     const items = facets.tags?.[kind] ?? [];
     if (!items.length) continue;
-    const opts = section(title);
-    for (const t of items) {
-      const state = view.include.includes(t.name) ? 'in'
-        : view.exclude.includes(t.name) ? 'out' : '';
-      opts.append(chip(t.name, t.n, state, () => cycleTag(t.name)));
-    }
+    const chosen = [...view.include, ...view.exclude].filter(
+      (t) => items.some((i) => i.name === t));
+
+    section(kind, title, chosen, (box) => {
+      const needle = (sectionSearch[kind] ?? '').toLowerCase();
+      const matching = needle
+        ? items.filter((t) => t.name.toLowerCase().includes(needle))
+        : items;
+
+      if (items.length > SHOW_AT_FIRST) {
+        const find = document.createElement('input');
+        find.type = 'search';
+        find.className = 'sec-find';
+        find.placeholder = `Search ${title.toLowerCase()}…`;
+        find.value = sectionSearch[kind] ?? '';
+        // repaint just this section's chips; refetching facets on every
+        // keystroke would be a request per letter for no new information
+        find.oninput = () => {
+          sectionSearch[kind] = find.value;
+          const at = find.selectionStart;
+          paintChips();
+          const again = box.querySelector('.sec-find');
+          again.focus();
+          again.setSelectionRange(at, at);
+        };
+        box.append(find);
+      }
+
+      const opts = document.createElement('div');
+      opts.className = 'opts';
+      box.append(opts);
+
+      let expanded = box.dataset.expanded === '1';
+      function paintChips() {
+        const list = (sectionSearch[kind] ?? '')
+          ? items.filter((t) => t.name.toLowerCase().includes((sectionSearch[kind] ?? '').toLowerCase()))
+          : items;
+        const shown = expanded ? list : list.slice(0, SHOW_AT_FIRST);
+        opts.textContent = '';
+        for (const t of shown) {
+          const state = view.include.includes(t.name) ? 'in'
+            : view.exclude.includes(t.name) ? 'out' : '';
+          opts.append(chip(t.name, t.n, state, () => cycleTag(t.name)));
+        }
+        if (list.length > shown.length) {
+          const more = document.createElement('button');
+          more.className = 'show-more';
+          more.textContent = `Show all ${list.length}`;
+          more.onclick = () => { expanded = true; box.dataset.expanded = '1'; paintChips(); };
+          opts.append(more);
+        }
+        if (!list.length) {
+          const none = document.createElement('p');
+          none.className = 'filter-hint';
+          none.textContent = 'Nothing matches that.';
+          opts.append(none);
+        }
+      }
+      paintChips();
+      // keep matching visible when the search box is repainted above
+      if (needle) box.querySelector('.sec-find')?.setAttribute('value', needle);
+    });
   }
 
   const hint = document.createElement('p');
@@ -477,7 +598,11 @@ function paintActiveFilters() {
   }
 }
 
-$('#open-filters').onclick = () => { buildFilterPanel().then(refreshAfterFilterChange); };
+$('#open-filters').onclick = async () => {
+  $('#filter-body').dataset.painted = '';
+  $('#filters').showModal();
+  await refreshAfterFilterChange();
+};
 $('#apply-filters').onclick = () => {
   $('#filters').close();
   paintActiveFilters();
