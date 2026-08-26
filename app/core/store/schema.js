@@ -63,21 +63,24 @@ CREATE TABLE IF NOT EXISTS chapters (
 );
 CREATE INDEX IF NOT EXISTS chapters_by_work ON chapters(work_id, number);
 
--- External-content FTS: the index points at chapters.text rather than keeping
--- a second copy of 42 million words. snippet() still works because SQLite can
--- read the original row through content_rowid.
-CREATE VIRTUAL TABLE IF NOT EXISTS chapter_fts USING fts5(
-  text,
-  content='chapters',
-  content_rowid='id',
-  tokenize='unicode61 remove_diacritics 2'
+-- FTS4, not FTS5.
+--
+-- Android's SQLite has shipped FTS4 for years and FTS5 only recently, so a
+-- device with no FTS5 loses search entirely — which is the feature this whole
+-- archive exists for. FTS4 provides match, phrase, prefix, NEAR and snippet();
+-- the one thing it lacks is bm25(), and that is computed from matchinfo() in
+-- app/core/search.js so the ranking is identical everywhere.
+--
+-- External content: the index points at chapters.text rather than keeping a
+-- second copy of 42 million words.
+CREATE VIRTUAL TABLE IF NOT EXISTS chapter_fts USING fts4(
+  content='chapters', text, tokenize=unicode61
 );
 
 -- Metadata search is a different question from full-text search ("a fic called
 -- X" vs "a fic containing X"), so it gets its own small index.
-CREATE VIRTUAL TABLE IF NOT EXISTS work_fts USING fts5(
-  work_id UNINDEXED, title, authors, summary, tags,
-  tokenize='unicode61 remove_diacritics 2'
+CREATE VIRTUAL TABLE IF NOT EXISTS work_fts USING fts4(
+  work_id, title, authors, summary, tags, tokenize=unicode61
 );
 
 -- Superseded copies. Authors revise, and a work you read in 2021 may not be

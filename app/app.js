@@ -116,11 +116,21 @@ function go(name) {
   show(name);
 }
 
-$('#back').onclick = () => {
+function goBack() {
+  if (!stack.length) return false;
   stack.pop();
   const prev = stack.at(-1);
-  show(prev?.name ?? 'library');
+  show(prev?.name ?? 'home');
   if (prev) window.scrollTo(0, prev.scroll);
+  return true;
+}
+
+$('#back').onclick = () => goBack();
+
+/* The shell asks this before it closes the app; true means we handled it. */
+window.__onBack = () => {
+  for (const d of $$('dialog[open]')) { d.close(); return true; }
+  return goBack();
 };
 
 function toast(message) {
@@ -333,8 +343,15 @@ const STAT_LABELS = [
 
 async function buildHome() {
   let data;
-  try { data = await api('/api/home'); }
-  catch (e) { $('#shelves').innerHTML = '<p class="empty"></p>'; $('#shelves .empty').textContent = e.message; return; }
+  try {
+    data = await api('/api/home');
+  } catch (e) {
+    // say what actually went wrong; a blank home screen teaches nobody anything
+    $('#shelves').innerHTML = '<p class="empty"></p>';
+    $('#shelves .empty').textContent = `Home could not load: ${e.message}`;
+    toast(e.message);
+    return;
+  }
 
   const stats = $('#stats');
   stats.textContent = '';
@@ -544,16 +561,23 @@ async function openWork(workId) {
   meta.innerHTML = w.meta_html ?? '';
   box.append(meta);
 
-  const list = document.createElement('div');
-  list.className = 'chapters';
-  for (const c of w.chapters) {
-    const b = document.createElement('button');
-    b.className = saved?.chapter === c.number ? 'at' : '';
-    b.textContent = `${c.number}. ${c.title ?? 'Chapter ' + c.number} · ${fmt(c.words)} words`;
-    b.onclick = () => openChapter(workId, c.number);
-    list.append(b);
+  /*
+   * One control, not a chapter per row.
+   *
+   * A thirty-one chapter work turned the page into a wall of "Chapter N ·
+   * 2,728 words" that buried the summary and the tags. The chapters are
+   * navigation, so they live behind the same drawer the reader uses.
+   */
+  if (w.chapters.length > 1) {
+    const open = document.createElement('button');
+    open.className = 'chapters-open';
+    open.innerHTML = '<span class="glyph">☰</span><span class="label"></span>'
+      + '<span class="chev">›</span>';
+    open.querySelector('.label').textContent =
+      `${w.chapters.length} chapters` + (saved?.chapter ? ` · you are on ${saved.chapter}` : '');
+    open.onclick = () => showChapterDrawer(workId, saved?.chapter ?? 1);
+    box.append(open);
   }
-  box.append(list);
   go('detail');
 }
 
@@ -598,19 +622,35 @@ async function openChapter(workId, number) {
 $('#prev').onclick = () => openChapter(current.workId, current.chapter - 1);
 $('#next').onclick = () => openChapter(current.workId, current.chapter + 1);
 
-$('#chappos').onclick = () => {
-  if (!currentWork) return;
+/**
+ * The chapter drawer, shared by the work page and the reader.
+ *
+ * Read chapters are marked, and the one you are on is highlighted and scrolled
+ * to — in a fifty chapter work, opening at the top means scrolling to find
+ * where you already are.
+ */
+function showChapterDrawer(workId, at) {
+  const work = currentWork?.work_id === workId ? currentWork : null;
+  if (!work) return;
   const list = $('#chapter-list');
   list.textContent = '';
-  for (const c of currentWork.chapters) {
+  const readTo = positions[workId]?.chapter ?? 0;
+
+  for (const c of work.chapters) {
     const b = document.createElement('button');
-    b.className = c.number === current.chapter ? 'at' : '';
-    b.textContent = `${c.number}. ${c.title ?? 'Chapter ' + c.number}`;
-    b.onclick = () => { $('#chapters-dialog').close(); openChapter(current.workId, c.number); };
+    b.className = c.number === at ? 'at' : (c.number < readTo ? 'read' : '');
+    b.innerHTML = '<span class="num"></span><span class="name"></span><span class="len"></span>';
+    b.querySelector('.num').textContent = c.number;
+    b.querySelector('.name').textContent = c.title ?? `Chapter ${c.number}`;
+    b.querySelector('.len').textContent = `${fmt(c.words)}w`;
+    b.onclick = () => { $('#chapters-dialog').close(); openChapter(workId, c.number); };
     list.append(b);
   }
   $('#chapters-dialog').showModal();
-};
+  list.querySelector('.at')?.scrollIntoView({ block: 'center' });
+}
+
+$('#chappos').onclick = () => currentWork && showChapterDrawer(current.workId, current.chapter);
 
 function updateProgress() {
   const doc = document.documentElement;
