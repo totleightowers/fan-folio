@@ -38,11 +38,39 @@ while (pagesThisRun < maxPages) {
   const page = state.nextPage;
   if (state.totalPages && page > state.totalPages) break;
 
-  const { body } = await client.get(urlFor(user, page), { label: `${kind} p${page}` });
+  const { status, body } = await client.get(urlFor(user, page), { label: `${kind} p${page}` });
+
+  /*
+   * A refused page is not the end of the list.
+   *
+   * When the limiter runs out of retries it hands back the failed response,
+   * and parsing an AO3 error page yields no works — which this loop used to
+   * read as "we have reached the end". Bookmarks stopped at page 50 of 86 and
+   * reported success; history stopped after one page of 260. Both looked like
+   * completion and were not.
+   */
+  if (status !== 200) {
+    console.error(`\n${kind} page ${page} returned ${status} after every retry.`);
+    console.error('Stopping here with the state saved — run again to resume.');
+    process.exitCode = 1;
+    break;
+  }
+
   const { works, pagination } = parseListing(body);
   state.totalPages ??= pagination.total;
 
-  if (!works.length && page > 1) { console.log(`page ${page} is empty — stopping`); break; }
+  /* Empty before the last page means the page did not parse, not that the
+     list ran out. Trust the page count AO3 gave us on page one. */
+  if (!works.length) {
+    if (state.totalPages && page < state.totalPages) {
+      console.error(`\n${kind} page ${page} of ${state.totalPages} parsed no works.`);
+      console.error('That is a parse or throttle failure, not the end of the list.');
+      process.exitCode = 1;
+      break;
+    }
+    console.log(`page ${page} is genuinely empty — finished`);
+    break;
+  }
 
   for (const w of works) {
     const prev = state.works[w.workId];
