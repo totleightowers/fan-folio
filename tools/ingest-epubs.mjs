@@ -48,8 +48,22 @@ const TAG_KINDS = [
   ['freeform', 'freeform'], ['warnings', 'warning'], ['categories', 'category'],
 ];
 
+/*
+ * Works whose chapters came from AO3 are left alone.
+ *
+ * An AO3-sourced copy is strictly better than the EPUB one: it carries the
+ * author's own markup, which is what a work skin styles. Re-running this
+ * ingest used to clear and rewrite every chapter regardless, so rebuilding the
+ * search index quietly replaced fetched chat markup with Calibre's flattened
+ * version — and because the ingest does not go through the versioning path,
+ * nothing was archived and nothing said so.
+ */
+const fromAo3 = new Set(
+  db.prepare("SELECT work_id FROM works WHERE source = 'ao3'").all().map((r) => r.work_id)
+);
+
 const files = (await readdir(dir)).filter((f) => f.toLowerCase().endsWith('.epub'));
-let done = 0, failed = 0, chapters = 0, words = 0;
+let done = 0, failed = 0, chapters = 0, words = 0, skippedAo3 = 0;
 const started = Date.now();
 
 db.exec('BEGIN');
@@ -57,6 +71,7 @@ for (const name of files) {
   try {
     const w = await parseEpub(new Uint8Array(await readFile(join(dir, name))));
     if (!w.workId) { failed++; continue; }
+    if (fromAo3.has(w.workId)) { skippedAo3++; continue; }
 
     insertWork.run(w.workId, w.title, JSON.stringify(w.authors ?? []), w.summary,
       w.rating ?? null, w.language ?? null, w.published?.slice(0, 10) ?? null,
@@ -98,5 +113,6 @@ db.exec('ANALYZE');
 const took = ((Date.now() - started) / 1000).toFixed(0);
 console.log(`\ningested ${done} works, ${chapters} chapters, ${words.toLocaleString()} words in ${took}s`);
 console.log(`failed   ${failed}`);
+console.log(`left as fetched from AO3: ${skippedAo3}`);
 console.log(`database ${dbPath}`);
 db.close();

@@ -462,7 +462,12 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 .chapters-open .chev { color: var(--muted); font-size: 1.2rem; }
 
 /* the drawer itself: a panel down the side, not a box in the middle */
-#chapters-dialog {
+/*
+ * Only style the dialog when it is open. A bare `display: flex` here overrides
+ * the browser's `display: none` for a closed dialog, which left the chapter
+ * drawer sitting visibly on the setup screen.
+ */
+#chapters-dialog[open] {
   margin: 0 auto 0 0; height: 100dvh; max-height: 100dvh;
   width: min(85vw, 22rem); max-width: none; border-radius: 0 14px 14px 0;
   display: flex; flex-direction: column;
@@ -479,3 +484,62 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 #chapter-list .len { flex: 0 0 auto; color: var(--muted); font-size: .74rem; }
 #chapter-list button.read .name { color: var(--muted); }
 #chapter-list button.at { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/* ---------------------------------------------------------- filter panel */
+
+.toolrow { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.filter-btn {
+  display: inline-flex; align-items: center; gap: .4rem; font: inherit; font-size: .85rem;
+  background: var(--pane); color: inherit; border: 1px solid var(--rule);
+  border-radius: 999px; padding: .35rem .8rem; cursor: pointer;
+}
+.filter-btn .badge {
+  background: var(--accent); color: #fff; border-radius: 999px;
+  font-size: .7rem; min-width: 1.15rem; text-align: center; padding: 0 .3rem;
+}
+
+.active-filters { display: flex; flex-wrap: wrap; gap: .35rem; }
+.active-filters:empty { display: none; }
+.active-pill {
+  display: inline-flex; align-items: center; gap: .35rem; font: inherit; font-size: .76rem;
+  border-radius: 999px; padding: .2rem .4rem .2rem .6rem; cursor: pointer;
+  border: 1px solid var(--rule); background: var(--pane); color: inherit;
+  max-width: 100%;
+}
+.active-pill .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.active-pill .x { opacity: .6; font-size: .95rem; line-height: 1; }
+.active-pill.in { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule)); }
+.active-pill.out { border-color: color-mix(in srgb, #c0392b 55%, var(--rule)); text-decoration: line-through; }
+.active-pill.state { border-style: dashed; }
+
+#filters {
+  width: min(96vw, 34rem); max-width: none; height: 88dvh; max-height: 88dvh;
+  display: none; flex-direction: column; padding: .9rem 1rem 1rem;
+}
+#filters[open] { display: flex; }
+.filter-head { display: flex; align-items: baseline; justify-content: space-between; }
+.filter-head h2 { margin: 0; }
+.linkish { font: inherit; font-size: .82rem; background: none; border: 0; color: var(--accent); cursor: pointer; }
+#filter-body { flex: 1 1 auto; overflow-y: auto; margin: .5rem -.2rem .7rem; padding: 0 .2rem; }
+.filter-section { margin-bottom: 1rem; }
+.filter-section h3 {
+  margin: 0 0 .45rem; font-size: .74rem; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); font-weight: 650;
+}
+.opts { display: flex; flex-wrap: wrap; gap: .35rem; }
+.opt {
+  display: inline-flex; align-items: center; gap: .35rem; font: inherit; font-size: .8rem;
+  background: var(--pane); color: inherit; border: 1px solid var(--rule);
+  border-radius: 999px; padding: .28rem .65rem; cursor: pointer; max-width: 100%;
+}
+.opt .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt .n { color: var(--muted); font-size: .72rem; }
+.opt.on, .opt.in { background: var(--accent); border-color: var(--accent); color: #fff; }
+.opt.on .n, .opt.in .n { color: rgb(255 255 255 / .75); }
+.opt.out {
+  border-color: #c0392b; color: #c0392b; text-decoration: line-through;
+  background: color-mix(in srgb, #c0392b 12%, transparent);
+}
+.filter-hint { font-size: .76rem; color: var(--muted); margin: .2rem 0 0; }
+button.primary.wide { width: 100%; }
+button.primary:disabled { opacity: .5; }

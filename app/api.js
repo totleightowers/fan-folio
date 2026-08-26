@@ -10,6 +10,7 @@
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
 import { rank, CANDIDATES } from './core/search.js';
+import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
 export const isNative = Boolean(native);
@@ -41,53 +42,16 @@ const lim = (n, fallback = 50, max = 500) => {
 const one = (query, args) => sql(query, args)[0] ?? null;
 const parseAuthors = (raw) => { try { return JSON.parse(raw || '[]'); } catch { return []; } };
 
-/* Only names from these maps ever reach the query; the reader's choice is
-   looked up, never interpolated, so a crafted sort cannot become SQL. */
-const SORTS = {
-  title: 'w.title COLLATE NOCASE ASC',
-  updated: 'COALESCE(w.updated, w.published) DESC',
-  added: 'w.downloaded_at DESC',
-  words: 'w.words DESC',
-  shortest: 'w.words ASC',
-  recent: 'r.last_read DESC',
-};
-
-const FILTERS = {
-  all: '1=1',
-  // a saved position counts as reading even when no chapter is marked read:
-  // the imported backup recorded where you were far more often than what
-  // you had finished, and the stricter test hid almost all of it
-  reading: '(COALESCE(r.chapters_read, 0) > 0 OR COALESCE(r.chapter, 0) > 1) AND COALESCE(r.chapters_read, 0) < w.chapter_count',
-  unread: 'COALESCE(r.chapters_read, 0) = 0 AND COALESCE(r.chapter, 0) <= 1',
-  finished: 'r.chapters_read >= w.chapter_count AND w.chapter_count > 0',
-  later: 'r.marked_later = 1',
-  complete: 'w.complete = 1',
-  wip: 'w.complete = 0',
-  skinned: "w.skin_css IS NOT NULL AND w.skin_css <> ''",
-};
-
 const LOCAL = {
-  '/api/works': ({ limit = 50, offset = 0, sort = 'title', filter = 'all', fandom = '', tag = '', rating = '' }) => {
-    fandom = tag || fandom;
-    const order = SORTS[sort] ?? SORTS.title;
-    const where = [FILTERS[filter] ?? FILTERS.all];
-    const args = [];
-    if (fandom) {
-      where.push("EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' AND t.name = ?)");
-      args.push(fandom);
+  '/api/works': (params) => {
+    const filters = { ...params };
+    if (params.tag) {
+      filters.include = filters.include ? `${filters.include}\t${params.tag}` : params.tag;
     }
-    if (rating) { where.push('w.rating = ?'); args.push(rating); }
-    const from = `FROM works w LEFT JOIN reading r ON r.work_id = w.work_id WHERE ${where.join(' AND ')}`;
+    const q = buildWorksQuery(filters);
     return {
-      total: sql(`SELECT count(*) AS n ${from}`, args)[0].n,
-      works: sql(`SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
-                         w.chapters_planned, w.complete, w.rating, w.published, w.updated,
-                         w.downloaded_at,
-                         w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
-                         r.chapter AS at_chapter, r.chapters_read, r.marked_later,
-                         (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
-                         (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
-                  ${from} ORDER BY ${order} LIMIT ${lim(limit)} OFFSET ${lim(offset, 0, 1000000)}`, args),
+      total: sql(q.countSql, q.args)[0].n,
+      works: sql(q.sql, q.args),
     };
   },
 
@@ -149,15 +113,22 @@ const LOCAL = {
                   WHERE COALESCE(r.chapters_read,0) = 0 ORDER BY RANDOM() LIMIT 1`)[0]?.work_id ?? null,
   }),
 
-  facets: () => {
+  facets: (filters = {}) => {
     const counts = {};
-    for (const [name, clause] of Object.entries(FILTERS)) {
-      counts[name] = sql(
-        `SELECT count(*) AS n FROM works w LEFT JOIN reading r ON r.work_id = w.work_id WHERE ${clause}`
-      )[0].n;
+    for (const state of Object.keys(STATES)) {
+      const q = buildWorksQuery({ ...filters, state });
+      counts[state] = sql(q.countSql, q.args)[0].n;
     }
-    return { counts, fandoms: sql(
-      "SELECT name, count(*) AS n FROM tags WHERE kind = 'fandom' GROUP BY name ORDER BY n DESC LIMIT 25") };
+    const tags = {};
+    for (const kind of TAG_KINDS) {
+      const q = buildFacetQuery(filters, kind, 40);
+      tags[kind] = sql(q.sql, q.args);
+    }
+    return {
+      counts, tags, fandoms: tags.fandom,
+      languages: sql(`SELECT language AS name, count(*) AS n FROM works
+                      WHERE language IS NOT NULL AND language <> '' GROUP BY language ORDER BY n DESC`),
+    };
   },
 
   work: (workId) => {
@@ -220,10 +191,8 @@ export async function api(path) {
   const p = url.pathname;
   const q = Object.fromEntries(url.searchParams);
 
-  if (p === '/api/works') return LOCAL['/api/works']({
-    ...q, limit: Number(q.limit || 50), offset: Number(q.offset || 0),
-  });
-  if (p === '/api/facets') return LOCAL.facets();
+  if (p === '/api/works') return LOCAL['/api/works'](q);
+  if (p === '/api/facets') return LOCAL.facets(q);
   if (p === '/api/home') return LOCAL.home();
   if (p === '/api/surprise') return LOCAL.surprise();
 
@@ -240,8 +209,8 @@ export async function api(path) {
 
 /** What the shell can tell us about the archive it opened. */
 export function nativeStatus() {
-  if (!isNative) return { hasDatabase: true, fts5: true, dev: true };
-  try { return JSON.parse(native.status()); } catch { return { hasDatabase: false, fts5: false }; }
+  if (!isNative) return { hasDatabase: true, search: true, dev: true };
+  try { return JSON.parse(native.status()); } catch { return { hasDatabase: false, search: false }; }
 }
 
 export function importDatabase() {

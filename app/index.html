@@ -33,18 +33,28 @@
 
   <section id="library" class="view" hidden>
     <div id="toolbar">
+      <div class="toolrow">
+        <button id="open-filters" class="filter-btn">
+          <span class="glyph">⚙</span><span>Filters</span><span id="filter-count" class="badge" hidden></span>
+        </button>
+        <label class="sort">
+          <span>Sort</span>
+          <select id="sort">
+            <option value="title">Title</option>
+            <option value="author">Author</option>
+            <option value="updated">Recently updated</option>
+            <option value="published">Newest</option>
+            <option value="added">Recently added</option>
+            <option value="recent">Recently read</option>
+            <option value="words">Longest</option>
+            <option value="shortest">Shortest</option>
+            <option value="chapters">Most chapters</option>
+            <option value="random">Shuffle</option>
+          </select>
+        </label>
+      </div>
+      <div id="active" class="active-filters"></div>
       <div id="chips" class="chips"></div>
-      <label class="sort">
-        <span>Sort</span>
-        <select id="sort">
-          <option value="title">Title</option>
-          <option value="updated">Recently updated</option>
-          <option value="added">Recently added</option>
-          <option value="recent">Recently read</option>
-          <option value="words">Longest</option>
-          <option value="shortest">Shortest</option>
-        </select>
-      </label>
     </div>
     <div id="works" class="list"></div>
     <div id="more" class="more"></div>
@@ -76,6 +86,15 @@
   <h2>Chapters</h2>
   <div id="chapter-list"></div>
   <button class="close" data-close="chapters-dialog">Done</button>
+</dialog>
+
+<dialog id="filters">
+  <div class="filter-head">
+    <h2>Filters</h2>
+    <button id="clear-filters" class="linkish">Clear all</button>
+  </div>
+  <div id="filter-body"></div>
+  <button id="apply-filters" class="primary wide">Show works</button>
 </dialog>
 
 <dialog id="typography">

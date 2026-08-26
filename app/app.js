@@ -37,7 +37,12 @@ const prefs = load(PREFS_KEY, {
   face: 'Georgia', weight: 400, size: 19, lh: 170,
   margin: 20, vmargin: 24, align: 'start',
 });
-const view = load(VIEW_KEY, { sort: 'title', filter: 'all', fandom: '', rating: '' });
+/* The full filter set, kept together so it can be sent, saved and shown as one. */
+const view = load(VIEW_KEY, {
+  sort: 'title', state: 'all',
+  include: [], exclude: [], rating: [],
+  complete: '', language: '', wordsMin: '', wordsMax: '',
+});
 let positions = load(POS_KEY, {});
 
 /* -------------------------------------------------------------- typography */
@@ -102,6 +107,7 @@ let stack = [];
 const TABBED = new Set(['home', 'library', 'results']);
 
 function show(name) {
+  if (name !== 'reader') keepAwake(false);
   for (const v of VIEWS) $(`#${v}`).hidden = v !== name;
   $('#back').hidden = stack.length === 0;
   $('#tabs').hidden = !TABBED.has(name);
@@ -236,11 +242,7 @@ async function loadMore(reset = false) {
   if (reset) { offset = 0; $('#works').textContent = ''; }
   $('#more').textContent = 'Loading…';
   try {
-    const params = new URLSearchParams({
-      limit: '50', offset: String(offset), sort: view.sort, filter: view.filter,
-    });
-    if (view.fandom) params.set('tag', view.fandom);
-    if (view.rating) params.set('rating', view.rating);
+    const params = filterParams({ limit: '50', offset: String(offset) });
     const { works, total: n } = await api(`/api/works?${params}`);
     total = n;
     const box = $('#works');
@@ -266,6 +268,8 @@ new IntersectionObserver((entries) => {
 }).observe($('#more'));
 
 async function buildChips() {
+  return;   // superseded by the filter panel
+  // eslint-disable-next-line no-unreachable
   let facets = null;
   try { facets = await api('/api/facets'); } catch { /* older backend */ }
   const box = $('#chips');
@@ -291,6 +295,201 @@ $('#sort').onchange = () => {
   view.sort = $('#sort').value;
   save(VIEW_KEY, view);
   loadMore(true);
+};
+
+/* ---------------------------------------------------------------- filters */
+
+/** Lists travel tab-separated: a tab cannot appear in an AO3 tag. */
+function filterParams(extra = {}) {
+  const p = new URLSearchParams({ sort: view.sort, state: view.state, ...extra });
+  for (const key of ['include', 'exclude', 'rating']) {
+    if (view[key]?.length) p.set(key, view[key].join('\t'));
+  }
+  for (const key of ['complete', 'language', 'wordsMin', 'wordsMax']) {
+    if (view[key]) p.set(key, view[key]);
+  }
+  return p;
+}
+
+const activeCount = () =>
+  view.include.length + view.exclude.length + view.rating.length
+  + (view.complete ? 1 : 0) + (view.language ? 1 : 0)
+  + (view.wordsMin ? 1 : 0) + (view.wordsMax ? 1 : 0)
+  + (view.state !== 'all' ? 1 : 0);
+
+/** Tri-state: off → include → exclude → off. */
+function cycleTag(name) {
+  if (view.include.includes(name)) {
+    view.include = view.include.filter((t) => t !== name);
+    view.exclude = [...view.exclude, name];
+  } else if (view.exclude.includes(name)) {
+    view.exclude = view.exclude.filter((t) => t !== name);
+  } else {
+    view.include = [...view.include, name];
+  }
+  save(VIEW_KEY, view);
+}
+
+const FILTER_SECTIONS = [
+  ['fandom', 'Fandoms'], ['relationship', 'Relationships'], ['character', 'Characters'],
+  ['freeform', 'Tags'], ['warning', 'Warnings'], ['category', 'Categories'],
+];
+
+const WORD_PRESETS = [
+  ['', '', 'Any length'], ['', '5000', 'Under 5k'], ['5000', '20000', '5–20k'],
+  ['20000', '80000', '20–80k'], ['80000', '', 'Over 80k'],
+];
+
+/**
+ * The filter panel.
+ *
+ * Counts come from /api/facets computed against the filters already applied,
+ * so every number shown is what you would actually get — and the button says
+ * how many works are left before you commit to seeing them.
+ */
+async function buildFilterPanel() {
+  const body = $('#filter-body');
+  body.innerHTML = '<p class="empty">Counting…</p>';
+  $('#filters').showModal();
+
+  let facets;
+  try { facets = await api(`/api/facets?${filterParams()}`); }
+  catch (e) { body.innerHTML = '<p class="empty"></p>'; body.querySelector('.empty').textContent = e.message; return; }
+
+  body.textContent = '';
+  const section = (title) => {
+    const el = document.createElement('section');
+    el.className = 'filter-section';
+    el.innerHTML = '<h3></h3><div class="opts"></div>';
+    el.querySelector('h3').textContent = title;
+    body.append(el);
+    return el.querySelector('.opts');
+  };
+
+  const chip = (label, n, state, onclick) => {
+    const b = document.createElement('button');
+    b.className = `opt ${state}`;
+    b.innerHTML = '<span class="l"></span>' + (n == null ? '' : '<span class="n"></span>');
+    b.querySelector('.l').textContent = label;
+    if (n != null) b.querySelector('.n').textContent = n;
+    b.onclick = async () => { onclick(); await refreshAfterFilterChange(); };
+    return b;
+  };
+
+  const states = section('Reading');
+  for (const [key, label] of Object.entries({
+    all: 'All', reading: 'Reading', unread: 'Unread', finished: 'Finished', later: 'Marked for later',
+  })) {
+    states.append(chip(label, facets.counts?.[key], view.state === key ? 'on' : '', () => {
+      view.state = key; save(VIEW_KEY, view);
+    }));
+  }
+
+  const completion = section('Status');
+  for (const [value, label] of [['', 'Any'], ['1', 'Complete'], ['0', 'Work in progress']]) {
+    completion.append(chip(label, null, view.complete === value ? 'on' : '', () => {
+      view.complete = value; save(VIEW_KEY, view);
+    }));
+  }
+
+  const length = section('Length');
+  for (const [min, max, label] of WORD_PRESETS) {
+    const on = view.wordsMin === min && view.wordsMax === max ? 'on' : '';
+    length.append(chip(label, null, on, () => {
+      view.wordsMin = min; view.wordsMax = max; save(VIEW_KEY, view);
+    }));
+  }
+
+  if (facets.tags?.rating || facets.languages) {
+    const ratings = section('Rating');
+    for (const r of facets.tags?.rating ?? []) {
+      ratings.append(chip(r.name, r.n, view.rating.includes(r.name) ? 'on' : '', () => {
+        view.rating = view.rating.includes(r.name)
+          ? view.rating.filter((x) => x !== r.name) : [...view.rating, r.name];
+        save(VIEW_KEY, view);
+      }));
+    }
+  }
+
+  for (const [kind, title] of FILTER_SECTIONS) {
+    const items = facets.tags?.[kind] ?? [];
+    if (!items.length) continue;
+    const opts = section(title);
+    for (const t of items) {
+      const state = view.include.includes(t.name) ? 'in'
+        : view.exclude.includes(t.name) ? 'out' : '';
+      opts.append(chip(t.name, t.n, state, () => cycleTag(t.name)));
+    }
+  }
+
+  const hint = document.createElement('p');
+  hint.className = 'filter-hint';
+  hint.textContent = 'Tap once to require a tag, again to exclude it, again to clear.';
+  body.append(hint);
+}
+
+/** Re-count and repaint after any filter change, keeping the panel open. */
+async function refreshAfterFilterChange() {
+  const params = filterParams({ limit: '1', offset: '0' });
+  try {
+    const { total } = await api(`/api/works?${params}`);
+    $('#apply-filters').textContent = total
+      ? `Show ${fmt(total)} work${total === 1 ? '' : 's'}` : 'Nothing matches';
+    $('#apply-filters').disabled = !total;
+  } catch { /* the count is a nicety, not a requirement */ }
+  await buildFilterPanelKeepingScroll();
+}
+
+let panelScroll = 0;
+async function buildFilterPanelKeepingScroll() {
+  panelScroll = $('#filter-body').scrollTop;
+  await buildFilterPanel();
+  $('#filter-body').scrollTop = panelScroll;
+}
+
+/** The filters currently in force, each removable in one tap. */
+function paintActiveFilters() {
+  const box = $('#active');
+  box.textContent = '';
+  const badge = $('#filter-count');
+  const n = activeCount();
+  badge.hidden = !n;
+  badge.textContent = n;
+
+  const pill = (label, cls, remove) => {
+    const b = document.createElement('button');
+    b.className = `active-pill ${cls}`;
+    b.innerHTML = '<span class="l"></span><span class="x">×</span>';
+    b.querySelector('.l').textContent = label;
+    b.onclick = () => { remove(); save(VIEW_KEY, view); paintActiveFilters(); loadMore(true); };
+    box.append(b);
+  };
+
+  if (view.state !== 'all') pill(view.state, 'state', () => { view.state = 'all'; });
+  for (const t of view.include) pill(t, 'in', () => { view.include = view.include.filter((x) => x !== t); });
+  for (const t of view.exclude) pill(`not ${t}`, 'out', () => { view.exclude = view.exclude.filter((x) => x !== t); });
+  for (const r of view.rating) pill(r, 'in', () => { view.rating = view.rating.filter((x) => x !== r); });
+  if (view.complete) pill(view.complete === '1' ? 'complete' : 'WIP', 'in', () => { view.complete = ''; });
+  if (view.wordsMin || view.wordsMax) {
+    const label = view.wordsMin && view.wordsMax ? `${fmt(view.wordsMin)}–${fmt(view.wordsMax)} words`
+      : view.wordsMin ? `over ${fmt(view.wordsMin)}` : `under ${fmt(view.wordsMax)}`;
+    pill(label, 'in', () => { view.wordsMin = ''; view.wordsMax = ''; });
+  }
+}
+
+$('#open-filters').onclick = () => { buildFilterPanel().then(refreshAfterFilterChange); };
+$('#apply-filters').onclick = () => {
+  $('#filters').close();
+  paintActiveFilters();
+  loadMore(true);
+};
+$('#clear-filters').onclick = async () => {
+  Object.assign(view, {
+    state: 'all', include: [], exclude: [], rating: [],
+    complete: '', language: '', wordsMin: '', wordsMax: '',
+  });
+  save(VIEW_KEY, view);
+  await refreshAfterFilterChange();
 };
 
 /* ----------------------------------------------------------------- search */
@@ -377,12 +576,12 @@ async function buildHome() {
       + '<div class="rail"></div>';
     section.querySelector('h2').textContent = shelf.title;
     section.querySelector('.shelf-head button').onclick = () => {
-      view.filter = ['reading', 'later'].includes(shelf.key) ? shelf.key : 'all';
+      view.state = ['reading', 'later'].includes(shelf.key) ? shelf.key : 'all';
       view.sort = shelf.key === 'added' ? 'added' : shelf.key === 'long' ? 'words'
         : shelf.key === 'short' ? 'shortest' : view.sort;
       save(VIEW_KEY, view);
       $('#sort').value = view.sort;
-      buildChips();
+      paintActiveFilters();
       loadMore(true);
       show('library');
     };
@@ -444,11 +643,10 @@ function buildBrowse(browse) {
 
 /** Land in the library, already narrowed to one tag. */
 function openTag(tag, rating) {
-  view.fandom = tag ?? '';
-  view.rating = rating ?? '';
-  view.filter = 'all';
+  if (tag && !view.include.includes(tag)) view.include = [...view.include, tag];
+  if (rating && !view.rating.includes(rating)) view.rating = [...view.rating, rating];
   save(VIEW_KEY, view);
-  buildChips();
+  paintActiveFilters();
   loadMore(true);
   show('library');
 }
@@ -479,8 +677,8 @@ async function buildStartHere() {
   const unread = document.createElement('button');
   unread.className = 'start-tile';
   unread.innerHTML = '<b>Never opened</b><span>the ones still waiting</span>';
-  unread.onclick = () => { view.filter = 'unread'; view.fandom = ''; save(VIEW_KEY, view);
-    buildChips(); loadMore(true); show('library'); };
+  unread.onclick = () => { view.state = 'unread'; save(VIEW_KEY, view);
+    paintActiveFilters(); loadMore(true); show('library'); };
 
   row.append(pick, later, unread);
   box.append(row);
@@ -613,6 +811,7 @@ async function openChapter(workId, number) {
   $('#next').disabled = number >= w.chapter_count;
 
   if (stack.at(-1)?.name !== 'reader') go('reader'); else show('reader');
+  keepAwake(true);
 
   const saved = positions[workId];
   window.scrollTo(0, saved?.chapter === number && saved.y ? saved.y : 0);
@@ -672,6 +871,79 @@ addEventListener('scroll', () => {
     save(POS_KEY, positions);
   }, 400);
 }, { passive: true });
+
+/* ------------------------------------------------------- feeling like an app */
+
+const nativeShell = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
+
+/** Hold the screen awake while a chapter is open, the way reading apps do. */
+function keepAwake(on) {
+  try { nativeShell?.keepAwake?.(Boolean(on)); } catch { /* browser: no such thing */ }
+}
+
+/**
+ * Swipe between chapters.
+ *
+ * Deliberately ignores anything starting within 24px of the left edge: that
+ * belongs to Android's own back gesture, and an app that fights the system
+ * gesture is worse than one with no gestures at all.
+ *
+ * Requires a mostly-horizontal movement so it cannot fire while someone is
+ * scrolling the page, which is what they are doing almost all of the time.
+ */
+function wireSwipe(el) {
+  const EDGE = 24;
+  const MIN_X = 70;
+  const MAX_DRIFT = 0.6;   // vertical travel relative to horizontal
+  let x0 = 0; let y0 = 0; let live = false;
+
+  el.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) { live = false; return; }
+    const t = e.touches[0];
+    live = t.clientX > EDGE && t.clientX < window.innerWidth - EDGE;
+    x0 = t.clientX; y0 = t.clientY;
+  }, { passive: true });
+
+  el.addEventListener('touchend', (e) => {
+    if (!live) return;
+    live = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - x0;
+    const dy = t.clientY - y0;
+    if (Math.abs(dx) < MIN_X || Math.abs(dy) > Math.abs(dx) * MAX_DRIFT) return;
+    if (dx < 0 && current.chapter < current.count) openChapter(current.workId, current.chapter + 1);
+    else if (dx > 0 && current.chapter > 1) openChapter(current.workId, current.chapter - 1);
+  }, { passive: true });
+}
+
+wireSwipe($('#reader'));
+
+/**
+ * Keys that do what they do everywhere else.
+ *
+ * Ignored while typing, so a search for "next" does not turn a page.
+ */
+addEventListener('keydown', (e) => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName ?? '');
+  if (typing) {
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+
+  if (e.key === '/' ) { e.preventDefault(); $('#q').focus(); return; }
+  if (e.key === 'Escape') { if (window.__onBack()) e.preventDefault(); return; }
+
+  if (!$('#reader').hidden) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+      if (current.chapter < current.count) { e.preventDefault(); openChapter(current.workId, current.chapter + 1); }
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      if (current.chapter > 1) { e.preventDefault(); openChapter(current.workId, current.chapter - 1); }
+    } else if (e.key === 'c') {
+      e.preventDefault();
+      if (currentWork) showChapterDrawer(current.workId, current.chapter);
+    }
+  }
+});
 
 /* ------------------------------------------------------------- dialogues */
 
@@ -740,14 +1012,16 @@ async function start() {
   applyPrefs();
   const status = nativeStatus();
   if (!status.hasDatabase) {
-    $('#setup-hint').textContent = status.path ? `It will be copied to ${status.path}` : '';
+    // the internal path is not information a reader can act on
+    $('#setup-hint').textContent = 'Look under Internal storage → Download.';
     show('setup');
     return;
   }
-  if (!status.fts5) toast('This device\'s SQLite has no FTS5 — search is unavailable');
+  if (!status.search) toast('This device\'s SQLite cannot do full-text search');
   show('home');
   await adoptImportedTheme();
-  await Promise.all([buildHome(), buildStartHere(), buildChips()]);
+  paintActiveFilters();
+  await Promise.all([buildHome(), buildStartHere()]);
 }
 
 start();
