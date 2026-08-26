@@ -7,7 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { api, isNative, nativeStatus, importDatabase } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1113,6 +1113,55 @@ for (const b of $$('#tabs button')) {
     if (tab === 'home') { buildHome(); buildStartHere(); }
   };
 }
+
+/* ------------------------------------------------------------ add a work */
+
+const addDialog = $('#addwork');
+
+$('#add').onclick = async () => {
+  $('#addwork-status').hidden = true;
+  $('#addwork-url').value = '';
+  addDialog.showModal();
+  // most links arrive from somewhere else, so offer what is on the clipboard
+  try {
+    const pasted = await navigator.clipboard?.readText?.();
+    if (pasted && /\/works\/\d+/.test(pasted)) $('#addwork-url').value = pasted.trim();
+  } catch { /* no clipboard permission; typing still works */ }
+  $('#addwork-url').focus();
+};
+
+async function submitAddWork() {
+  const input = $('#addwork-url').value.trim();
+  if (!input) return;
+  const status = $('#addwork-status');
+  const button = $('#addwork-go');
+
+  status.hidden = false;
+  status.className = 'addwork-status';
+  status.textContent = 'Fetching…';
+  button.disabled = true;
+
+  try {
+    const out = await addWork(input);
+    status.className = 'addwork-status ok';
+    status.textContent = `${out.added === false ? 'Updated' : 'Added'} “${out.title}” — `
+      + `${out.chapters} chapter${out.chapters === 1 ? '' : 's'}`;
+    // the library and home shelves are both stale now
+    offset = 0;
+    await Promise.all([loadMore(true), buildHome().catch(() => {})]);
+    setTimeout(() => { addDialog.close(); openWork(out.workId); }, 700);
+  } catch (e) {
+    status.className = 'addwork-status bad';
+    status.textContent = e.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$('#addwork-go').onclick = submitAddWork;
+$('#addwork-url').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); submitAddWork(); }
+});
 
 $('#import').onclick = () => {
   if (!isNative) { toast('Import is only available in the app'); return; }

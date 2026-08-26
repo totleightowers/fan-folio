@@ -688,3 +688,19 @@ dialog h2 {
   opacity: 0;
 }
 .ao3page .hidden { display: none; }
+
+/* ------------------------------------------------------------ add a work */
+
+#addwork[open] { display: block; width: min(94vw, 28rem); }
+.addwork-hint { color: var(--muted); font-size: .85rem; margin: 0 0 .7rem; }
+#addwork-url {
+  width: 100%; font: inherit; font-size: .9rem; color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  border: 1px solid var(--rule); border-radius: 10px; padding: .55rem .7rem;
+}
+.addwork-status { font-size: .85rem; margin: .7rem 0 0; }
+.addwork-status.ok { color: var(--accent); }
+.addwork-status.bad { color: #c0392b; }
+.addwork-actions { display: flex; gap: .5rem; margin-top: 1rem; }
+.addwork-actions .close { margin-top: 0; }
+.addwork-actions .primary { flex: 0 0 auto; }

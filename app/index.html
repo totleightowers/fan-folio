@@ -8,6 +8,7 @@
 <header id="bar">
   <button id="back" class="icon" hidden aria-label="Back">←</button>
   <input id="q" type="search" placeholder="Search your archive…" autocomplete="off" spellcheck="false">
+  <button id="add" class="icon" aria-label="Add a work from a link">+</button>
   <button id="typo" class="icon" aria-label="Reading settings">Aa</button>
 </header>
 
@@ -86,6 +87,18 @@
   <h2>Chapters</h2>
   <div id="chapter-list"></div>
   <button class="close" data-close="chapters-dialog">Done</button>
+</dialog>
+
+<dialog id="addwork">
+  <h2>Add a work</h2>
+  <p class="addwork-hint">Paste a link to a work. A chapter link is fine.</p>
+  <input id="addwork-url" type="url" inputmode="url" spellcheck="false"
+         autocomplete="off" placeholder="https://…/works/12345">
+  <p id="addwork-status" class="addwork-status" hidden></p>
+  <div class="addwork-actions">
+    <button class="close" data-close="addwork">Cancel</button>
+    <button id="addwork-go" class="primary">Add</button>
+  </div>
 </dialog>
 
 <dialog id="filters">
