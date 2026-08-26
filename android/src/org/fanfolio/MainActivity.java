@@ -386,6 +386,63 @@ public class MainActivity extends Activity {
             });
         }
 
+        /**
+         * Store a work the page has just fetched and parsed.
+         *
+         * The read bridge refuses anything that is not a SELECT, deliberately —
+         * the page composing arbitrary SQL against a 600MB archive is a
+         * capability worth not having. So writing is not opened up; instead the
+         * page hands over a described work and this method writes it, in one
+         * transaction, through statements it controls.
+         *
+         * The search index is updated for this work alone. Rebuilding it means
+         * reindexing forty million words, which is not something to do because
+         * somebody pasted a link.
+         */
+        @JavascriptInterface
+        public String saveWork(String json) {
+            mustBeOurPage();
+            if (db == null) return "{\"error\":\"no database\"}";
+            try {
+                org.json.JSONObject w = new org.json.JSONObject(json);
+                String id = w.getString("workId");
+                db.beginTransaction();
+                try {
+                    writeWork(w, id);
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+                return "{\"ok\":true,\"workId\":" + quote(id) + "}";
+            } catch (Exception e) {
+                return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
+        /** Store one image the page fetched, addressed by its own content hash. */
+        @JavascriptInterface
+        public String saveImage(String workId, String url, String base64, String mime) {
+            mustBeOurPage();
+            if (db == null) return "{\"error\":\"no database\"}";
+            try {
+                byte[] bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                StringBuilder hex = new StringBuilder();
+                for (byte b : md.digest(bytes)) hex.append(String.format("%02x", b));
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put("work_id", workId);
+                v.put("url", url);
+                v.put("sha256", hex.toString());
+                v.put("mime", mime);
+                v.put("bytes", bytes);
+                v.put("status", "stored");
+                db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+                return "{\"ok\":true,\"sha256\":" + quote(hex.toString()) + "}";
+            } catch (Exception e) {
+                return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
         /** Let the reader hand over an archive.db built elsewhere. */
         @JavascriptInterface
         public void importDatabase() {
@@ -395,6 +452,86 @@ public class MainActivity extends Activity {
             pick.setType("*/*");
             try { startActivityForResult(pick, PICK_DATABASE); } catch (Exception ignored) {}
         }
+    }
+
+    /** The work row, its tags, its chapters and their index entries. */
+    private void writeWork(org.json.JSONObject w, String id) throws org.json.JSONException {
+        android.content.ContentValues work = new android.content.ContentValues();
+        work.put("work_id", id);
+        for (String key : new String[]{ "title", "authors", "summary", "rating", "language",
+                "published", "updated", "skin_css" }) {
+            if (w.isNull(key)) work.putNull(key); else work.put(key, w.getString(key));
+        }
+        work.put("complete", w.optBoolean("complete") ? 1 : 0);
+        work.put("words", w.optInt("words"));
+        work.put("chapter_count", w.optJSONArray("chapters") == null ? 0 : w.getJSONArray("chapters").length());
+        if (w.isNull("chaptersPlanned")) work.putNull("chapters_planned");
+        else work.put("chapters_planned", w.optInt("chaptersPlanned"));
+        work.put("source", "ao3");
+        work.put("fetched_at", nowIso());
+        db.insertWithOnConflict("works", null, work, SQLiteDatabase.CONFLICT_REPLACE);
+
+        db.delete("tags", "work_id = ?", new String[]{ id });
+        org.json.JSONObject tags = w.optJSONObject("tags");
+        StringBuilder allTags = new StringBuilder();
+        if (tags != null) {
+            java.util.Iterator<String> kinds = tags.keys();
+            while (kinds.hasNext()) {
+                String kind = kinds.next();
+                org.json.JSONArray names = tags.getJSONArray(kind);
+                for (int i = 0; i < names.length(); i++) {
+                    android.content.ContentValues t = new android.content.ContentValues();
+                    t.put("work_id", id);
+                    t.put("kind", kind);
+                    t.put("name", names.getString(i));
+                    db.insertWithOnConflict("tags", null, t, SQLiteDatabase.CONFLICT_IGNORE);
+                    if (allTags.length() > 0) allTags.append(", ");
+                    allTags.append(names.getString(i));
+                }
+            }
+        }
+
+        /* Index entries are keyed on the chapter's rowid, so the old ones have
+           to go before the rows they point at do. */
+        try (Cursor c = db.rawQuery("SELECT id FROM chapters WHERE work_id = ?", new String[]{ id })) {
+            while (c.moveToNext()) {
+                db.delete("chapter_fts", "rowid = ?", new String[]{ String.valueOf(c.getLong(0)) });
+            }
+        }
+        db.delete("chapters", "work_id = ?", new String[]{ id });
+
+        org.json.JSONArray chapters = w.optJSONArray("chapters");
+        for (int i = 0; chapters != null && i < chapters.length(); i++) {
+            org.json.JSONObject ch = chapters.getJSONObject(i);
+            android.content.ContentValues row = new android.content.ContentValues();
+            row.put("work_id", id);
+            row.put("number", i + 1);
+            if (ch.isNull("title")) row.putNull("title"); else row.put("title", ch.getString("title"));
+            row.put("html", ch.optString("html"));
+            row.put("text", ch.optString("text"));
+            row.put("words", ch.optInt("words"));
+            long rowid = db.insertWithOnConflict("chapters", null, row, SQLiteDatabase.CONFLICT_REPLACE);
+
+            // external-content FTS4 takes rowid, not docid, on a direct insert
+            android.content.ContentValues indexed = new android.content.ContentValues();
+            indexed.put("rowid", rowid);
+            indexed.put("text", ch.optString("text"));
+            db.insertWithOnConflict("chapter_fts", null, indexed, SQLiteDatabase.CONFLICT_REPLACE);
+        }
+
+        db.delete("work_fts", "work_id = ?", new String[]{ id });
+        android.content.ContentValues meta = new android.content.ContentValues();
+        meta.put("work_id", id);
+        meta.put("title", w.optString("title"));
+        meta.put("authors", w.optString("authors"));
+        meta.put("summary", w.optString("summary"));
+        meta.put("tags", allTags.toString());
+        db.insertWithOnConflict("work_fts", null, meta, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    private static String nowIso() {
+        return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.UK)
+            .format(new java.util.Date());
     }
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
