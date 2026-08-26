@@ -269,8 +269,19 @@ export async function addWork(input) {
   }
 
   const res = await fetch(`/__net/?url=${encodeURIComponent(workPage(workId))}`);
-  if (!res.ok) throw new Error(`The archive answered ${res.status}`);
   const body = await res.text();
+  if (!res.ok) {
+    /* A 500 here is the shell's proxy failing, not the archive refusing — the
+       two are worth telling apart, and the reason is in the body. Saying only
+       "answered 500" sends you looking at the wrong end of the problem. */
+    const detail = body.trim().slice(0, 200);
+    if (res.status === 500) throw new Error(detail || 'The app could not reach the archive');
+    if (res.status === 404) throw new Error('That work does not exist, or has been deleted');
+    if (res.status === 403 || res.status === 401) {
+      throw new Error('That work is restricted — sign in to the archive first');
+    }
+    throw new Error(`The archive answered ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
 
   const w = parseWorkPage(body, { workId });
   if (!w.chapters.length) {

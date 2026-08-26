@@ -25,7 +25,6 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLDecoder;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -271,8 +270,10 @@ public class MainActivity extends Activity {
             if (path.startsWith("/img/")) return image(path.substring(5));
             return asset(path);
         } catch (Exception e) {
+            // the page shows this to the reader, so it has to say what happened
+            String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
             return new WebResourceResponse("text/plain", "utf-8", 500, "Error",
-                    headers(), new ByteArrayInputStream(String.valueOf(e.getMessage()).getBytes()));
+                    headers(), new ByteArrayInputStream(reason.getBytes()));
         }
     }
 
@@ -312,9 +313,47 @@ public class MainActivity extends Activity {
      * is not AO3. Only https, only GET, and every redirect hop is re-checked so
      * an allowed host cannot bounce the request somewhere else.
      */
+    /**
+     * Fetch, with a few attempts.
+     *
+     * The tooling paces itself and retries; this had neither, so a single
+     * transient failure surfaced to the reader as "the archive answered 500".
+     * Cloudflare sits in front of the archive and produces TLS handshake
+     * failures and 52x responses that clear on their own — one attempt is not
+     * enough to tell a blip from a refusal.
+     *
+     * Kept deliberately small: three attempts over a few seconds. This runs
+     * while somebody is waiting for a dialog, not on a background walk, so
+     * long backoffs belong in the tooling rather than here.
+     */
     private WebResourceResponse proxy(String raw) throws IOException {
+        IOException last = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            if (attempt > 0) {
+                try { Thread.sleep(700L * attempt); } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            try {
+                WebResourceResponse res = proxyOnce(raw);
+                int code = res.getStatusCode();
+                // 520-527 are Cloudflare's own, and always transient
+                if (code < 500 || (code > 527 && code != 502 && code != 503 && code != 504)) return res;
+                if (attempt == 2) return res;
+            } catch (IOException e) {
+                last = e;
+            }
+        }
+        throw last == null ? new IOException("could not reach the archive") : last;
+    }
+
+    private WebResourceResponse proxyOnce(String raw) throws IOException {
         if (raw == null) throw new IOException("no url");
-        URL u = new URL(URLDecoder.decode(raw, "UTF-8"));
+        /* getQueryParameter has already decoded this. Decoding a second time
+           turns a literal + into a space and eats any %xx the URL legitimately
+           contains, which is how a perfectly good link becomes an unreachable
+           one. */
+        URL u = new URL(raw);
         HttpURLConnection c;
         for (int hop = 0; ; hop++) {
             if (!"https".equalsIgnoreCase(u.getProtocol())) throw new IOException("https only");

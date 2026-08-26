@@ -139,3 +139,21 @@ test('the read bridge refuses anything that is not a single read', () => {
   assert.ok(q.includes('"--"') && q.includes('"/*"'), 'no comment markers hiding a tail');
   assert.ok(q.includes('PRAGMA_OR_ATTACH'), 'nothing reaching outside this archive');
 });
+
+test('the shell proxy retries transient failures rather than reporting them', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const proxy = java.slice(java.indexOf('private WebResourceResponse proxy(String raw)'),
+    java.indexOf('private WebResourceResponse proxyOnce'));
+  assert.match(proxy, /for \(int attempt = 0; attempt < \d+/, 'more than one attempt');
+  assert.ok(proxy.includes('IOException'), 'a handshake failure is retried, not surfaced');
+  // a 404 is an answer; retrying it wastes the reader's time
+  assert.match(proxy, /code < 500/, 'only server-side failures are retried');
+});
+
+test('a proxied url is not decoded twice', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  // getQueryParameter already decodes; decoding again turns a literal + into a
+  // space and eats any %xx the url legitimately contains
+  assert.ok(!java.includes('URLDecoder.decode'),
+    'the query parameter arrives decoded already');
+});
