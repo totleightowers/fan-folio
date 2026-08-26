@@ -11,6 +11,9 @@ import { renderChapter, sanitiseHtml } from './core/render.js';
 import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
 import { rank, CANDIDATES } from './core/search.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
+import { parseWorkPage } from './core/ao3/parse.js';
+import { workPage, workIdFrom } from './core/ao3/urls.js';
+import { htmlToText, countWords } from './core/epub.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
 export const isNative = Boolean(native);
@@ -205,6 +208,79 @@ export async function api(path) {
   if (p === '/api/prefs') return { prefs: null };
 
   throw new Error(`no route for ${p}`);
+}
+
+/**
+ * What a fetched work looks like on its way into storage.
+ *
+ * Built here rather than in the shell so the shape is decided once, in the
+ * same code that parsed it — the native side writes what it is given and makes
+ * no decisions of its own about what a work is.
+ */
+function payloadFor(workId, w) {
+  const meta = w.meta ?? {};
+  const tags = {};
+  for (const [field, kind] of [
+    ['fandoms', 'fandom'], ['relationships', 'relationship'], ['characters', 'character'],
+    ['freeform', 'freeform'], ['warnings', 'warning'], ['categories', 'category'],
+    ['collections', 'collection'],
+  ]) {
+    if (meta[field]?.length) tags[kind] = meta[field];
+  }
+
+  return {
+    workId,
+    title: w.title ?? null,
+    authors: JSON.stringify(w.authors ?? []),
+    summary: w.summary ?? null,
+    rating: meta.rating ?? null,
+    language: meta.language ?? null,
+    published: meta.published ?? null,
+    updated: meta.updated ?? null,
+    complete: Boolean(meta.complete),
+    words: meta.words ?? 0,
+    chaptersPlanned: meta.chaptersPlanned ?? null,
+    skin_css: w.skinCss ?? null,
+    tags,
+    chapters: w.chapters.map((c) => {
+      const display = c.block ?? c.html ?? '';
+      const text = htmlToText(c.html || display);
+      return { title: c.title ?? null, html: display, text, words: countWords(text) };
+    }),
+  };
+}
+
+/**
+ * Add a work from a link.
+ *
+ * In the app the page fetches through the shell's proxy — AO3 sends no CORS
+ * headers — parses with the same code the tooling uses, and hands the result
+ * to the shell to store. Against the dev server the whole job happens there.
+ */
+export async function addWork(input) {
+  const workId = workIdFrom(input);
+  if (!workId) throw new Error('That link does not name a work');
+
+  if (!isNative) {
+    const res = await fetch(`/api/add?url=${encodeURIComponent(input)}`, { method: 'POST' });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+
+  const res = await fetch(`/__net/?url=${encodeURIComponent(workPage(workId))}`);
+  if (!res.ok) throw new Error(`The archive answered ${res.status}`);
+  const body = await res.text();
+
+  const w = parseWorkPage(body, { workId });
+  if (!w.chapters.length) {
+    // locked to registered users, deleted, or a draft — all look the same here
+    throw new Error('No chapters found. The work may be restricted, deleted, or need a login.');
+  }
+
+  const out = JSON.parse(native.saveWork(JSON.stringify(payloadFor(workId, w))));
+  if (out.error) throw new Error(out.error);
+  return { workId, title: w.title, chapters: w.chapters.length, words: w.meta?.words ?? 0 };
 }
 
 /** What the shell can tell us about the archive it opened. */

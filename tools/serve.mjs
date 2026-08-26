@@ -211,6 +211,17 @@ createServer(async (req, res) => {
     }
 
     if (p === '/api/facets') return json(res, facets(filtersFrom(url.searchParams)));
+
+    if (p === '/api/add' && req.method === 'POST') {
+      // the dev server does the whole job itself; the app fetches and parses in
+      // the page and hands the result to its shell
+      const { addWorkByLink } = await import('./lib/add.mjs');
+      try {
+        return json(res, await addWorkByLink(db, url.searchParams.get('url') ?? ''));
+      } catch (e) {
+        return json(res, { error: e.message }, 200);
+      }
+    }
     if (p === '/api/home') return json(res, home());
     if (p === '/api/surprise') return json(res, surprise());
 
