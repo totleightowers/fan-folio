@@ -139,3 +139,31 @@ test('the last chapter stops at its own closing tag, not the end of the page', (
   assert.ok(!w.chapters[1].block.includes('footer'), 'nor is the page footer');
   assert.ok(w.chapters[1].html.includes('Two.'));
 });
+
+test('a work id is recovered from every shape a link gets pasted in', async () => {
+  const { workIdFrom } = await import('../app/core/ao3/urls.js');
+  const cases = [
+    ['https://archiveofourown.org/works/23690653', '23690653'],
+    ['https://archiveofourown.org/works/23690653/chapters/56789', '23690653'],
+    ['https://archiveofourown.org/works/23690653?view_full_work=true', '23690653'],
+    ['https://archiveofourown.org/works/23690653#workskin', '23690653'],
+    ['http://archiveofourown.org/works/23690653/', '23690653'],
+    ['https://www.archiveofourown.org/works/23690653', '23690653'],
+    ['https://archiveofourown.org/collections/some_fest/works/23690653', '23690653'],
+    ['  https://archiveofourown.org/works/23690653  ', '23690653'],
+    ['23690653', '23690653'],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(workIdFrom(input), expected, `failed for ${input}`);
+  }
+});
+
+test('something that is not a work gives null rather than a guess', async () => {
+  const { workIdFrom } = await import('../app/core/ao3/urls.js');
+  for (const bad of [
+    '', null, undefined, 'https://archiveofourown.org/users/someone/works',
+    'https://archiveofourown.org/tags/Fluff/works', 'not a url', 'https://example.com/works/',
+  ]) {
+    assert.equal(workIdFrom(bad), null, `should not have found an id in ${bad}`);
+  }
+});

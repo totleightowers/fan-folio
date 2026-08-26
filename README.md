@@ -1,30 +1,34 @@
 # Fan Folio
 
-Your AO3 bookmarks and history, kept on your own phone — full text, images,
-work skins and all — and searchable in a way AO3 itself is not.
+Your saved fiction, kept on your own phone — full text, images, styling and
+all — and searchable in a way the sites it came from are not.
 
 ## Why
 
-AO3 has no full-text search over fic text, no offline reading, and no memory of
-what a work said before its author revised it. Fanfolio keeps a local copy of
-everything you have bookmarked or read, indexes every word of it, and preserves
-earlier versions when a work changes.
+The places fiction is published rarely search their own prose, rarely read
+offline, and never remember what a story said before its author revised it.
+Fan Folio keeps a local copy of everything you have saved, indexes every word,
+and preserves earlier versions when a work changes.
 
-It renders works **as AO3 renders them** — using AO3's own stylesheets and the
-author's own work skin — rather than approximating them. A chat fic looks like
-a chat, not like stacked paragraphs.
+It renders a work **as its source renders it**, using the source's own
+stylesheets and the author's own custom styling, rather than approximating
+them. A story told in chat messages looks like a chat, not like stacked
+paragraphs.
 
 ## What it does
 
-- **Full-text search** across the whole archive, with ranked results and
+- **Full-text search** across the whole library, with ranked results and
   highlighted snippets. Phrases, prefixes, `NEAR()`, boolean operators.
-- **Faithful rendering**: AO3's stylesheets plus each work's own skin, with
-  embedded images captured locally so nothing rots or phones home.
-- **Version history**: when a work's text or its skin changes, the previous
+- **Metadata filters** over everything stored: include or exclude any tag,
+  rating, completion, length, reading state — with counts computed against the
+  filters already applied, so narrowing never lands on nothing.
+- **Faithful rendering**, with embedded images captured locally so nothing
+  rots or phones home.
+- **Version history**: when a work's text or its styling changes, the previous
   version is kept and can be read.
 - **Reading state**: where you were in every work, what you have finished, what
   you marked for later.
-- **Polite syncing**: a single-connection crawler with human-shaped pacing,
+- **Polite syncing**: a single-connection fetcher with human-shaped pacing,
   exponential backoff, and penalties that survive a restart.
 
 ## Layout
@@ -46,14 +50,24 @@ node tools/serve.mjs     # the reader at http://localhost:8080
 cd android && ./build.sh # an APK, built on the phone if you like
 ```
 
-The app reads one SQLite file. Build it from a folder of AO3 EPUBs:
+The app reads one SQLite file. Build it from a folder of EPUBs:
 
 ```sh
 node tools/ingest-epubs.mjs /path/to/epubs
 node tools/export-db.mjs            # a single consistent file to import
 ```
 
+Add a single work from a link:
+
+```sh
+node tools/add-work.mjs <link>
+```
+
 ## Licence
 
-MIT. AO3's stylesheets under `app/vendor/ao3/` come from
-[otwarchive](https://github.com/otwcode/otwarchive) and remain under its licence.
+MIT.
+
+The stylesheets under `app/vendor/` come from
+[otwarchive](https://github.com/otwcode/otwarchive) and remain under its
+licence. That attribution is a condition of using them and stays regardless of
+how the rest of this is described.
