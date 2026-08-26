@@ -95,8 +95,38 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         setContentView(root);
 
+        registerBackGesture();
         openDatabase();
         web.loadUrl(ORIGIN + "/index.html");
+    }
+
+    /**
+     * The modern back gesture, on Android 13 and later.
+     *
+     * Opting into OnBackInvokedCallback is what makes the edge swipe feel like
+     * the system's own: it animates, it previews, and it is the gesture people
+     * actually use. Without it Android falls back to the legacy path, which
+     * arrives as a plain onBackPressed with no animation — the difference
+     * between an app and a web page in a box.
+     */
+    private void registerBackGesture() {
+        if (Build.VERSION.SDK_INT < 33) return;      // onBackPressed still serves
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            new android.window.OnBackInvokedCallback() {
+                @Override public void onBackInvoked() { handleBack(); }
+            });
+    }
+
+    /** Ask the page to go back; close the app only when it has nowhere left. */
+    private void handleBack() {
+        if (web == null) { finish(); return; }
+        web.evaluateJavascript("(window.__onBack && window.__onBack()) ? 'held' : 'exit'",
+            new android.webkit.ValueCallback<String>() {
+                @Override public void onReceiveValue(String value) {
+                    if (value == null || !value.contains("held")) finish();
+                }
+            });
     }
 
     /**
@@ -109,15 +139,8 @@ public class MainActivity extends Activity {
      * gets out of the way when it has nothing left to go back to.
      */
     @Override public void onBackPressed() {
-        if (web == null) { super.onBackPressed(); return; }
-        // an anonymous class, not a lambda: android.jar carries no
-        // LambdaMetafactory, so javac cannot desugar one against this bootclasspath
-        web.evaluateJavascript("(window.__onBack && window.__onBack()) ? 'held' : 'exit'",
-            new android.webkit.ValueCallback<String>() {
-                @Override public void onReceiveValue(String value) {
-                    if (value == null || !value.contains("held")) finish();
-                }
-            });
+        if (Build.VERSION.SDK_INT >= 33) return;     // the dispatcher owns it there
+        handleBack();
     }
 
     /* ------------------------------------------------------------ database */
@@ -136,15 +159,17 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Android's SQLite build is not guaranteed to include FTS5, and the whole
-     * search feature rests on it. Better to answer the question honestly at
-     * startup than to fail on the reader's first search.
+     * Can this device search at all?
+     *
+     * The index is FTS4, which Android has shipped for years — this probe used
+     * to test for FTS5 and kept reporting search as unavailable long after the
+     * index had moved. Ask about the thing actually being used.
      */
-    private boolean hasFts5() {
+    private boolean hasSearch() {
         if (db == null) return false;
         try {
-            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS temp.fts5_probe USING fts5(x)");
-            db.execSQL("DROP TABLE IF EXISTS temp.fts5_probe");
+            db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS temp.fts_probe USING fts4(x)");
+            db.execSQL("DROP TABLE IF EXISTS temp.fts_probe");
             return true;
         } catch (Exception e) {
             return false;
@@ -284,7 +309,7 @@ public class MainActivity extends Activity {
             mustBeOurPage();
             StringBuilder b = new StringBuilder("{");
             b.append("\"hasDatabase\":").append(db != null);
-            b.append(",\"fts5\":").append(hasFts5());
+            b.append(",\"search\":").append(hasSearch());
             b.append(",\"path\":").append(quote(databaseFile().getPath()));
             b.append("}");
             return b.toString();
@@ -340,6 +365,25 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
             }
+        }
+
+        /**
+         * Hold the screen awake while a chapter is open.
+         *
+         * Nothing is more obviously not-an-app than the display timing out
+         * mid-page because the reader has not touched it for a minute.
+         */
+        @JavascriptInterface
+        public void keepAwake(final boolean on) {
+            mustBeOurPage();
+            runOnUiThread(new Runnable() {
+                @Override public void run() {
+                    if (on) getWindow().addFlags(
+                        android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                    else getWindow().clearFlags(
+                        android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+                }
+            });
         }
 
         /** Let the reader hand over an archive.db built elsewhere. */
