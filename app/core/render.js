@@ -41,11 +41,12 @@ const ESCAPING_CSS = /(position\s*:\s*(fixed|sticky))|(z-index\s*:\s*\d{3,})|(@i
  */
 function stripUntilStable(text, pattern) {
   let out = String(text);
-  for (;;) {
-    const next = out.replace(pattern, '');
-    if (next === out) return out;
-    out = next;
-  }
+  let previous;
+  do {
+    previous = out;
+    out = out.replace(pattern, '');
+  } while (out !== previous);
+  return out;
 }
 
 export function sanitiseHtml(html, { allowRemoteImages = false } = {}) {

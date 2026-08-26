@@ -41,11 +41,11 @@ export function normaliseForComparison(html) {
   let text = String(html ?? '');
   // nested comment markers reassemble the same way tags do; each pass that
   // changes the string shortens it, so this settles
-  for (;;) {
-    const next = text.replace(/<!--[\s\S]*?-->/g, '');
-    if (next === text) break;
-    text = next;
-  }
+  let previous;
+  do {
+    previous = text;
+    text = text.replace(/<!--[\s\S]*?-->/g, '');
+  } while (text !== previous);
   return text
     // AO3 mints a fresh CSRF token per request; it is not part of the work
     .replace(/name="authenticity_token"[^>]*value="[^"]*"/gi, 'name="authenticity_token"')
