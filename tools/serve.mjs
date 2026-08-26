@@ -91,9 +91,12 @@ function worksQuery({ sort, filter, fandom, rating }) {
     args,
     countSql: `SELECT count(*) n ${from}`,
     sql: `SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
-                 w.complete, w.rating, w.published, w.updated, w.downloaded_at,
+                 w.chapters_planned, w.complete, w.rating, w.published, w.updated,
+                 w.downloaded_at,
                  w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
-                 r.chapter AS at_chapter, r.chapters_read, r.marked_later
+                 r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+                 (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
+                 (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
           ${from} ORDER BY ${order} LIMIT ? OFFSET ?`,
   };
 }
