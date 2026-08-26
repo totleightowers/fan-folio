@@ -704,3 +704,20 @@ dialog h2 {
 .addwork-actions { display: flex; gap: .5rem; margin-top: 1rem; }
 .addwork-actions .close { margin-top: 0; }
 .addwork-actions .primary { flex: 0 0 auto; }
+
+/* ------------------------------------------------------------- account */
+
+.account-btn {
+  font: inherit; font-size: .85rem; background: var(--pane); color: inherit;
+  border: 1px solid var(--rule); border-radius: 999px; padding: .3rem .8rem; cursor: pointer;
+}
+.account-btn.on { border-color: var(--accent); color: var(--accent); }
+.account-btn:disabled { opacity: .5; }
+.addwork-signin {
+  margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--rule);
+}
+.addwork-signin p { margin: 0 0 .5rem; font-size: .84rem; color: var(--muted); }
+.addwork-signin button {
+  font: inherit; font-size: .85rem; background: var(--accent); color: #fff;
+  border: 0; border-radius: 999px; padding: .4rem 1rem; cursor: pointer;
+}

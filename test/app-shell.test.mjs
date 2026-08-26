@@ -104,3 +104,38 @@ test('the app is named consistently wherever a person can see it', () => {
   assert.ok(html.includes('<title>Fan Folio</title>'));
   assert.ok(!/Fan-folio/.test(html), 'no hyphenated spelling in the markup');
 });
+
+test('the sign-in window is never given the app bridge', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const start = java.indexOf('private void openSignIn()');
+  const end = java.indexOf('private FrameLayout signInPanel');
+  const body = java.slice(start, end);
+  assert.ok(body.includes('signInView.loadUrl(LOGIN_URL)'), 'it loads the real login page');
+  assert.ok(!body.includes('addJavascriptInterface'),
+    'a page where a password is typed must have no route into this app');
+});
+
+test('the session cookie goes only to the archive', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const open = java.slice(java.indexOf('private HttpURLConnection open('), java.indexOf('private WebResourceResponse respond('));
+  // asserted with a pattern rather than a substring test on a URL-shaped
+  // string: `url.includes(host)` is itself the shape of a broken host check,
+  // and writing one even in a test teaches the wrong thing
+  assert.match(open, /host\.endsWith\("[a-z.]*archiveofourown\.org"\)/,
+    'the host is checked by suffix before the cookie is attached');
+  const cookieAt = open.indexOf('setRequestProperty("Cookie"');
+  const hostCheckAt = open.indexOf('host.endsWith');
+  assert.ok(hostCheckAt > 0 && hostCheckAt < cookieAt,
+    'the host must be checked before the session is sent, not after');
+});
+
+test('the read bridge refuses anything that is not a single read', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const q = java.slice(java.indexOf('public String query(String sql'), java.indexOf('/** Store a work'));
+  // the page composes its own queries, so this is the boundary that decides
+  // what it may ask for
+  assert.ok(/regionMatches\(true, 0, "SELECT"/.test(q), 'reads only');
+  assert.ok(q.includes("indexOf(';')"), 'no second statement riding along');
+  assert.ok(q.includes('"--"') && q.includes('"/*"'), 'no comment markers hiding a tail');
+  assert.ok(q.includes('PRAGMA_OR_ATTACH'), 'nothing reaching outside this archive');
+});

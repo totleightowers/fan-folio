@@ -41,16 +41,51 @@ export function decodeEntities(s) {
  * "end.</p><p>Next" indexes as "end.Next" and the phrase search for a
  * sentence spanning a paragraph break quietly fails.
  */
+/**
+ * Repeat a removal until it stops changing anything — see render.js.
+ *
+ * Uncapped on purpose: every pass that changes the string shortens it, so this
+ * terminates, and stopping early would mean returning markup that still
+ * contains what was being removed.
+ */
+function stripUntilStable(text, pattern) {
+  let out = String(text);
+  let previous;
+  do {
+    previous = out;
+    out = out.replace(pattern, '');
+  } while (out !== previous);
+  return out;
+}
+
 export function htmlToText(html) {
-  return decodeEntities(
-    html
-      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+  /*
+   * Tags come out to a fixed point, not in one pass.
+   *
+   * `<scr<script>ipt>` holds no complete tag until the inner one goes, at
+   * which point the outer halves join into a real one — so a single pass can
+   * create the very thing it removes. Looping until nothing changes settles
+   * it, and terminates because every pass that changes the string shortens it.
+   *
+   * The whole chain is inside the loop rather than only the script removal:
+   * that way the result provably contains no tag of any kind, which is what
+   * "plain text" has to mean here.
+   */
+  let out = String(html ?? '');
+  let previous;
+  do {
+    previous = out;
+    out = out
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, '')
       .replace(/<\/(p|div|h[1-6]|li|blockquote|tr)>/gi, '\n')
       .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]*>/g, '')
-  ).replace(/[ \t ]+/g, ' ')
-   .replace(/\n\s*\n\s*\n+/g, '\n\n')
-   .trim();
+      .replace(/<[^>]*>/g, '');
+  } while (out !== previous);
+
+  return decodeEntities(out)
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .replace(/\n\s*\n\s*\n+/g, '\n\n')
+    .trim();
 }
 
 export function countWords(text) {

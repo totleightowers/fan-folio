@@ -25,12 +25,36 @@ const BAD_URL_ATTR = /\s(href|src|xlink:href)\s*=\s*("|')?\s*(javascript|vbscrip
  */
 const ESCAPING_CSS = /(position\s*:\s*(fixed|sticky))|(z-index\s*:\s*\d{3,})|(@import\b)|(expression\s*\()|(behaviou?r\s*:)|(-moz-binding)/gi;
 
+/**
+ * Apply a removal until it stops changing anything.
+ *
+ * A single pass is not enough, and the failure is not theoretical:
+ * `<scr<script>ipt>` contains no complete script tag until the inner one is
+ * removed, at which point the outer halves join up into a real one. One pass
+ * therefore *creates* the tag it was meant to delete.
+ *
+ * The loop needs no iteration cap. Every pass that changes the string removes
+ * at least one character from it, so the length strictly decreases and the
+ * fixed point is reached in at most as many passes as there are characters.
+ * A cap would only mean returning early with the tag still in place, which is
+ * the one outcome this must not have.
+ */
+function stripUntilStable(text, pattern) {
+  let out = String(text);
+  let previous;
+  do {
+    previous = out;
+    out = out.replace(pattern, '');
+  } while (out !== previous);
+  return out;
+}
+
 export function sanitiseHtml(html, { allowRemoteImages = false } = {}) {
   if (!html) return '';
   let out = String(html);
-  out = out.replace(DROP_WHOLE, '');
-  out = out.replace(EVENT_ATTR, '');
-  out = out.replace(BAD_URL_ATTR, '');
+  out = stripUntilStable(out, DROP_WHOLE);
+  out = stripUntilStable(out, EVENT_ATTR);
+  out = stripUntilStable(out, BAD_URL_ATTR);
   out = out.replace(/\sstyle\s*=\s*"([^"]*)"/gi, (whole, css) =>
     ESCAPING_CSS.test(css) ? ` style="${css.replace(ESCAPING_CSS, '')}"` : whole);
   if (!allowRemoteImages) {

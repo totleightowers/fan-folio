@@ -292,3 +292,27 @@ export function nativeStatus() {
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }
+
+/* --------------------------------------------------------------- signing in */
+
+/**
+ * Signing in happens on the archive's own page, in a window of its own.
+ *
+ * Nothing here ever sees a password: the shell opens the real login form over
+ * HTTPS with no bridge attached, and what comes back is a session cookie the
+ * proxy attaches to archive requests. It expires by itself and is forgotten on
+ * sign out.
+ */
+export function signIn() {
+  if (!isNative) throw new Error('Signing in is only available in the app');
+  native.signIn();
+}
+
+export function signOut() {
+  if (isNative) native.signOut();
+}
+
+export function signedIn() {
+  if (!isNative) return false;
+  try { return Boolean(native.signedIn()); } catch { return false; }
+}
