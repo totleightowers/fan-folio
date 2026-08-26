@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Fanfolio</title>
+<title>Fan-folio</title>
 <link rel="stylesheet" href="/ao3-work.css">
 <link rel="stylesheet" href="/styles.css">
 
@@ -24,6 +24,12 @@
     </div>
   </section>
 
+  <section id="home" class="view" hidden>
+    <div id="stats" class="stats"></div>
+    <div id="shelves"></div>
+    <div id="fandoms" class="fandom-block"></div>
+  </section>
+
   <section id="library" class="view" hidden>
     <div id="toolbar">
       <div id="chips" class="chips"></div>
@@ -39,7 +45,6 @@
         </select>
       </label>
     </div>
-    <div id="continue"></div>
     <div id="works" class="list"></div>
     <div id="more" class="more"></div>
   </section>
@@ -59,6 +64,12 @@
     <div id="progress"><div id="progress-bar"></div></div>
   </section>
 </main>
+
+<nav id="tabs" hidden>
+  <button data-tab="home" class="on"><span class="glyph">▤</span>Home</button>
+  <button data-tab="library"><span class="glyph">☰</span>Library</button>
+  <button data-tab="search"><span class="glyph">⌕</span>Search</button>
+</nav>
 
 <dialog id="chapters-dialog">
   <h2>Chapters</h2>

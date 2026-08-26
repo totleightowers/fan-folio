@@ -271,3 +271,83 @@ dialog button.close {
   background: var(--fg); color: var(--bg); padding: .6rem 1rem; border-radius: 999px;
   font-size: .85rem; z-index: 50; max-width: 90vw; text-align: center;
 }
+
+/* ------------------------------------------------------------ bottom tabs */
+
+#tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  display: flex; background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(10px); border-top: 1px solid var(--rule);
+  padding-bottom: max(0px, env(safe-area-inset-bottom));
+}
+#tabs button {
+  flex: 1; font: inherit; font-size: .7rem; letter-spacing: .02em;
+  background: none; border: 0; color: var(--muted); cursor: pointer;
+  padding: .5rem 0 .55rem; display: flex; flex-direction: column; align-items: center; gap: .15rem;
+}
+#tabs button.on { color: var(--accent); }
+#tabs .glyph { font-size: 1.15rem; line-height: 1; }
+/* the tab bar must never sit on top of the last row of content */
+body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
+
+/* ----------------------------------------------------------------- stats */
+
+.stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); gap: .5rem;
+  margin: .7rem 0 1.1rem;
+}
+.stat {
+  background: var(--pane); border: 1px solid var(--rule); border-radius: 12px;
+  padding: .65rem .7rem;
+}
+.stat b { display: block; font-size: 1.15rem; font-weight: 650; line-height: 1.1; }
+.stat span { font-size: .72rem; color: var(--muted); }
+
+/* ---------------------------------------------------------------- shelves */
+
+.shelf { margin: 0 0 1.5rem; }
+.shelf-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .55rem; }
+.shelf-head h2 { margin: 0; font-size: .95rem; font-weight: 650; }
+.shelf-head button {
+  font: inherit; font-size: .78rem; background: none; border: 0; color: var(--accent); cursor: pointer;
+}
+.rail {
+  display: grid; grid-auto-flow: column; grid-auto-columns: 10.5rem; gap: .6rem;
+  overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: .3rem;
+  scrollbar-width: none; margin: 0 -.7rem; padding-inline: .7rem;
+}
+.rail::-webkit-scrollbar { display: none; }
+
+.card {
+  scroll-snap-align: start; text-align: left; font: inherit; cursor: pointer;
+  background: var(--pane); border: 1px solid var(--rule); border-radius: 12px;
+  padding: .7rem .7rem .6rem; color: inherit; display: flex; flex-direction: column;
+  min-height: 9.5rem; position: relative; overflow: hidden;
+}
+/* fics have no covers, so each card gets a coloured spine derived from its
+   fandom — enough visual difference to find a work by eye on a shelf */
+.card::before {
+  content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--spine, var(--accent));
+}
+.card .card-title {
+  font-weight: 600; font-size: .86rem; line-height: 1.3; margin-bottom: .25rem;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.card .card-by { font-size: .74rem; color: var(--muted); margin-bottom: .35rem; }
+.card .card-fandom {
+  font-size: .68rem; color: var(--muted); margin-top: auto;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.card .card-foot { font-size: .68rem; color: var(--muted); margin-top: .3rem; }
+.card .bar { height: 3px; background: var(--rule); border-radius: 2px; margin-top: .4rem; overflow: hidden; }
+.card .bar > div { height: 100%; background: var(--accent); }
+
+/* ---------------------------------------------------------------- fandoms */
+
+.fandom-block h2 { font-size: .95rem; font-weight: 650; margin: 0 0 .55rem; }
+.fandom-list { display: flex; flex-wrap: wrap; gap: .4rem; }
+.fandom-list button {
+  font: inherit; font-size: .78rem; background: var(--pane); color: inherit;
+  border: 1px solid var(--rule); border-radius: 999px; padding: .3rem .7rem; cursor: pointer;
+}
+.fandom-list button .n { color: var(--muted); margin-left: .3rem; }
