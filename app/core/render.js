@@ -34,11 +34,20 @@ export function sanitiseHtml(html, { allowRemoteImages = false } = {}) {
   out = out.replace(/\sstyle\s*=\s*"([^"]*)"/gi, (whole, css) =>
     ESCAPING_CSS.test(css) ? ` style="${css.replace(ESCAPING_CSS, '')}"` : whole);
   if (!allowRemoteImages) {
-    // an un-rewritten remote <img> is a tracking pixel that reports when and
-    // where a fic was read; offline copies should never make a network request
-    out = out.replace(/<img\b([^>]*)\bsrc\s*=\s*("|')(https?:[^"']*)\2/gi,
-      (whole, pre, q, url) => `<img${pre}data-remote-src=${q}${url}${q} src="" `
-        + `alt="image not stored" class="ar-missing-image"`);
+    /*
+     * Every image source is neutralised, remote or not.
+     *
+     * A remote <img> left intact is a tracking pixel reporting when and where a
+     * fic was read. A *relative* one — "img7.jpg", pointing inside the EPUB it
+     * came from — simply 404s and renders as a broken-image icon, which is what
+     * 722 images across 192 works were doing. Both are replaced with a marked
+     * placeholder that renderChapter swaps for the stored copy when there is
+     * one, so an image is either real or visibly absent, never broken.
+     */
+    out = out.replace(/<img\b([^>]*?)\ssrc\s*=\s*("|')([^"']*)\2/gi,
+      (whole, pre, q, url) => (url.startsWith('/img/')
+        ? whole
+        : `<img${pre} data-remote-src=${q}${url}${q} src="" class="ar-missing-image"`));
   }
   return out;
 }
