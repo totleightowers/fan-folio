@@ -13,6 +13,7 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { workMetaHtml, workPrefaceHtml } from '../app/core/ao3/markup.js';
+import { rank, CANDIDATES } from '../app/core/search.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -32,13 +33,15 @@ const Q = {
   tags: db.prepare('SELECT kind, name FROM tags WHERE work_id = ? ORDER BY kind, name'),
   images: db.prepare("SELECT url, sha256 FROM images WHERE work_id = ? AND status = 'stored'"),
   image: db.prepare("SELECT mime, bytes FROM images WHERE sha256 = ? AND status = 'stored' LIMIT 1"),
+  /* FTS4 has no bm25(); matchinfo travels back and is scored in JS so the
+     dev server and the app rank identically. */
   search: db.prepare(`
     SELECT c.work_id, c.number, w.title, w.authors,
-           snippet(chapter_fts, 0, '<mark>', '</mark>', '…', 18) AS snippet,
-           bm25(chapter_fts) AS rank
-    FROM chapter_fts JOIN chapters c ON c.id = chapter_fts.rowid
+           snippet(chapter_fts, '<mark>', '</mark>', '…', -1, 18) AS snippet,
+           matchinfo(chapter_fts, 'pcnalx') AS matchinfo
+    FROM chapter_fts JOIN chapters c ON c.id = chapter_fts.docid
     JOIN works w ON w.work_id = c.work_id
-    WHERE chapter_fts MATCH ? ORDER BY rank LIMIT ?`),
+    WHERE chapter_fts MATCH ? LIMIT ?`),
   searchMeta: db.prepare(`
     SELECT work_id, title, authors, summary FROM work_fts
     WHERE work_fts MATCH ? LIMIT ?`),
@@ -294,7 +297,7 @@ createServer(async (req, res) => {
       let hits = [];
       let works = [];
       try {
-        hits = Q.search.all(q, limit);
+        hits = rank(Q.search.all(q, CANDIDATES), limit);
         works = Q.searchMeta.all(q, 12);
       } catch (e) {
         // FTS5 rejects malformed queries (a lone quote, a stray operator).

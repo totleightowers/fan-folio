@@ -9,16 +9,34 @@
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
+import { rank, CANDIDATES } from './core/search.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
 export const isNative = Boolean(native);
 
-/** One read-only query through the bridge. Throws what SQLite complained about. */
+/**
+ * One read-only query through the bridge.
+ *
+ * Android binds selection arguments as text — its rawQuery takes String[] and
+ * nothing else — and SQLite rejects text where it needs an integer, so a
+ * bound `LIMIT ?` fails with a datatype mismatch. Counts are therefore
+ * validated as integers and written into the SQL by `lim()` below, never
+ * bound. Everything a reader can influence still goes through binding.
+ */
 function sql(query, args = []) {
-  const result = JSON.parse(native.query(query, JSON.stringify(args.map(String))));
-  if (result.error) throw new Error(result.error);
+  const raw = native.query(query, JSON.stringify(args.map(String)));
+  let result;
+  try { result = JSON.parse(raw); }
+  catch { throw new Error(`bridge returned unparseable JSON: ${String(raw).slice(0, 120)}`); }
+  if (result.error) throw new Error(`${result.error} — in: ${query.trim().slice(0, 90)}…`);
   return result.rows;
 }
+
+/** A count safe to inline: an integer, clamped, never reader-supplied text. */
+const lim = (n, fallback = 50, max = 500) => {
+  const v = Math.floor(Number(n));
+  return Number.isFinite(v) && v >= 0 ? Math.min(v, max) : fallback;
+};
 
 const one = (query, args) => sql(query, args)[0] ?? null;
 const parseAuthors = (raw) => { try { return JSON.parse(raw || '[]'); } catch { return []; } };
@@ -69,9 +87,67 @@ const LOCAL = {
                          r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                          (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
                          (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
-                  ${from} ORDER BY ${order} LIMIT ? OFFSET ?`, [...args, limit, offset]),
+                  ${from} ORDER BY ${order} LIMIT ${lim(limit)} OFFSET ${lim(offset, 0, 1000000)}`, args),
     };
   },
+
+  /**
+   * The home screen, computed locally.
+   *
+   * This existed only on the dev server, so the APK asked for a route that was
+   * not there and the whole home view failed with "no route for /api/home".
+   * Anything the server can answer, the bridge has to answer too — that is the
+   * entire point of the seam.
+   */
+  home: () => {
+    const shelf = (where, order, limit = 12) => sql(`
+      SELECT w.work_id, w.title, w.authors, w.words, w.chapter_count, w.complete, w.rating,
+             r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
+      FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+      WHERE ${where} ORDER BY ${order} LIMIT ${lim(limit, 12)}`);
+
+    const totals = sql('SELECT count(*) AS works, COALESCE(sum(words),0) AS words FROM works')[0];
+    const read = sql(`
+      SELECT COALESCE(sum(CASE WHEN r.chapters_read >= w.chapter_count THEN w.words ELSE 0 END),0) AS words,
+             count(CASE WHEN r.chapters_read >= w.chapter_count AND w.chapter_count > 0 THEN 1 END) AS finished
+      FROM works w JOIN reading r ON r.work_id = w.work_id`)[0];
+
+    const top = (kind, limit) => sql(
+      `SELECT name, count(*) AS n FROM tags WHERE kind = ? GROUP BY name ORDER BY n DESC LIMIT ${lim(limit, 12)}`,
+      [kind]);
+
+    return {
+      stats: {
+        works: totals.works, words: totals.words,
+        finished: read.finished, wordsRead: read.words,
+        later: sql('SELECT count(*) AS n FROM reading WHERE marked_later = 1')[0].n,
+      },
+      shelves: [
+        { key: 'reading', title: 'Continue reading',
+          works: shelf('(COALESCE(r.chapters_read,0) > 0 OR COALESCE(r.chapter,0) > 1) '
+            + 'AND COALESCE(r.chapters_read,0) < w.chapter_count', 'r.updated_at DESC') },
+        { key: 'later', title: 'Marked for later',
+          works: shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
+        { key: 'added', title: 'Recently added', works: shelf('1=1', 'w.downloaded_at DESC') },
+        { key: 'long', title: 'Settle in',
+          works: shelf('w.complete = 1 AND COALESCE(r.chapters_read,0) = 0', 'w.words DESC') },
+        { key: 'short', title: 'One sitting',
+          works: shelf('w.complete = 1 AND w.words < 5000 AND COALESCE(r.chapters_read,0) = 0', 'RANDOM()') },
+      ].filter((sh) => sh.works.length),
+      browse: {
+        fandom: top('fandom', 14), relationship: top('relationship', 14),
+        character: top('character', 12), freeform: top('freeform', 14),
+        rating: sql(`SELECT rating AS name, count(*) AS n FROM works
+                     WHERE rating IS NOT NULL AND rating <> '' GROUP BY rating ORDER BY n DESC`),
+      },
+    };
+  },
+
+  surprise: () => ({
+    work_id: sql(`SELECT w.work_id FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+                  WHERE COALESCE(r.chapters_read,0) = 0 ORDER BY RANDOM() LIMIT 1`)[0]?.work_id ?? null,
+  }),
 
   facets: () => {
     const counts = {};
@@ -118,11 +194,12 @@ const LOCAL = {
     const started = Date.now();
     try {
       return {
-        hits: sql(`SELECT c.work_id, c.number, w.title, w.authors,
-                          snippet(chapter_fts, 0, '<mark>', '</mark>', '…', 18) AS snippet
-                   FROM chapter_fts JOIN chapters c ON c.id = chapter_fts.rowid
+        hits: rank(sql(`SELECT c.work_id, c.number, w.title, w.authors,
+                          snippet(chapter_fts, '<mark>', '</mark>', '…', -1, 18) AS snippet,
+                          matchinfo(chapter_fts, 'pcnalx') AS matchinfo
+                   FROM chapter_fts JOIN chapters c ON c.id = chapter_fts.docid
                    JOIN works w ON w.work_id = c.work_id
-                   WHERE chapter_fts MATCH ? ORDER BY bm25(chapter_fts) LIMIT ?`, [query, limit]),
+                   WHERE chapter_fts MATCH ? LIMIT ${CANDIDATES}`, [query]), lim(limit, 40, 100)),
         works: [],
         ms: Date.now() - started,
       };
@@ -147,6 +224,8 @@ export async function api(path) {
     ...q, limit: Number(q.limit || 50), offset: Number(q.offset || 0),
   });
   if (p === '/api/facets') return LOCAL.facets();
+  if (p === '/api/home') return LOCAL.home();
+  if (p === '/api/surprise') return LOCAL.surprise();
 
   let m;
   if ((m = p.match(/^\/api\/works\/(\d+)$/))) return LOCAL.work(m[1]);
