@@ -122,3 +122,25 @@ test('gaps are irregular, not a narrow band around the interval', () => {
     assert.ok(Math.min(...gaps) >= 20000 * 0.45, 'a floor still applies');
   })();
 });
+
+test("Cloudflare's transient 52x codes are retried, not treated as answers", async () => {
+  for (const status of [520, 521, 522, 523, 524, 525, 526, 527, 408]) {
+    const c = fakeClock();
+    const l = createLimiter({ minInterval: 0, jitter: 0, maxRetries: 2, ...c });
+    let n = 0;
+    const res = await l.run(async () => (++n === 1
+      ? { status, headers: new Headers() }
+      : { status: 200, headers: new Headers() }));
+    assert.equal(res.status, 200, `${status} should have been retried`);
+    assert.equal(n, 2);
+  }
+});
+
+test('a 404 is still an answer', async () => {
+  const c = fakeClock();
+  const l = createLimiter({ minInterval: 0, ...c });
+  let calls = 0;
+  const res = await l.run(async () => { calls++; return { status: 404, headers: new Headers() }; });
+  assert.equal(calls, 1, 'not everything in the 4xx range is transient');
+  assert.equal(res.status, 404);
+});
