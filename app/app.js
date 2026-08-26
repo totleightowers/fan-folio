@@ -7,7 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { api, isNative, nativeStatus, importDatabase, addWork } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1114,6 +1114,28 @@ for (const b of $$('#tabs button')) {
   };
 }
 
+/* --------------------------------------------------------------- account */
+
+function paintAccount() {
+  const button = $('#account');
+  if (!button) return;
+  if (!isNative) { button.textContent = 'App only'; button.disabled = true; return; }
+  const on = signedIn();
+  button.textContent = on ? 'Sign out' : 'Sign in';
+  button.classList.toggle('on', on);
+  button.onclick = () => {
+    if (on) { signOut(); toast('Signed out'); paintAccount(); }
+    else { $('#typography').close(); signIn(); }
+  };
+}
+
+/* The shell calls this when the archive's login page has finished with us. */
+window.__signedIn = (ok) => {
+  paintAccount();
+  toast(ok ? 'Signed in to the archive' : 'Not signed in');
+  if (ok) $('#addwork-signin').hidden = true;
+};
+
 /* ------------------------------------------------------------ add a work */
 
 const addDialog = $('#addwork');
@@ -1153,12 +1175,15 @@ async function submitAddWork() {
   } catch (e) {
     status.className = 'addwork-status bad';
     status.textContent = e.message;
+    // the commonest reason a work refuses is that it is locked to members
+    $('#addwork-signin').hidden = !(isNative && !signedIn() && /restricted|login|403|404/i.test(e.message));
   } finally {
     button.disabled = false;
   }
 }
 
 $('#addwork-go').onclick = submitAddWork;
+$('#addwork-signin-go').onclick = () => { addDialog.close(); signIn(); };
 $('#addwork-url').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); submitAddWork(); }
 });
@@ -1193,6 +1218,7 @@ async function start() {
   }
   if (!status.search) toast('This device\'s SQLite cannot do full-text search');
   show('home');
+  paintAccount();
   await adoptImportedTheme();
   paintActiveFilters();
   await Promise.all([buildHome(), buildStartHere()]);

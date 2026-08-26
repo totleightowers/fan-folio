@@ -104,3 +104,23 @@ test('the app is named consistently wherever a person can see it', () => {
   assert.ok(html.includes('<title>Fan Folio</title>'));
   assert.ok(!/Fan-folio/.test(html), 'no hyphenated spelling in the markup');
 });
+
+test('the sign-in window is never given the app bridge', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const start = java.indexOf('private void openSignIn()');
+  const end = java.indexOf('private FrameLayout signInPanel');
+  const body = java.slice(start, end);
+  assert.ok(body.includes('signInView.loadUrl(LOGIN_URL)'), 'it loads the real login page');
+  assert.ok(!body.includes('addJavascriptInterface'),
+    'a page where a password is typed must have no route into this app');
+});
+
+test('the session cookie goes only to the archive', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const open = java.slice(java.indexOf('private HttpURLConnection open('), java.indexOf('private WebResourceResponse respond('));
+  assert.ok(open.includes('archiveofourown.org'), 'the host is checked before the cookie is attached');
+  const cookieAt = open.indexOf('setRequestProperty("Cookie"');
+  const hostCheckAt = open.indexOf('host.endsWith');
+  assert.ok(hostCheckAt > 0 && hostCheckAt < cookieAt,
+    'the host must be checked before the session is sent, not after');
+});
