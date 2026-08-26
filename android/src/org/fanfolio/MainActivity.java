@@ -53,6 +53,11 @@ public class MainActivity extends Activity {
     private static final int PICK_DATABASE = 1;
     private static final int MAX_ROWS = 2000;
 
+    /* Statements that read nothing useful and reach outside this archive. */
+    private static final java.util.regex.Pattern PRAGMA_OR_ATTACH =
+        java.util.regex.Pattern.compile("\\b(pragma|attach|detach|vacuum|load_extension)\\b",
+            java.util.regex.Pattern.CASE_INSENSITIVE);
+
     private WebView web;
     private WebView signInView;
     private FrameLayout root;
@@ -415,9 +420,28 @@ public class MainActivity extends Activity {
             mustBeOurPage();
             if (db == null) return "{\"error\":\"no database\"}";
             String trimmed = sql == null ? "" : sql.trim();
+
+            /*
+             * The page composes its own queries, so this is the boundary that
+             * decides what it may ask for. Reading only is the point; these
+             * checks make "reading only" hard to talk your way around.
+             *
+             * A statement separator would allow a second statement to ride
+             * along behind the SELECT, and a comment marker can hide the rest
+             * of a line from a reader while SQLite still executes it. Neither
+             * appears in any query this app makes.
+             */
             if (!trimmed.regionMatches(true, 0, "SELECT", 0, 6)
                     && !trimmed.regionMatches(true, 0, "WITH", 0, 4)) {
                 return "{\"error\":\"read-only\"}";
+            }
+            if (trimmed.length() > 8000) return "{\"error\":\"query too long\"}";
+            if (trimmed.indexOf(';') >= 0) return "{\"error\":\"one statement only\"}";
+            if (trimmed.contains("--") || trimmed.contains("/*")) {
+                return "{\"error\":\"comments are not allowed in a query\"}";
+            }
+            if (PRAGMA_OR_ATTACH.matcher(trimmed).find()) {
+                return "{\"error\":\"not a read of this archive\"}";
             }
             String[] args = parseArgs(argsJson);
             StringBuilder out = new StringBuilder("{\"rows\":[");

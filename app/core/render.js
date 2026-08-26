@@ -14,6 +14,29 @@
 /* Elements that can run code or load third parties. Dropped with their content. */
 const DROP_WHOLE = /<(script|iframe|object|embed|link|meta|form|base)\b[\s\S]*?(?:<\/\1\s*>|$)/gi;
 
+/**
+ * Apply a removal until it stops changing anything.
+ *
+ * A single pass is not enough, and the failure is not theoretical:
+ * `<scr<script>ipt>` contains no complete script tag until the inner one is
+ * removed, at which point the outer halves join up into a real one. One pass
+ * therefore *creates* the tag it was meant to delete. Repeating until the
+ * string settles is the only way a removal like this is sound.
+ *
+ * The iteration count is bounded so deeply nested input cannot spin: markup
+ * that is still changing after that many passes is pathological, and what is
+ * returned has had every complete match removed regardless.
+ */
+function stripUntilStable(text, pattern, limit = 20) {
+  let out = String(text);
+  for (let i = 0; i < limit; i++) {
+    const next = out.replace(pattern, '');
+    if (next === out) return out;
+    out = next;
+  }
+  return out;
+}
+
 /* Anything on*= is a handler. Anything javascript:/data: in a URL can execute. */
 const EVENT_ATTR = /\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi;
 const BAD_URL_ATTR = /\s(href|src|xlink:href)\s*=\s*("|')?\s*(javascript|vbscript|data):[^"'\s>]*("|')?/gi;
@@ -28,9 +51,9 @@ const ESCAPING_CSS = /(position\s*:\s*(fixed|sticky))|(z-index\s*:\s*\d{3,})|(@i
 export function sanitiseHtml(html, { allowRemoteImages = false } = {}) {
   if (!html) return '';
   let out = String(html);
-  out = out.replace(DROP_WHOLE, '');
-  out = out.replace(EVENT_ATTR, '');
-  out = out.replace(BAD_URL_ATTR, '');
+  out = stripUntilStable(out, DROP_WHOLE);
+  out = stripUntilStable(out, EVENT_ATTR);
+  out = stripUntilStable(out, BAD_URL_ATTR);
   out = out.replace(/\sstyle\s*=\s*"([^"]*)"/gi, (whole, css) =>
     ESCAPING_CSS.test(css) ? ` style="${css.replace(ESCAPING_CSS, '')}"` : whole);
   if (!allowRemoteImages) {

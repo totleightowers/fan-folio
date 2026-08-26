@@ -38,8 +38,14 @@ export async function hashContent(value) {
  * the words or the structure actually changed.
  */
 export function normaliseForComparison(html) {
-  return String(html ?? '')
-    .replace(/<!--[\s\S]*?-->/g, '')
+  let text = String(html ?? '');
+  // nested comment markers reassemble the same way tags do
+  for (let i = 0; i < 20; i++) {
+    const next = text.replace(/<!--[\s\S]*?-->/g, '');
+    if (next === text) break;
+    text = next;
+  }
+  return text
     // AO3 mints a fresh CSRF token per request; it is not part of the work
     .replace(/name="authenticity_token"[^>]*value="[^"]*"/gi, 'name="authenticity_token"')
     .replace(/\s+/g, ' ')

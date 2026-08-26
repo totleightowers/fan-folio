@@ -124,3 +124,14 @@ test('the session cookie goes only to the archive', () => {
   assert.ok(hostCheckAt > 0 && hostCheckAt < cookieAt,
     'the host must be checked before the session is sent, not after');
 });
+
+test('the read bridge refuses anything that is not a single read', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const q = java.slice(java.indexOf('public String query(String sql'), java.indexOf('/** Store a work'));
+  // the page composes its own queries, so this is the boundary that decides
+  // what it may ask for
+  assert.ok(/regionMatches\(true, 0, "SELECT"/.test(q), 'reads only');
+  assert.ok(q.includes("indexOf(';')"), 'no second statement riding along');
+  assert.ok(q.includes('"--"') && q.includes('"/*"'), 'no comment markers hiding a tail');
+  assert.ok(q.includes('PRAGMA_OR_ATTACH'), 'nothing reaching outside this archive');
+});
