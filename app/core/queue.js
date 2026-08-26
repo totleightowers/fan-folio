@@ -15,8 +15,17 @@
 
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Statuses worth trying again. Everything else is the answer, right or not. */
-const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+/**
+ * Statuses worth trying again. Everything else is the answer, right or not.
+ *
+ * Cloudflare sits in front of AO3 and answers with its own 52x codes when the
+ * link between it and the origin misbehaves — 520 unknown error, 521 origin
+ * down, 522 timeout, 523 unreachable, 524 timeout, 525 and 526 TLS handshake
+ * failures. Every one of those is transient and worth another attempt; leaving
+ * them out meant a 525 ended a walk instantly with `retries 0`, which read as
+ * a hard failure rather than the blip it was.
+ */
+const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527]);
 
 export class BudgetSpent extends Error {
   constructor(spent) {
