@@ -95,12 +95,19 @@ function applyPrefs() {
 
 /* ------------------------------------------------------------------ views */
 
-const VIEWS = ['setup', 'library', 'results', 'detail', 'reader'];
+const VIEWS = ['setup', 'home', 'library', 'results', 'detail', 'reader'];
 let stack = [];
+
+/** Views the tab bar owns; anything deeper hides it and shows Back instead. */
+const TABBED = new Set(['home', 'library', 'results']);
 
 function show(name) {
   for (const v of VIEWS) $(`#${v}`).hidden = v !== name;
   $('#back').hidden = stack.length === 0;
+  $('#tabs').hidden = !TABBED.has(name);
+  for (const b of $$('#tabs button')) {
+    b.classList.toggle('on', b.dataset.tab === (name === 'results' ? 'search' : name));
+  }
   window.scrollTo(0, 0);
 }
 
@@ -239,26 +246,6 @@ $('#sort').onchange = () => {
   loadMore(true);
 };
 
-/** The work you were last in the middle of, offered before anything else. */
-async function buildContinueCard() {
-  const box = $('#continue');
-  box.textContent = '';
-  const recent = Object.entries(positions)
-    .filter(([, p]) => p && p.chapter)
-    .sort((a, b) => (b[1].at ?? 0) - (a[1].at ?? 0))[0];
-  if (!recent) return;
-  try {
-    const w = await api(`/api/works/${recent[0]}`);
-    const card = document.createElement('button');
-    card.className = 'continue-card';
-    card.innerHTML = '<span class="label">Continue reading</span><span class="title"></span>'
-      + `<span class="where">Chapter ${recent[1].chapter} of ${w.chapter_count}</span>`;
-    card.querySelector('.title').textContent = w.title ?? '';
-    card.onclick = () => openChapter(recent[0], recent[1].chapter);
-    box.append(card);
-  } catch { /* the work may no longer be in this archive */ }
-}
-
 /* ----------------------------------------------------------------- search */
 
 let searchTimer;
@@ -271,7 +258,106 @@ $('#q').addEventListener('input', (e) => {
 
 function backToLibrary() {
   stack = [];
-  show('library');
+  show('home');
+}
+
+/* ------------------------------------------------------------------- home */
+
+/**
+ * A colour per fandom, so cards on a shelf are distinguishable at a glance.
+ * Fic has no cover art; this is the nearest honest equivalent to a spine.
+ */
+function spineColour(seed) {
+  let hash = 0;
+  for (const ch of String(seed ?? '')) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${hash % 360} 55% 52%)`;
+}
+
+function workCard(w) {
+  const card = document.createElement('button');
+  card.className = 'card';
+  card.style.setProperty('--spine', spineColour(w.fandom || w.title));
+  const p = progressOf(w);
+  card.innerHTML = `<div class="card-title"></div><div class="card-by"></div>
+    <div class="card-fandom"></div>
+    <div class="card-foot">${fmt(w.words)} words${w.complete ? '' : ' · WIP'}</div>
+    ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>` : ''}`;
+  card.querySelector('.card-title').textContent = w.title ?? '(untitled)';
+  card.querySelector('.card-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
+  card.querySelector('.card-fandom').textContent = w.fandom ?? '';
+  card.onclick = () => (p ? openChapter(w.work_id, w.at_chapter ?? 1) : openWork(w.work_id));
+  return card;
+}
+
+const STAT_LABELS = [
+  ['works', 'works'], ['words', 'words'], ['finished', 'finished'],
+  ['later', 'for later'], ['wordsRead', 'words read'],
+];
+
+async function buildHome() {
+  let data;
+  try { data = await api('/api/home'); }
+  catch (e) { $('#shelves').innerHTML = '<p class="empty"></p>'; $('#shelves .empty').textContent = e.message; return; }
+
+  const stats = $('#stats');
+  stats.textContent = '';
+  for (const [key, label] of STAT_LABELS) {
+    const n = data.stats?.[key];
+    if (n == null) continue;
+    const cell = document.createElement('div');
+    cell.className = 'stat';
+    // millions of words are easier to read rounded than in full
+    const shown = n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : fmt(n);
+    cell.innerHTML = '<b></b><span></span>';
+    cell.querySelector('b').textContent = shown;
+    cell.querySelector('span').textContent = label;
+    stats.append(cell);
+  }
+
+  const box = $('#shelves');
+  box.textContent = '';
+  for (const shelf of data.shelves ?? []) {
+    const section = document.createElement('section');
+    section.className = 'shelf';
+    section.innerHTML = '<div class="shelf-head"><h2></h2><button>See all</button></div>'
+      + '<div class="rail"></div>';
+    section.querySelector('h2').textContent = shelf.title;
+    section.querySelector('.shelf-head button').onclick = () => {
+      view.filter = ['reading', 'later'].includes(shelf.key) ? shelf.key : 'all';
+      view.sort = shelf.key === 'added' ? 'added' : shelf.key === 'long' ? 'words'
+        : shelf.key === 'short' ? 'shortest' : view.sort;
+      save(VIEW_KEY, view);
+      $('#sort').value = view.sort;
+      buildChips();
+      loadMore(true);
+      show('library');
+    };
+    const rail = section.querySelector('.rail');
+    for (const w of shelf.works) rail.append(workCard(w));
+    box.append(section);
+  }
+
+  const fandoms = $('#fandoms');
+  fandoms.textContent = '';
+  if (data.fandoms?.length) {
+    fandoms.innerHTML = '<h2>Fandoms</h2><div class="fandom-list"></div>';
+    const list = fandoms.querySelector('.fandom-list');
+    for (const f of data.fandoms) {
+      const b = document.createElement('button');
+      b.innerHTML = '<span class="name"></span><span class="n"></span>';
+      b.querySelector('.name').textContent = f.name;
+      b.querySelector('.n').textContent = f.n;
+      b.onclick = () => {
+        view.fandom = f.name;
+        view.filter = 'all';
+        save(VIEW_KEY, view);
+        buildChips();
+        loadMore(true);
+        show('library');
+      };
+      list.append(b);
+    }
+  }
 }
 
 async function runSearch(q) {
@@ -471,6 +557,17 @@ for (const [id, key, transform] of [
 
 /* ------------------------------------------------------------------ start */
 
+for (const b of $$('#tabs button')) {
+  b.onclick = () => {
+    stack = [];
+    const tab = b.dataset.tab;
+    if (tab === 'search') { show('results'); $('#q').focus(); return; }
+    show(tab);
+    if (tab === 'library' && !offset) loadMore(true);
+    if (tab === 'home') buildHome();
+  };
+}
+
 $('#import').onclick = () => {
   if (!isNative) { toast('Import is only available in the app'); return; }
   importDatabase();
@@ -499,9 +596,9 @@ async function start() {
     return;
   }
   if (!status.fts5) toast('This device\'s SQLite has no FTS5 — search is unavailable');
-  show('library');
+  show('home');
   await adoptImportedTheme();
-  await Promise.all([buildChips(), loadMore(true), buildContinueCard()]);
+  await Promise.all([buildHome(), buildChips()]);
 }
 
 start();

@@ -109,6 +109,59 @@ function facets() {
   return { counts, fandoms };
 }
 
+/**
+ * The home screen: a few short shelves rather than one long list.
+ *
+ * 1596 works sorted alphabetically is a filing cabinet, not a library. What a
+ * reader actually wants on opening is the thing they were in the middle of,
+ * then a few ways in — what they meant to read, what arrived recently, which
+ * fandoms they have most of.
+ */
+function home() {
+  const shelf = (where, order, limit = 12) => db.prepare(`
+    SELECT w.work_id, w.title, w.authors, w.words, w.chapter_count, w.complete, w.rating,
+           r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+           (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
+    FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+    WHERE ${where} ORDER BY ${order} LIMIT ?`).all(limit);
+
+  const totals = db.prepare(`
+    SELECT count(*) AS works, COALESCE(sum(words), 0) AS words,
+           COALESCE(sum(chapter_count), 0) AS chapters FROM works`).get();
+  const read = db.prepare(`
+    SELECT COALESCE(sum(CASE WHEN r.chapters_read >= w.chapter_count THEN w.words ELSE 0 END), 0) AS words,
+           count(CASE WHEN r.chapters_read >= w.chapter_count AND w.chapter_count > 0 THEN 1 END) AS finished
+    FROM works w JOIN reading r ON r.work_id = w.work_id`).get();
+
+  return {
+    stats: {
+      works: totals.works,
+      words: totals.words,
+      chapters: totals.chapters,
+      finished: read.finished,
+      wordsRead: read.words,
+      later: db.prepare('SELECT count(*) n FROM reading WHERE marked_later = 1').get().n,
+    },
+    shelves: [
+      { key: 'reading', title: 'Continue reading',
+        works: shelf('(COALESCE(r.chapters_read,0) > 0 OR COALESCE(r.chapter,0) > 1) '
+          + 'AND COALESCE(r.chapters_read,0) < w.chapter_count', 'r.updated_at DESC') },
+      { key: 'later', title: 'Marked for later',
+        works: shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
+      { key: 'added', title: 'Recently added',
+        works: shelf('1=1', 'w.downloaded_at DESC') },
+      { key: 'long', title: 'Settle in',
+        works: shelf('w.complete = 1 AND COALESCE(r.chapters_read,0) = 0', 'w.words DESC') },
+      { key: 'short', title: 'One sitting',
+        works: shelf('w.complete = 1 AND w.words < 5000 AND COALESCE(r.chapters_read,0) = 0',
+          'RANDOM()') },
+    ].filter((s) => s.works.length),
+    fandoms: db.prepare(`
+      SELECT name, count(*) AS n FROM tags WHERE kind = 'fandom'
+      GROUP BY name ORDER BY n DESC LIMIT 12`).all(),
+  };
+}
+
 const json = (res, body, status = 200) => {
   const text = JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -145,6 +198,7 @@ createServer(async (req, res) => {
     }
 
     if (p === '/api/facets') return json(res, facets());
+    if (p === '/api/home') return json(res, home());
 
     let m;
     if ((m = p.match(/^\/api\/works\/(\d+)$/))) {
