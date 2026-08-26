@@ -75,14 +75,17 @@ const FILTERS = {
   skinned: "w.skin_css IS NOT NULL AND w.skin_css <> ''",
 };
 
-function worksQuery({ sort, filter, fandom }) {
+function worksQuery({ sort, filter, fandom, rating }) {
   const order = SORTS[sort] ?? SORTS.title;
   const where = [FILTERS[filter] ?? FILTERS.all];
   const args = [];
   if (fandom) {
-    where.push('EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.kind = \'fandom\' AND t.name = ?)');
+    // "fandom" is really "any tag": the reader taps a pairing or a trope the
+    // same way they tap a fandom, and one code path serves all of them
+    where.push('EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.name = ?)');
     args.push(fandom);
   }
+  if (rating) { where.push('w.rating = ?'); args.push(rating); }
   const from = `FROM works w LEFT JOIN reading r ON r.work_id = w.work_id WHERE ${where.join(' AND ')}`;
   return {
     args,
@@ -156,10 +159,35 @@ function home() {
         works: shelf('w.complete = 1 AND w.words < 5000 AND COALESCE(r.chapters_read,0) = 0',
           'RANDOM()') },
     ].filter((s) => s.works.length),
-    fandoms: db.prepare(`
-      SELECT name, count(*) AS n FROM tags WHERE kind = 'fandom'
-      GROUP BY name ORDER BY n DESC LIMIT 12`).all(),
+    /*
+     * Ways in, rather than one long list.
+     *
+     * Fic is navigated by fandom and pairing far more than by title, so the
+     * tags people actually browse by get counted and offered. Ratings too —
+     * "something explicit" and "something gen" are real moods.
+     */
+    browse: {
+      fandom: topTags('fandom', 14),
+      relationship: topTags('relationship', 14),
+      character: topTags('character', 12),
+      freeform: topTags('freeform', 14),
+      rating: db.prepare(`
+        SELECT rating AS name, count(*) AS n FROM works
+        WHERE rating IS NOT NULL AND rating <> '' GROUP BY rating ORDER BY n DESC`).all(),
+    },
   };
+}
+
+const topTags = (kind, limit) => db.prepare(`
+  SELECT name, count(*) AS n FROM tags WHERE kind = ?
+  GROUP BY name ORDER BY n DESC LIMIT ?`).all(kind, limit);
+
+/** One work, chosen at random from those not yet started. */
+function surprise() {
+  const row = db.prepare(`
+    SELECT w.work_id FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+    WHERE COALESCE(r.chapters_read, 0) = 0 ORDER BY RANDOM() LIMIT 1`).get();
+  return { work_id: row?.work_id ?? null };
 }
 
 const json = (res, body, status = 200) => {
@@ -191,7 +219,8 @@ createServer(async (req, res) => {
       const { sql, args, countSql } = worksQuery({
         sort: url.searchParams.get('sort') || 'title',
         filter: url.searchParams.get('filter') || 'all',
-        fandom: url.searchParams.get('fandom') || '',
+        fandom: url.searchParams.get('tag') || url.searchParams.get('fandom') || '',
+        rating: url.searchParams.get('rating') || '',
       });
       const total = db.prepare(countSql).get(...args).n;
       return json(res, { total, works: db.prepare(sql).all(...args, limit, offset) });
@@ -199,6 +228,7 @@ createServer(async (req, res) => {
 
     if (p === '/api/facets') return json(res, facets());
     if (p === '/api/home') return json(res, home());
+    if (p === '/api/surprise') return json(res, surprise());
 
     let m;
     if ((m = p.match(/^\/api\/works\/(\d+)$/))) {
@@ -275,7 +305,11 @@ createServer(async (req, res) => {
   } catch (e) {
     return json(res, { error: e.message }, 500);
   }
-}).listen(PORT, () => {
+}).listen(PORT, async () => {
+  // a pidfile, because pattern-killing a node process from a shell whose own
+  // command line contains that pattern kills the shell instead
+  try { await (await import('node:fs/promises')).writeFile('data/serve.pid', String(process.pid)); }
+  catch { /* not fatal */ }
   const { n } = Q.count.get();
   console.log(`archive-reader dev server on http://localhost:${PORT}  (${n} works)`);
 });

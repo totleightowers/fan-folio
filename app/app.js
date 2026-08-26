@@ -37,7 +37,7 @@ const prefs = load(PREFS_KEY, {
   face: 'Georgia', weight: 400, size: 19, lh: 170,
   margin: 20, vmargin: 24, align: 'start',
 });
-const view = load(VIEW_KEY, { sort: 'title', filter: 'all', fandom: '' });
+const view = load(VIEW_KEY, { sort: 'title', filter: 'all', fandom: '', rating: '' });
 let positions = load(POS_KEY, {});
 
 /* -------------------------------------------------------------- typography */
@@ -193,7 +193,8 @@ async function loadMore(reset = false) {
     const params = new URLSearchParams({
       limit: '50', offset: String(offset), sort: view.sort, filter: view.filter,
     });
-    if (view.fandom) params.set('fandom', view.fandom);
+    if (view.fandom) params.set('tag', view.fandom);
+    if (view.rating) params.set('rating', view.rating);
     const { works, total: n } = await api(`/api/works?${params}`);
     total = n;
     const box = $('#works');
@@ -337,27 +338,99 @@ async function buildHome() {
     box.append(section);
   }
 
-  const fandoms = $('#fandoms');
-  fandoms.textContent = '';
-  if (data.fandoms?.length) {
-    fandoms.innerHTML = '<h2>Fandoms</h2><div class="fandom-list"></div>';
-    const list = fandoms.querySelector('.fandom-list');
-    for (const f of data.fandoms) {
+  buildBrowse(data.browse ?? {});
+}
+
+const BROWSE_TABS = [
+  ['fandom', 'Fandoms'], ['relationship', 'Pairings'], ['character', 'Characters'],
+  ['freeform', 'Tags'], ['rating', 'Rating'],
+];
+let browseKind = 'fandom';
+
+/**
+ * Ways in that are not a list.
+ *
+ * Fic is found by fandom and pairing far more often than by title, so those
+ * are the front door. Each chip is a filter, not a category page — tapping one
+ * lands you in the library already narrowed.
+ */
+function buildBrowse(browse) {
+  const box = $('#fandoms');
+  box.textContent = '';
+  if (!Object.keys(browse).length) return;
+
+  box.innerHTML = '<h2>Browse</h2><div class="browse-tabs"></div><div class="fandom-list"></div>';
+  const tabs = box.querySelector('.browse-tabs');
+  const list = box.querySelector('.fandom-list');
+
+  const paint = () => {
+    for (const b of tabs.children) b.classList.toggle('on', b.dataset.kind === browseKind);
+    list.textContent = '';
+    for (const item of browse[browseKind] ?? []) {
       const b = document.createElement('button');
       b.innerHTML = '<span class="name"></span><span class="n"></span>';
-      b.querySelector('.name').textContent = f.name;
-      b.querySelector('.n').textContent = f.n;
-      b.onclick = () => {
-        view.fandom = f.name;
-        view.filter = 'all';
-        save(VIEW_KEY, view);
-        buildChips();
-        loadMore(true);
-        show('library');
-      };
+      b.querySelector('.name').textContent = item.name;
+      b.querySelector('.n').textContent = item.n;
+      b.onclick = () => openTag(browseKind === 'rating' ? null : item.name,
+        browseKind === 'rating' ? item.name : null);
       list.append(b);
     }
+  };
+
+  for (const [kind, label] of BROWSE_TABS) {
+    if (!browse[kind]?.length) continue;
+    const b = document.createElement('button');
+    b.className = 'browse-tab';
+    b.dataset.kind = kind;
+    b.textContent = label;
+    b.onclick = () => { browseKind = kind; paint(); };
+    tabs.append(b);
   }
+  paint();
+}
+
+/** Land in the library, already narrowed to one tag. */
+function openTag(tag, rating) {
+  view.fandom = tag ?? '';
+  view.rating = rating ?? '';
+  view.filter = 'all';
+  save(VIEW_KEY, view);
+  buildChips();
+  loadMore(true);
+  show('library');
+}
+
+async function buildStartHere() {
+  const box = $('#starthere');
+  box.textContent = '';
+  const row = document.createElement('div');
+  row.className = 'start-row';
+
+  const pick = document.createElement('button');
+  pick.className = 'start-tile';
+  pick.innerHTML = '<b>Surprise me</b><span>something you have never opened</span>';
+  pick.onclick = async () => {
+    try {
+      const { work_id: id } = await api('/api/surprise');
+      if (id) openWork(id);
+      else toast('Nothing unread left');
+    } catch { toast('Could not pick a work'); }
+  };
+
+  const later = document.createElement('button');
+  later.className = 'start-tile';
+  later.innerHTML = '<b>Marked for later</b><span>what you meant to get to</span>';
+  later.onclick = () => { view.filter = 'later'; view.fandom = ''; save(VIEW_KEY, view);
+    buildChips(); loadMore(true); show('library'); };
+
+  const unread = document.createElement('button');
+  unread.className = 'start-tile';
+  unread.innerHTML = '<b>Never opened</b><span>the ones still waiting</span>';
+  unread.onclick = () => { view.filter = 'unread'; view.fandom = ''; save(VIEW_KEY, view);
+    buildChips(); loadMore(true); show('library'); };
+
+  row.append(pick, later, unread);
+  box.append(row);
 }
 
 async function runSearch(q) {
@@ -564,7 +637,7 @@ for (const b of $$('#tabs button')) {
     if (tab === 'search') { show('results'); $('#q').focus(); return; }
     show(tab);
     if (tab === 'library' && !offset) loadMore(true);
-    if (tab === 'home') buildHome();
+    if (tab === 'home') { buildHome(); buildStartHere(); }
   };
 }
 
@@ -598,7 +671,7 @@ async function start() {
   if (!status.fts5) toast('This device\'s SQLite has no FTS5 — search is unavailable');
   show('home');
   await adoptImportedTheme();
-  await Promise.all([buildHome(), buildChips()]);
+  await Promise.all([buildHome(), buildStartHere(), buildChips()]);
 }
 
 start();
