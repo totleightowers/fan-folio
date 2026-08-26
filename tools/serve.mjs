@@ -14,6 +14,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { workMetaHtml, workPrefaceHtml } from '../app/core/ao3/markup.js';
 import { rank, CANDIDATES } from '../app/core/search.js';
+import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -48,74 +49,48 @@ const Q = {
 };
 
 /**
- * The library, sorted and filtered.
+ * What is worth tapping next.
  *
- * Built as SQL text rather than a fixed prepared statement because the reader
- * chooses both. Only names from these two maps ever reach the query — the
- * parameters are looked up, never interpolated — so a crafted sort or filter
- * cannot become SQL.
+ * Counted against the filters already applied rather than the whole library,
+ * so narrowing further can never land on an empty result — a filter panel that
+ * offers a tag yielding nothing is worse than one that offers nothing at all.
  */
-const SORTS = {
-  title: 'w.title COLLATE NOCASE ASC',
-  updated: 'COALESCE(w.updated, w.published) DESC',
-  added: 'w.downloaded_at DESC',
-  words: 'w.words DESC',
-  shortest: 'w.words ASC',
-  recent: 'r.last_read DESC',
-};
-
-const FILTERS = {
-  all: '1=1',
-  // a saved position counts as reading even when no chapter is marked read:
-  // the imported backup recorded where you were far more often than what
-  // you had finished, and the stricter test hid almost all of it
-  reading: '(COALESCE(r.chapters_read, 0) > 0 OR COALESCE(r.chapter, 0) > 1) AND COALESCE(r.chapters_read, 0) < w.chapter_count',
-  unread: 'COALESCE(r.chapters_read, 0) = 0 AND COALESCE(r.chapter, 0) <= 1',
-  finished: 'r.chapters_read >= w.chapter_count AND w.chapter_count > 0',
-  later: 'r.marked_later = 1',
-  complete: 'w.complete = 1',
-  wip: 'w.complete = 0',
-  skinned: "w.skin_css IS NOT NULL AND w.skin_css <> ''",
-};
-
-function worksQuery({ sort, filter, fandom, rating }) {
-  const order = SORTS[sort] ?? SORTS.title;
-  const where = [FILTERS[filter] ?? FILTERS.all];
-  const args = [];
-  if (fandom) {
-    // "fandom" is really "any tag": the reader taps a pairing or a trope the
-    // same way they tap a fandom, and one code path serves all of them
-    where.push('EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.name = ?)');
-    args.push(fandom);
+function facets(filters = {}) {
+  const counts = {};
+  for (const state of Object.keys(STATES)) {
+    const q = buildWorksQuery({ ...filters, state });
+    counts[state] = db.prepare(q.countSql).get(...q.args).n;
   }
-  if (rating) { where.push('w.rating = ?'); args.push(rating); }
-  const from = `FROM works w LEFT JOIN reading r ON r.work_id = w.work_id WHERE ${where.join(' AND ')}`;
+  const tags = {};
+  for (const kind of TAG_KINDS) {
+    const q = buildFacetQuery(filters, kind, 40);
+    tags[kind] = db.prepare(q.sql).all(...q.args);
+  }
   return {
-    args,
-    countSql: `SELECT count(*) n ${from}`,
-    sql: `SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
-                 w.chapters_planned, w.complete, w.rating, w.published, w.updated,
-                 w.downloaded_at,
-                 w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
-                 r.chapter AS at_chapter, r.chapters_read, r.marked_later,
-                 (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
-                 (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
-          ${from} ORDER BY ${order} LIMIT ? OFFSET ?`,
+    counts, tags, fandoms: tags.fandom,
+    languages: db.prepare(`SELECT language AS name, count(*) AS n FROM works
+      WHERE language IS NOT NULL AND language <> '' GROUP BY language ORDER BY n DESC`).all(),
   };
 }
 
-/** Counts for the filter chips, so the reader can see what is worth tapping. */
-function facets() {
-  const counts = {};
-  for (const [name, clause] of Object.entries(FILTERS)) {
-    counts[name] = db.prepare(
-      `SELECT count(*) n FROM works w LEFT JOIN reading r ON r.work_id = w.work_id WHERE ${clause}`
-    ).get().n;
-  }
-  const fandoms = db.prepare(`
-    SELECT name, count(*) n FROM tags WHERE kind = 'fandom'
-    GROUP BY name ORDER BY n DESC LIMIT 25`).all();
-  return { counts, fandoms };
+/** Filters as they arrive on the query string. Lists are tab-separated. */
+function filtersFrom(params) {
+  const filters = {
+    state: params.get('state') || params.get('filter') || 'all',
+    include: params.get('include') || '',
+    exclude: params.get('exclude') || '',
+    rating: params.get('rating') || '',
+    language: params.get('language') || '',
+    wordsMin: params.get('wordsMin'), wordsMax: params.get('wordsMax'),
+    chaptersMin: params.get('chaptersMin'), chaptersMax: params.get('chaptersMax'),
+    sort: params.get('sort') || 'title',
+  };
+  const complete = params.get('complete');
+  if (complete === '0' || complete === '1') filters.complete = complete;
+  // a single tag, as the browse chips send it, is just one included tag
+  const tag = params.get('tag');
+  if (tag) filters.include = filters.include ? `${filters.include}\t${tag}` : tag;
+  return filters;
 }
 
 /**
@@ -220,19 +195,22 @@ createServer(async (req, res) => {
 
   try {
     if (p === '/api/works') {
-      const limit = Math.min(Number(url.searchParams.get('limit') || 50), 200);
-      const offset = Number(url.searchParams.get('offset') || 0);
-      const { sql, args, countSql } = worksQuery({
-        sort: url.searchParams.get('sort') || 'title',
-        filter: url.searchParams.get('filter') || 'all',
-        fandom: url.searchParams.get('tag') || url.searchParams.get('fandom') || '',
-        rating: url.searchParams.get('rating') || '',
+      const filters = {
+        ...filtersFrom(url.searchParams),
+        limit: url.searchParams.get('limit') || 50,
+        offset: url.searchParams.get('offset') || 0,
+      };
+      // a single tag, as the browse chips send it, is just one included tag
+      const tag = url.searchParams.get('tag');
+      if (tag) filters.include = filters.include ? `${filters.include}\t${tag}` : tag;
+      const { sql, args, countSql } = buildWorksQuery(filters);
+      return json(res, {
+        total: db.prepare(countSql).get(...args).n,
+        works: db.prepare(sql).all(...args),
       });
-      const total = db.prepare(countSql).get(...args).n;
-      return json(res, { total, works: db.prepare(sql).all(...args, limit, offset) });
     }
 
-    if (p === '/api/facets') return json(res, facets());
+    if (p === '/api/facets') return json(res, facets(filtersFrom(url.searchParams)));
     if (p === '/api/home') return json(res, home());
     if (p === '/api/surprise') return json(res, surprise());
 
