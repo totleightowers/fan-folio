@@ -1,4 +1,4 @@
-# Fan-folio
+# Fan Folio
 
 Your AO3 bookmarks and history, kept on your own phone — full text, images,
 work skins and all — and searchable in a way AO3 itself is not.

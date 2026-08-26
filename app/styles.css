@@ -672,3 +672,19 @@ dialog h2 {
   font-size: .78rem; letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted); font-weight: 650; margin: 0 0 .3rem;
 }
+
+/* ------------------------------------------------ AO3's own landmarks */
+
+/*
+ * "Chapter Text", "Work", "Notes" and friends are navigation landmarks AO3
+ * puts in for screen readers. Its own stylesheet hides them with font-size 0
+ * and opacity 0 — which keeps them in the accessibility tree while taking them
+ * out of the visual flow. Vendoring 01-core.css wholesale would have brought
+ * this rule along with a white body, red links and three-em page padding, so
+ * only the part that belongs here is taken.
+ */
+.ao3page .landmark {
+  font-size: 0;
+  opacity: 0;
+}
+.ao3page .hidden { display: none; }
