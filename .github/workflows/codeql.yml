@@ -1,0 +1,64 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyse:
+    name: Analyse ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: java-kotlin
+            build-mode: manual
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - if: matrix.language == 'java-kotlin'
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0'
+
+      - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Compile the Android sources
+        if: matrix.language == 'java-kotlin'
+        run: |
+          set -e
+          export PATH="$ANDROID_HOME/build-tools/34.0.0:$PATH"
+          cd android
+          mkdir -p build/gen build/classes
+          aapt2 compile --dir res -o build/res.zip
+          aapt2 link -I "$ANDROID_HOME/platforms/android-34/android.jar" \
+            --manifest AndroidManifest.xml -o build/base.apk --java build/gen \
+            --min-sdk-version 24 --target-sdk-version 34 build/res.zip
+          find src build/gen -name '*.java' > build/sources.txt
+          javac -nowarn -source 8 -target 8 \
+            -bootclasspath "$ANDROID_HOME/platforms/android-34/android.jar" \
+            -classpath "$ANDROID_HOME/platforms/android-34/android.jar" \
+            -d build/classes @build/sources.txt 2>/dev/null
+
+      - uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          category: /language:${{ matrix.language }}
