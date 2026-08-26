@@ -9,6 +9,8 @@ import { readFile, readdir, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parseEpub } from '../app/core/epub.js';
+import { readZip } from '../app/core/zip.js';
+import { createHash } from 'node:crypto';
 import { SCHEMA } from '../app/core/store/schema.js';
 
 const dir = process.argv[2];
@@ -42,6 +44,38 @@ const insertChapter = db.prepare(`
   ON CONFLICT(work_id, number) DO UPDATE SET
     title=excluded.title, html=excluded.html, text=excluded.text, words=excluded.words`);
 const insertWorkFts = db.prepare('INSERT INTO work_fts (work_id, title, authors, summary, tags) VALUES (?,?,?,?,?)');
+const insertImage = db.prepare(`
+  INSERT INTO images (work_id, url, sha256, mime, bytes, status, fetched_at)
+  VALUES (?,?,?,?,?,'stored',datetime('now'))
+  ON CONFLICT(work_id, url) DO UPDATE SET
+    sha256=excluded.sha256, mime=excluded.mime, bytes=excluded.bytes, status='stored'`);
+
+const MIME_BY_EXT = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+  gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+};
+
+/*
+ * Images packaged inside the EPUB.
+ *
+ * A chapter refers to them by relative path — "img1.jpg" — which resolves to
+ * nothing once the chapter is stored in a database, so they rendered as broken
+ * icons. They are the images the author put in the work; pulling them out here
+ * is the only chance to get them, because the EPUB may not be kept.
+ */
+async function storeEpubImages(workId, bytes) {
+  let zip;
+  try { zip = await readZip(bytes); } catch { return 0; }
+  let stored = 0;
+  for (const [name, data] of zip) {
+    const ext = name.toLowerCase().split('.').pop();
+    if (!MIME_BY_EXT[ext] || !data.length) continue;
+    insertImage.run(workId, name, createHash('sha256').update(data).digest('hex'),
+      MIME_BY_EXT[ext], data);
+    stored++;
+  }
+  return stored;
+}
 
 const TAG_KINDS = [
   ['fandoms', 'fandom'], ['relationships', 'relationship'], ['characters', 'character'],
@@ -63,13 +97,14 @@ const fromAo3 = new Set(
 );
 
 const files = (await readdir(dir)).filter((f) => f.toLowerCase().endsWith('.epub'));
-let done = 0, failed = 0, chapters = 0, words = 0, skippedAo3 = 0;
+let done = 0, failed = 0, chapters = 0, words = 0, skippedAo3 = 0, images = 0;
 const started = Date.now();
 
 db.exec('BEGIN');
 for (const name of files) {
   try {
-    const w = await parseEpub(new Uint8Array(await readFile(join(dir, name))));
+    const raw = new Uint8Array(await readFile(join(dir, name)));
+    const w = await parseEpub(raw);
     if (!w.workId) { failed++; continue; }
     if (fromAo3.has(w.workId)) { skippedAo3++; continue; }
 
@@ -93,6 +128,7 @@ for (const name of files) {
     }
     insertWorkFts.run(w.workId, w.title ?? '', (w.authors ?? []).join(', '),
       w.summary ?? '', allTags.join(', '));
+    images += await storeEpubImages(w.workId, raw);
 
     words += w.words;
     if (++done % 200 === 0) {
@@ -114,5 +150,6 @@ const took = ((Date.now() - started) / 1000).toFixed(0);
 console.log(`\ningested ${done} works, ${chapters} chapters, ${words.toLocaleString()} words in ${took}s`);
 console.log(`failed   ${failed}`);
 console.log(`left as fetched from AO3: ${skippedAo3}`);
+console.log(`images extracted: ${images}`);
 console.log(`database ${dbPath}`);
 db.close();

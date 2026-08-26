@@ -105,3 +105,37 @@ test('a captured image is swapped in even when the markup entity-encodes its que
   assert.ok(out.html.includes('src="/img/abc"'), `entity forms must both match: ${out.html}`);
   assert.ok(!out.html.includes('ar-missing-image'), 'and it is no longer marked missing');
 });
+
+test('an image packaged inside the EPUB is not left to 404', () => {
+  // relative srcs point inside the EPUB the chapter came from and resolve to
+  // nothing once stored in a database — 722 of them rendered as broken icons
+  const out = sanitiseHtml('<img src="img1.jpg" alt="a picture">');
+  assert.ok(!/\ssrc="img1\.jpg"/.test(out), 'the dead relative src must not survive');
+  assert.ok(out.includes('data-remote-src="img1.jpg"'), 'but the path is kept for lookup');
+  assert.ok(out.includes('ar-missing-image'));
+});
+
+test('a stored packaged image renders from local storage', () => {
+  const out = renderChapter(
+    { title: 'x', html: '<p>before</p><img src="img1.jpg"><p>after</p>' },
+    { images: new Map([['img1.jpg', '/img/deadbeef']]) }
+  );
+  assert.ok(out.html.includes('src="/img/deadbeef"'));
+  assert.ok(!out.html.includes('ar-missing-image'), 'no longer missing');
+  assert.ok(out.html.includes('before') && out.html.includes('after'));
+});
+
+test('an already-local src is left alone', () => {
+  const out = sanitiseHtml('<img src="/img/abc123">');
+  assert.ok(out.includes('src="/img/abc123"'), 'rendering must be idempotent');
+});
+
+test('a chapter with a skin renders scoped css and the work markup together', () => {
+  const out = renderChapter(
+    { title: 'Chapter 27', html: '<div class="twtchat"><p class="text">hi</p></div>' },
+    { skinCss: '#workskin .text { background: #e5e5ea }' }
+  );
+  assert.ok(out.css.includes('#workskin .text'), 'the skin travels with the chapter');
+  assert.equal((out.css.match(/#workskin/g) || []).length, 1, 'and is not double-scoped');
+  assert.ok(out.html.includes('class="twtchat"'), 'the markup the skin targets survives');
+});
