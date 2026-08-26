@@ -39,8 +39,9 @@ export async function hashContent(value) {
  */
 export function normaliseForComparison(html) {
   let text = String(html ?? '');
-  // nested comment markers reassemble the same way tags do
-  for (let i = 0; i < 20; i++) {
+  // nested comment markers reassemble the same way tags do; each pass that
+  // changes the string shortens it, so this settles
+  for (;;) {
     const next = text.replace(/<!--[\s\S]*?-->/g, '');
     if (next === text) break;
     text = next;

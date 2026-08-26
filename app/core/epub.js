@@ -41,15 +41,20 @@ export function decodeEntities(s) {
  * "end.</p><p>Next" indexes as "end.Next" and the phrase search for a
  * sentence spanning a paragraph break quietly fails.
  */
-/** Repeat a removal until it stops changing anything — see render.js. */
-function stripUntilStable(text, pattern, limit = 20) {
+/**
+ * Repeat a removal until it stops changing anything — see render.js.
+ *
+ * Uncapped on purpose: every pass that changes the string shortens it, so this
+ * terminates, and stopping early would mean returning markup that still
+ * contains what was being removed.
+ */
+function stripUntilStable(text, pattern) {
   let out = String(text);
-  for (let i = 0; i < limit; i++) {
+  for (;;) {
     const next = out.replace(pattern, '');
     if (next === out) return out;
     out = next;
   }
-  return out;
 }
 
 export function htmlToText(html) {
