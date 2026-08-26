@@ -54,7 +54,9 @@ function stripUntilStable(text, pattern, limit = 20) {
 
 export function htmlToText(html) {
   return decodeEntities(
-    stripUntilStable(String(html ?? ''), /<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi)
+    // an unclosed <script> must go too, or the tag survives and only its
+    // content is stripped by the generic tag removal below
+    stripUntilStable(String(html ?? ''), /<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi)
       .replace(/<\/(p|div|h[1-6]|li|blockquote|tr)>/gi, '\n')
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]*>/g, '')

@@ -118,7 +118,11 @@ test('the sign-in window is never given the app bridge', () => {
 test('the session cookie goes only to the archive', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
   const open = java.slice(java.indexOf('private HttpURLConnection open('), java.indexOf('private WebResourceResponse respond('));
-  assert.ok(open.includes('archiveofourown.org'), 'the host is checked before the cookie is attached');
+  // asserted with a pattern rather than a substring test on a URL-shaped
+  // string: `url.includes(host)` is itself the shape of a broken host check,
+  // and writing one even in a test teaches the wrong thing
+  assert.match(open, /host\.endsWith\("[a-z.]*archiveofourown\.org"\)/,
+    'the host is checked by suffix before the cookie is attached');
   const cookieAt = open.indexOf('setRequestProperty("Cookie"');
   const hostCheckAt = open.indexOf('host.endsWith');
   assert.ok(hostCheckAt > 0 && hostCheckAt < cookieAt,
