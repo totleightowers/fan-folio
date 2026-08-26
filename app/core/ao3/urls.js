@@ -43,6 +43,27 @@ export function markedForLater(user, page = 1) {
   return `${ORIGIN}/users/${enc(user)}/readings?page=${Number(page)}&show=to-read`;
 }
 
+/**
+ * The work id out of anything a person is likely to paste.
+ *
+ * Links get shared in every shape: a chapter deep-link, a URL with tracking
+ * parameters, a bare id, the mobile host, sometimes with a trailing full stop
+ * from the end of a sentence. All of them name the same work.
+ *
+ * Returns null rather than guessing when there is no work id, so a mistyped
+ * link fails immediately instead of fetching something arbitrary.
+ */
+export function workIdFrom(input) {
+  const text = String(input ?? '').trim();
+  if (!text) return null;
+  if (/^\d+$/.test(text)) return text;
+
+  // an id must follow /works/ — /collections/x/works/ still names a work,
+  // but /tags/.../works is a listing and names none
+  const m = text.match(/\/works\/(\d+)(?:[/?#]|$)/);
+  return m ? m[1] : null;
+}
+
 export function workUrl(workId) {
   return `${ORIGIN}/works/${Number(workId)}`;
 }

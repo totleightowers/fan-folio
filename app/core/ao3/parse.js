@@ -220,6 +220,52 @@ export function imageUrls(html) {
   )];
 }
 
+/**
+ * The work's own metadata block, as the work page carries it.
+ *
+ * The same facts the EPUB preface gives, but from the source and current: a
+ * work added by link has no EPUB behind it, so this is the only place its
+ * rating, tags and stats come from.
+ */
+export function parseWorkMeta(html) {
+  const block = innerHtmlOf(html, /<dl class="work meta group"[^>]*>/i) ?? '';
+  const row = (cls) => {
+    const at = block.search(new RegExp(`<dd class="${cls}[^"]*"[^>]*>`, 'i'));
+    if (at < 0) return null;
+    return innerHtmlOf(block.slice(at), new RegExp(`<dd class="${cls}[^"]*"[^>]*>`, 'i'));
+  };
+  const tagsOf = (cls) => tagsIn(row(cls) ?? '');
+
+  const stats = row('stats') ?? '';
+  const stat = (name) => htmlToText(
+    stats.match(new RegExp(`<dd class="${name}"[^>]*>([\\s\\S]*?)</dd>`, 'i'))?.[1] ?? '') || null;
+
+  const chapters = stat('chapters') ?? '';
+  const [done, planned] = chapters.split('/');
+
+  return {
+    rating: tagsOf('rating')[0] ?? null,
+    warnings: tagsOf('warning'),
+    categories: tagsOf('category'),
+    fandoms: tagsOf('fandom'),
+    relationships: tagsOf('relationship'),
+    characters: tagsOf('character'),
+    freeform: tagsOf('freeform'),
+    collections: tagsOf('collections'),
+    language: htmlToText(row('language') ?? '') || null,
+    published: stat('published'),
+    // a finished work says Completed; one in progress says Updated
+    updated: stat('status') ?? stat('published'),
+    complete: /Completed/i.test(stats),
+    words: num(stat('words')),
+    chapters: num(done),
+    chaptersPlanned: planned && planned.trim() !== '?' ? num(planned) : null,
+    kudos: num(stat('kudos')),
+    hits: num(stat('hits')),
+    bookmarkCount: num(stat('bookmarks')),
+  };
+}
+
 export function parseWorkPage(html, { workId = null } = {}) {
   const skin = html.match(/<div[^>]*id="workskin"[^>]*>([\s\S]*)$/i)?.[1] ?? html;
 
@@ -280,6 +326,7 @@ export function parseWorkPage(html, { workId = null } = {}) {
     summary: htmlToText(skin.match(/<div class="summary module">[\s\S]*?<blockquote[^>]*>([\s\S]*?)<\/blockquote>/i)?.[1] ?? '') || null,
     skinCss: parseWorkSkin(html),
     images: imageUrls(html),
+    meta: parseWorkMeta(html),
     chapters,
   };
 }
