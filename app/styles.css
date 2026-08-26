@@ -413,3 +413,69 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   padding: .35rem .7rem; cursor: pointer; border-radius: 8px;
 }
 .work-card .rowactions button:active { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+
+/* ------------------------------------------------- AO3 meta, on a phone */
+
+/*
+ * AO3's meta block is laid out for a desktop: definition terms in a left
+ * column with `dd { margin-left: 10em }`, and tags as inline text that wraps
+ * wherever it likes. On a phone that indents the stats into a narrow column
+ * and breaks tags mid-phrase — "Fake/Pretend" on one line, "Relationship" on
+ * the next. These rules only undo the assumptions that do not survive the
+ * narrower screen; everything else of AO3's is left alone.
+ */
+.ao3page .meta dd,
+.ao3page dl.stats dd { margin: 0 0 .55rem 0; }
+.ao3page .meta dt { margin-top: .5rem; font-weight: 600; }
+.ao3page dl.work.meta.group { border: 1px solid var(--rule); border-radius: 12px; padding: .9rem; }
+
+/* each tag stays whole, and looks like something you can press */
+.ao3page ul.commas { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; }
+.ao3page ul.commas li { display: inline-flex; margin: 0; padding: 0; list-style: none; }
+.ao3page ul.commas li::after { content: none; }
+.ao3page .tag {
+  display: inline-block; white-space: nowrap; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis;
+  border: 1px solid var(--rule); border-radius: 8px; padding: .18rem .55rem;
+  font-size: .82rem; line-height: 1.35;
+}
+
+/* the stats read as a line of facts, not a two-column table */
+.ao3page dl.stats { display: flex; flex-wrap: wrap; gap: .15rem .9rem; }
+.ao3page dl.stats dt { margin: 0; font-weight: 600; }
+.ao3page dl.stats dd { margin: 0 .6rem 0 .25rem; }
+
+/* the chapter list is navigation, not the main event */
+#detail .chapters { margin-top: .8rem; border-top: 1px solid var(--rule); }
+#detail .chapters button { font-size: .88rem; padding: .55rem .2rem; }
+
+/* ------------------------------------------------------- chapter drawer */
+
+.chapters-open {
+  display: flex; align-items: center; gap: .6rem; width: 100%;
+  font: inherit; text-align: left; cursor: pointer; color: inherit;
+  background: var(--pane); border: 1px solid var(--rule); border-radius: 12px;
+  padding: .7rem .8rem; margin: 1rem 0 .5rem;
+}
+.chapters-open .glyph { font-size: 1.05rem; color: var(--muted); }
+.chapters-open .label { flex: 1; font-size: .9rem; }
+.chapters-open .chev { color: var(--muted); font-size: 1.2rem; }
+
+/* the drawer itself: a panel down the side, not a box in the middle */
+#chapters-dialog {
+  margin: 0 auto 0 0; height: 100dvh; max-height: 100dvh;
+  width: min(85vw, 22rem); max-width: none; border-radius: 0 14px 14px 0;
+  display: flex; flex-direction: column;
+}
+#chapters-dialog h2 { flex: 0 0 auto; }
+#chapters-dialog #chapter-list { flex: 1 1 auto; max-height: none; }
+#chapter-list button {
+  display: flex; align-items: baseline; gap: .6rem; width: 100%;
+}
+#chapter-list .num {
+  flex: 0 0 1.8rem; text-align: right; color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums;
+}
+#chapter-list .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#chapter-list .len { flex: 0 0 auto; color: var(--muted); font-size: .74rem; }
+#chapter-list button.read .name { color: var(--muted); }
+#chapter-list button.at { background: color-mix(in srgb, var(--accent) 14%, transparent); }

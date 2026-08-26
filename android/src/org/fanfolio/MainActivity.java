@@ -99,6 +99,27 @@ public class MainActivity extends Activity {
         web.loadUrl(ORIGIN + "/index.html");
     }
 
+    /**
+     * Android's back gesture belongs to the reader, not to the activity.
+     *
+     * The app navigates with its own view stack rather than browser history,
+     * so WebView.canGoBack() knows nothing about it and every back gesture
+     * closed the app — including from inside a work, which is exactly where a
+     * reader reaches for back most often. The page is asked first and only
+     * gets out of the way when it has nothing left to go back to.
+     */
+    @Override public void onBackPressed() {
+        if (web == null) { super.onBackPressed(); return; }
+        // an anonymous class, not a lambda: android.jar carries no
+        // LambdaMetafactory, so javac cannot desugar one against this bootclasspath
+        web.evaluateJavascript("(window.__onBack && window.__onBack()) ? 'held' : 'exit'",
+            new android.webkit.ValueCallback<String>() {
+                @Override public void onReceiveValue(String value) {
+                    if (value == null || !value.contains("held")) finish();
+                }
+            });
+    }
+
     /* ------------------------------------------------------------ database */
 
     private File databaseFile() { return new File(getFilesDir(), "archive.db"); }
@@ -300,7 +321,15 @@ public class MainActivity extends Activity {
                             case Cursor.FIELD_TYPE_NULL: out.append("null"); break;
                             case Cursor.FIELD_TYPE_INTEGER: out.append(c.getLong(i)); break;
                             case Cursor.FIELD_TYPE_FLOAT: out.append(c.getDouble(i)); break;
-                            case Cursor.FIELD_TYPE_BLOB: out.append("\"<blob>\""); break;
+                            case Cursor.FIELD_TYPE_BLOB:
+                                // matchinfo() is a blob of 32-bit counters and the
+                                // page needs the bytes to rank results; base64 is
+                                // the only shape that survives JSON intact
+                                out.append('"')
+                                   .append(android.util.Base64.encodeToString(
+                                       c.getBlob(i), android.util.Base64.NO_WRAP))
+                                   .append('"');
+                                break;
                             default: out.append(quote(c.getString(i)));
                         }
                     }

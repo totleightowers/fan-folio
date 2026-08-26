@@ -14,6 +14,18 @@ const esc = (s) => String(s ?? '')
 
 const fmt = (n) => (n == null ? null : Number(n).toLocaleString('en-GB'));
 
+/* EPUBs record a language code; AO3 shows the language. "en" is not a word. */
+const LANGUAGES = {
+  en: 'English', fr: 'Français', es: 'Español', de: 'Deutsch', it: 'Italiano',
+  pt: 'Português', ru: 'Русский', zh: '中文', ja: '日本語', ko: '한국어',
+  nl: 'Nederlands', pl: 'Polski', sv: 'Svenska', tr: 'Türkçe', id: 'Bahasa Indonesia',
+};
+const languageName = (code) => {
+  if (!code) return null;
+  const key = String(code).toLowerCase().split(/[-_]/)[0];
+  return LANGUAGES[key] ?? code;
+};
+
 /** AO3 renders each tag as a link; offline they are the same shape, inert. */
 function tagList(kind, names) {
   if (!names?.length) return '';
@@ -57,7 +69,7 @@ export function workMetaHtml(work, tags = {}) {
     row('relationship tags', 'Relationship', tagList('relationships', tags.relationship)),
     row('character tags', 'Character', tagList('characters', tags.character)),
     row('freeform tags', 'Additional Tags', tagList('freeforms', tags.freeform)),
-    row('language', 'Language', work.language ? esc(work.language) : ''),
+    row('language', 'Language', work.language ? esc(languageName(work.language)) : ''),
     row('collections', 'Collections', tagList('collections', tags.collection)),
     statsRow(work),
   ].filter(Boolean).join('');

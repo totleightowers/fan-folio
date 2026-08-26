@@ -30,8 +30,13 @@ aapt2 link -I "$SDK_JAR" --manifest AndroidManifest.xml -o build/base.apk \
 
 echo "4/7  compile java"
 find src build/gen -name '*.java' > build/sources.txt
+# errors must not be swallowed: a hidden compile failure once produced a
+# "successful" build that silently shipped the previous APK
 javac -nowarn -source 8 -target 8 -bootclasspath "$SDK_JAR" \
-  -classpath "$SDK_JAR" -d build/classes @build/sources.txt 2>/dev/null
+  -classpath "$SDK_JAR" -d build/classes @build/sources.txt 2>&1 \
+  | grep -v 'bootstrap class path\|source value 8\|target value 8\|deprecat' || true
+[ -n "$(find build/classes -name '*.class' -print -quit)" ] || {
+  echo "javac produced no classes — build failed" >&2; exit 1; }
 
 echo "5/7  dex"
 d8 --min-api 24 --lib "$SDK_JAR" --output build $(find build/classes -name '*.class')
