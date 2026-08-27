@@ -480,7 +480,12 @@ test('nothing crossing the bridge can name a host for a write', () => {
      constant; the page supplies only a path. */
   assert.ok(!/new URL\(\s*(rawUrl|path)\s*\)/.test(body),
     'a write must not be sent to a URL the caller supplied');
-  assert.match(body, /archiveUrl\(path\)/, 'the path is joined onto a constant host');
+  assert.match(body, /archiveUrl\(path\)/, 'the path is resolved against a constant host');
+
+  const build = java.slice(java.indexOf('private static URL archiveUrl('));
+  assert.match(build.slice(0, build.indexOf('\n    }')),
+    /new URL\("https",\s*"archiveofourown\.org",/,
+    'the host is its own argument, not part of a concatenated string');
 
   const safe = java.slice(java.indexOf('private static String safePath('));
   const guard = safe.slice(0, safe.indexOf('\n    }'));

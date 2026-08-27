@@ -559,11 +559,21 @@ public class MainActivity extends Activity {
         return path;
     }
 
+    /**
+     * The host is a separate argument, not part of a string.
+     *
+     * Concatenating a path onto a host produces one URL string in which the
+     * host is no longer distinguishable from the part that came from the page.
+     * This constructor takes the protocol and host as their own literals, so
+     * the only thing a caller supplies is the file — which is the whole claim
+     * being made, expressed in a way that reads as true rather than argued for
+     * in a comment.
+     */
     private static URL archiveUrl(String path) {
         String p = safePath(path);
         if (p == null) return null;
         try {
-            return new URL(ARCHIVE + p);
+            return new URL("https", "archiveofourown.org", p);
         } catch (java.net.MalformedURLException e) {
             return null;
         }
