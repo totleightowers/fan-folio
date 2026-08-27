@@ -1014,3 +1014,56 @@ button:disabled, .opt:disabled {
    than as a toast over the screen they were trying to leave. */
 .failure { padding: 2rem .2rem; text-align: center; }
 .failure .empty { margin-bottom: 1rem; }
+
+/* --------------------------------------------------------- screen motion
+ *
+ * Screens were swapped: everything hidden except the destination, which simply
+ * appeared. Functionally correct, spatially mute — it removes the main cue an
+ * app uses to teach where you went and how to get back.
+ *
+ * The movement is deliberately small. Going deeper comes from the right and
+ * going back returns that way, so the direction carries the meaning; a tab is
+ * a sideways step between peers and barely moves at all. Nothing here runs
+ * long enough to make navigating feel slower than it is.
+ */
+@keyframes in-forward {
+  from { opacity: 0; transform: translate3d(14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes in-back {
+  from { opacity: 0; transform: translate3d(-14px, 0, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes in-lateral {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.in-forward { animation: in-forward 190ms cubic-bezier(.2, 0, 0, 1); }
+.in-back    { animation: in-back 190ms cubic-bezier(.2, 0, 0, 1); }
+.in-lateral { animation: in-lateral 130ms ease-out; }
+
+/* Anyone who has asked for less motion still gets the change of screen —
+   just not the travel. */
+@media (prefers-reduced-motion: reduce) {
+  .in-forward, .in-back { animation: in-lateral 100ms ease-out; }
+  .in-lateral { animation: none; }
+}
+
+/* The back-gesture preview. The screen eases back and away as the finger
+   travels, which is the shape the system uses for this gesture elsewhere.
+   Only what is leaving moves: the destination is not rendered until the
+   navigation happens, so nothing here pretends to show what arrives. */
+.backing {
+  transform: translate3d(calc(var(--back, 0) * 9%), 0, 0)
+             scale(calc(1 - var(--back, 0) * 0.06));
+  transform-origin: right center;
+  border-radius: calc(var(--back, 0) * 16px);
+  overflow: hidden;
+  will-change: transform;
+}
+.back-settling { transition: transform 170ms cubic-bezier(.2, 0, 0, 1), border-radius 170ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .backing { transform: none; border-radius: 0; }
+}

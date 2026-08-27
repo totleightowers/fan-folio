@@ -119,11 +119,45 @@ public class MainActivity extends Activity {
      */
     private void registerBackGesture() {
         if (Build.VERSION.SDK_INT < 33) return;      // onBackPressed still serves
+
+        /* From Android 14 the gesture reports itself as it happens, so the page
+           can move with the finger and show where back is going. Below that it
+           can only be told the gesture finished, which is the difference
+           between previewing a destination and being dropped at it. */
+        if (Build.VERSION.SDK_INT >= 34) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                new android.window.OnBackAnimationCallback() {
+                    @Override public void onBackStarted(android.window.BackEvent e) {
+                        toPage("window.__onBackStart && window.__onBackStart()");
+                    }
+                    @Override public void onBackProgressed(android.window.BackEvent e) {
+                        toPage("window.__onBackProgress && window.__onBackProgress("
+                            + e.getProgress() + ")");
+                    }
+                    @Override public void onBackCancelled() {
+                        toPage("window.__onBackCancel && window.__onBackCancel()");
+                    }
+                    @Override public void onBackInvoked() { handleBack(); }
+                });
+            return;
+        }
+
         getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
             android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT,
             new android.window.OnBackInvokedCallback() {
                 @Override public void onBackInvoked() { handleBack(); }
             });
+    }
+
+    /**
+     * Fire and forget, for the gesture frames.
+     *
+     * Back progress arrives at the refresh rate and nothing is returned, so
+     * these must not wait for a result the way handleBack does.
+     */
+    private void toPage(String js) {
+        if (web != null) web.evaluateJavascript(js, null);
     }
 
     /** Ask the page to go back; close the app only when it has nowhere left. */
