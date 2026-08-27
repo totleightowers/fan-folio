@@ -182,3 +182,29 @@ test('the manifest is well-formed XML', () => {
   assert.equal(opens, closes, 'angle brackets must balance');
   assert.ok(!/<[a-z-]+\s[^>]*<!--/i.test(manifest), 'no comment inside a tag');
 });
+
+test('the app offers itself for work links and for shared text', () => {
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.match(manifest, /android:pathPrefix="\/works"/, 'work links only, not the whole site');
+  assert.match(manifest, /android\.intent\.action\.SEND/, 'sharing a link in works too');
+  assert.match(manifest, /android\.intent\.category\.BROWSABLE/);
+  // autoVerify would need a file served from the archive's domain, which is
+  // not ours to publish — claiming verification we cannot do would be a lie
+  assert.ok(!manifest.includes('android:autoVerify="true"'));
+});
+
+test('a link that arrives before the page is ready is not lost', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.ok(java.includes('pendingLink'), 'the shell holds it');
+  assert.ok(java.includes('takePendingLink'), 'and the page collects it when ready');
+  assert.ok(java.includes('onNewIntent'), 'a link arriving while running is handled too');
+});
+
+test('a shared link is found by scanning, not by a backtracking pattern', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const send = java.slice(java.indexOf('ACTION_SEND.equals(action)'), java.indexOf('@Override protected void onNewIntent'));
+  // shared text is chosen by somebody else; `https?://\S*/works/\d+\S*` reads
+  // naturally and backtracks polynomially on "http://http://http://…"
+  assert.ok(!/Pattern\s*\n?\s*\.compile/.test(send), 'no regex over shared text');
+  assert.ok(send.includes('text.split'), 'each word looked at once');
+});

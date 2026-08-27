@@ -104,6 +104,7 @@ public class MainActivity extends Activity {
 
         registerBackGesture();
         openDatabase();
+        pendingLink = linkFrom(getIntent());
         web.loadUrl(ORIGIN + "/index.html");
     }
 
@@ -148,6 +149,69 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (Build.VERSION.SDK_INT >= 33) return;     // the dispatcher owns it there
         handleBack();
+    }
+
+    /* --------------------------------------------------------- opening links */
+
+    /**
+     * A link the reader opened or shared into the app.
+     *
+     * Held until the page says it is ready. An intent can arrive before the
+     * WebView has loaded — that is the usual case on a cold start — and
+     * calling into a page that does not exist yet silently does nothing.
+     */
+    private String pendingLink;
+
+    /** The work link out of an intent, whether opened or shared. */
+    private String linkFrom(Intent intent) {
+        if (intent == null) return null;
+        String action = intent.getAction();
+        if (Intent.ACTION_VIEW.equals(action)) {
+            Uri data = intent.getData();
+            return data == null ? null : data.toString();
+        }
+        if (Intent.ACTION_SEND.equals(action)) {
+            /*
+             * Shared text is usually "Title https://…" rather than a bare link,
+             * so the link has to be picked out of it.
+             *
+             * Done by splitting on whitespace rather than with a pattern.
+             * A pattern of the obvious shape — scheme, then any run of
+             * non-space, then the works path, then more non-space — reads
+             * naturally and backtracks polynomially on text made of repeated
+             * scheme prefixes. Shared text is precisely the kind of input
+             * somebody else chooses, so this looks at each word once instead.
+             */
+            String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+            if (text == null) return null;
+            for (String word : text.split("\\s+")) {
+                if (word.length() > 2000) continue;
+                String lower = word.toLowerCase(Locale.ROOT);
+                if ((lower.startsWith("http://") || lower.startsWith("https://"))
+                        && lower.contains("/works/")) {
+                    return word;
+                }
+            }
+            return text.trim();
+        }
+        return null;
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String link = linkFrom(intent);
+        if (link != null) deliverLink(link);
+    }
+
+    private void deliverLink(final String link) {
+        if (web == null) { pendingLink = link; return; }
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                web.evaluateJavascript(
+                    "window.__openLink && window.__openLink(" + quote(link) + ")", null);
+            }
+        });
     }
 
     /* ------------------------------------------------------------ database */
@@ -623,6 +687,17 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
             }
+        }
+
+        /**
+         * The page is ready. Hand over anything that arrived before it was.
+         */
+        @JavascriptInterface
+        public String takePendingLink() {
+            mustBeOurPage();
+            String link = pendingLink;
+            pendingLink = null;
+            return link == null ? "" : link;
         }
 
         /** Open the archive's login page. */

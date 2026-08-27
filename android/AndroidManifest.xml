@@ -32,6 +32,40 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+                Opening a work link.
+
+                Not autoVerify: verification needs a Digital Asset Links file
+                served from the archive's own domain, which is not ours to
+                publish. Android therefore treats these as unverified links,
+                which on Android 12 and later means the app is not offered
+                until the reader turns it on in Settings → Apps → Open by
+                default. That is the honest arrangement for a third-party
+                reader, and the app says so on its first run.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="archiveofourown.org"
+                      android:pathPrefix="/works" />
+                <data android:scheme="https" android:host="www.archiveofourown.org"
+                      android:pathPrefix="/works" />
+                <data android:scheme="http" android:host="archiveofourown.org"
+                      android:pathPrefix="/works" />
+            </intent-filter>
+
+            <!--
+                Sharing a link into the app. This needs no verification and
+                works everywhere, so it is the reliable route: share from the
+                browser, pick Fan Folio, and the work is fetched.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>
