@@ -772,6 +772,39 @@ for (const event of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) {
   document.addEventListener(event, releasePress, { passive: true, capture: event === 'scroll' });
 }
 
+/* ------------------------------------------------------------------ rails */
+
+/**
+ * Say when a shelf has more on it.
+ *
+ * A row that hides its scrollbar and ends flush with the screen edge looks
+ * like a row that ends. The fade is only ever applied on a side that actually
+ * continues — a permanent one would dim the last card of a shelf that fits,
+ * announcing content that is not there.
+ */
+function markOverflow(rail) {
+  const more = rail.scrollWidth - rail.clientWidth;
+  if (more <= 4) { rail.dataset.overflow = 'none'; return; }
+  const atStart = rail.scrollLeft <= 4;
+  const atEnd = rail.scrollLeft >= more - 4;
+  rail.dataset.overflow = atStart ? 'end' : atEnd ? 'start' : 'both';
+}
+
+/** Watch every rail on screen, and any that appear later. */
+function watchRails(root = document) {
+  for (const rail of root.querySelectorAll?.('.rail') ?? []) {
+    if (rail.dataset.watched) continue;
+    rail.dataset.watched = '1';
+    markOverflow(rail);
+    rail.addEventListener('scroll', () => markOverflow(rail), { passive: true });
+  }
+}
+
+/* Shelves are built after their data arrives, so watching once at startup
+   would miss all of them. */
+new MutationObserver(() => watchRails()).observe(document.body, { childList: true, subtree: true });
+addEventListener('resize', () => { for (const r of $$('.rail')) markOverflow(r); }, { passive: true });
+
 /* ------------------------------------------------------------------ sheets */
 
 /**
