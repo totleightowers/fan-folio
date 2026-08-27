@@ -1284,3 +1284,16 @@ button:disabled, .opt:disabled {
 @media (prefers-reduced-motion: reduce) {
   .filter-section .sec-chev { transition: none; }
 }
+
+/* A rec is a bookmark starred on the archive — the strongest signal in the
+   library of what was actually thought good, and until now invisible on a
+   card. Gold rather than the accent, so it reads as a mark of quality rather
+   than as another piece of interface. */
+.ic-rec { color: #d9a441; fill: currentColor; stroke: none; }
+
+/* "Marked for later" is a different claim — something meant to be got to, not
+   something said to be good — so it no longer wears the same star. */
+.ic-later { color: var(--muted); fill: currentColor; stroke: none; }
+
+/* On a card the marks sit with the title and must not push it around. */
+.card-title .ic-inline { vertical-align: -.1em; margin-right: .25em; }
