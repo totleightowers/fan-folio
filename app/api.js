@@ -11,8 +11,8 @@ import { renderChapter, sanitiseHtml } from './core/render.js';
 import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
 import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
-import { parseWorkPage } from './core/ao3/parse.js';
-import { workPage, workIdFrom } from './core/ao3/urls.js';
+import { parseWorkPage, parseListing } from './core/ao3/parse.js';
+import { workPage, linkTarget, chapterUrl, seriesPage } from './core/ao3/urls.js';
 import { htmlToText, countWords } from './core/epub.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
@@ -256,9 +256,24 @@ function payloadFor(workId, w) {
  * headers — parses with the same code the tooling uses, and hands the result
  * to the shell to store. Against the dev server the whole job happens there.
  */
+/**
+ * Add whatever a link points at.
+ *
+ * The archive names works in more shapes than one, and they are not
+ * interchangeable. A chapter id is not a work id — fetching /works/<chapter
+ * id> would quietly return a different story rather than fail — and a series
+ * names many works at once. Where the link does not carry a work id, the
+ * archive is asked rather than guessed at.
+ */
 export async function addWork(input) {
-  const workId = workIdFrom(input);
-  if (!workId) throw new Error('That link does not name a work');
+  const target = linkTarget(input);
+
+  if (target.kind === 'external') {
+    throw new Error('That is a link to a work hosted elsewhere; the archive only holds its details');
+  }
+  if (target.kind === 'unknown') {
+    throw new Error('That link does not name a work');
+  }
 
   if (!isNative) {
     const res = await fetch(`/api/add?url=${encodeURIComponent(input)}`, { method: 'POST' });
@@ -267,6 +282,69 @@ export async function addWork(input) {
     return out;
   }
 
+  if (target.kind === 'series') return addSeries(target.seriesId);
+
+  const workId = target.kind === 'chapter'
+    ? await workIdForChapter(target.chapterId)
+    : target.workId;
+
+  return fetchAndSave(workId);
+}
+
+/**
+ * Which work owns this chapter.
+ *
+ * Only the archive knows. A chapter page always links back to the work it
+ * belongs to, so the id is read from the page rather than from the URL that
+ * was followed to reach it — the shell's proxy reports its own address, not
+ * the one the archive redirected to.
+ */
+async function workIdForChapter(chapterId) {
+  const res = await fetch(`/__net/?url=${encodeURIComponent(chapterUrl(chapterId))}`);
+  const body = await res.text();
+  if (!res.ok) throw new Error(`The archive answered ${res.status} for that chapter`);
+  const found = body.match(/\/works\/(\d+)/);
+  if (!found) throw new Error('That chapter does not say which work it belongs to');
+  return found[1];
+}
+
+/**
+ * Every work in a series, one at a time.
+ *
+ * Deliberately sequential: a series can be long, and the archive is quick to
+ * throttle anything that asks for a lot at once. One failure does not abandon
+ * the rest — a series with a single restricted work in it should still bring
+ * back the others.
+ */
+async function addSeries(seriesId) {
+  const res = await fetch(`/__net/?url=${encodeURIComponent(seriesPage(seriesId))}`);
+  const body = await res.text();
+  if (!res.ok) throw new Error(`The archive answered ${res.status} for that series`);
+
+  const ids = [...new Set(parseListing(body).works.map((w) => w.workId).filter(Boolean))];
+  if (!ids.length) throw new Error('That series has no works we can see');
+
+  const added = [];
+  const failed = [];
+  for (const id of ids) {
+    try {
+      added.push(await fetchAndSave(id));
+    } catch (e) {
+      failed.push({ workId: id, reason: e.message });
+    }
+  }
+  return {
+    kind: 'series',
+    seriesId,
+    added: added.length,
+    failed,
+    works: added,
+    title: `${added.length} work${added.length === 1 ? '' : 's'} from the series`,
+  };
+}
+
+/** One work: fetch the whole thing, parse it, hand it to the shell to store. */
+async function fetchAndSave(workId) {
   const res = await fetch(`/__net/?url=${encodeURIComponent(workPage(workId))}`);
   const body = await res.text();
   if (!res.ok) {
