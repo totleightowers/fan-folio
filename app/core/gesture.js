@@ -78,3 +78,18 @@ export function ownsHorizontal({ scrollWidth = 0, clientWidth = 0, overflowX = '
   if (scrollWidth <= clientWidth + slack) return false;
   return overflowX === 'auto' || overflowX === 'scroll';
 }
+
+/**
+ * Whether letting go here should dismiss a sheet.
+ *
+ * Asymmetric on purpose: a sheet is dragged down to dismiss, and an upward
+ * drag is someone reaching for content further up it, never a dismissal.
+ * Judged against the sheet's own height so a tall sheet is not dismissed by
+ * the small movement that would be most of a short one.
+ */
+export function dismisses(dy, height, { fraction = 0.28, min = 72, velocity = 0 } = {}) {
+  if (dy <= 0) return false;
+  // a decisive flick counts even when it did not travel far
+  if (velocity > 0.75) return true;
+  return dy >= Math.max(min, height * fraction);
+}
