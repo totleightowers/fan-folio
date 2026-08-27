@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Deep ink, so the pages read as pages against it in both launcher themes -->
+    <color name="ic_launcher_background">#1A1C1E</color>
+</resources>
