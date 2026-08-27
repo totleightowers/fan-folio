@@ -61,3 +61,20 @@ export function commits(dx, width, { allowed = true } = {}) {
 export function inSystemEdge(x, width, edge = EDGE) {
   return x <= edge || x >= width - edge;
 }
+
+/**
+ * Whether a surface pans horizontally under its own power.
+ *
+ * A tag row and a shelf of cards both scroll sideways, and a finger landing on
+ * one is asking for that scroll, not for a page turn. The work page is largely
+ * made of such rows, which is why swiping it so often appeared to do nothing:
+ * whichever surface the finger landed on had already claimed the movement.
+ *
+ * The few pixels of slack matter — a row one pixel wider than its box through
+ * rounding is not a scroller, and treating it as one would silently disable
+ * the gesture across most of the page.
+ */
+export function ownsHorizontal({ scrollWidth = 0, clientWidth = 0, overflowX = 'visible' } = {}, slack = 4) {
+  if (scrollWidth <= clientWidth + slack) return false;
+  return overflowX === 'auto' || overflowX === 'scroll';
+}
