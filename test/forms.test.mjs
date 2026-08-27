@@ -77,3 +77,40 @@ test('encoding escapes what would otherwise change the meaning', () => {
   assert.equal(encodeForm({ 'a[b]': 'x&y', c: 'p q' }), 'a%5Bb%5D=x%26y&c=p%20q');
   assert.equal(encodeForm({ a: '1', b: undefined }), 'a=1');
 });
+
+/**
+ * The consent interstitial, in the shape the archive serves it.
+ *
+ * A Mature work answers with this instead of the page asked for unless
+ * view_adult is sent — and it carries a form of its own, pointing at the work.
+ * A matcher loose enough to accept "a form whose action starts /works/" picks
+ * this up, fills it in, and posts the consent form as though it were a
+ * bookmark. That is exactly what happened.
+ */
+const INTERSTITIAL = `
+<html><body>
+  <p>This work could have adult content. If you continue, you have agreed that you are
+     willing to see such content.</p>
+  <form action="/works/12345" method="get" id="new_session">
+    <input type="hidden" name="view_adult" value="true">
+    <input type="submit" value="Yes, Continue">
+  </form>
+</body></html>`;
+
+test('the consent interstitial is not mistaken for a bookmark form', () => {
+  assert.equal(parseForm(INTERSTITIAL, 'action="/works/12345/bookmarks"'), null);
+  assert.equal(parseForm(INTERSTITIAL, 'id="bookmark-form"'), null);
+  assert.equal(parseForm(INTERSTITIAL, 'id="new_bookmark"'), null);
+});
+
+test('the consent interstitial is not mistaken for a comment form', () => {
+  assert.equal(parseForm(INTERSTITIAL, 'action="/works/12345/comments"'), null);
+  assert.equal(parseForm(INTERSTITIAL, 'id="new_comment"'), null);
+});
+
+test('a loose matcher would have caught it, which is why there is not one', () => {
+  // kept as the record of the bug: this is what the old fallback did
+  const wrong = parseForm(INTERSTITIAL, 'action="/works/');
+  assert.ok(wrong, 'the interstitial does carry a form, and it does match loosely');
+  assert.equal(wrong.action, '/works/12345', 'which is not where a bookmark is created');
+});
