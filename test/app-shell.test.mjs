@@ -732,13 +732,31 @@ test('the page does not carry its own idea of the version', () => {
   const line = js.match(/const VERSION = [\s\S]{0,220}/)?.[0] ?? '';
   assert.ok(!/v\d+\.\d+\.\d+/.test(line),
     'a version written in the page is a fourth place to remember, and it drifted five releases');
-  assert.match(line, /nativeStatus\(\)/, 'it asks what is actually running');
+  assert.match(js, /fetch\('\/version\.txt'\)/, 'it reads what the build wrote');
 });
 
-test('the build stamps the version from the tag that names the release', () => {
+test('the build writes the version where the page can read it', () => {
   const build = readFileSync(new URL('../android/build.sh', import.meta.url), 'utf8');
   assert.match(build, /git describe --tags/, 'the tag is the source of truth');
-  assert.match(build, /--version-name/, 'and it reaches the package');
+  assert.match(build, /version\.txt/, 'and it is written into the assets the page is served from');
+});
+
+test('the manifest declares no version of its own', () => {
+  /* An attribute written there beats anything the build supplies, which is how
+     the package came to report 0.1 through four attempts at stamping it. */
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  const tag = manifest.slice(manifest.indexOf('<manifest'), manifest.indexOf('>', manifest.indexOf('<manifest')));
+  assert.ok(!/versionName|versionCode/.test(tag), 'the build generates them into a copy');
+});
+
+test('no XML comment carries a double hyphen', () => {
+  /* `--version-name` inside a comment is not well-formed XML. The manifest
+     became invalid, the build failed, and four rounds of checking read a stale
+     APK because the failure was filtered out of the output. */
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  for (const c of manifest.match(/<!--[\s\S]*?-->/g) ?? []) {
+    assert.ok(!c.slice(4, -3).includes('--'), `a comment contains "--", which XML forbids: ${c.slice(0, 60)}`);
+  }
 });
 
 test('the shell reports the version it was stamped with', () => {
@@ -787,4 +805,18 @@ test('both backends can hand back a kept chapter', () => {
     assert.match(src, /FROM chapter_versions WHERE work_id = \?/, `${name} lists versions`);
     assert.match(src, /versions\\\/(\(\\d\+\)|\\d)/, `${name} routes to one`);
   }
+});
+
+/**
+ * A work can be fetched again from the archive.
+ *
+ * Some works came in from EPUBs and carry the exporter's marks rather than the
+ * archive's — a table of contents counted as a first chapter, an empty last
+ * one. Repairing that in the database means guessing at what the archive meant.
+ */
+test('a work offers to fetch itself again', () => {
+  const fn = js.slice(js.indexOf('function archiveActions('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /Fetch again/, 'the control exists');
+  assert.match(body, /addWork\(String\(w\.work_id\)\)/, 'and it asks the archive for this work');
 });

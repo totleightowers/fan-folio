@@ -91,10 +91,27 @@ function isDark(hex) {
 
 const faceStack = (family) => SYSTEM_FACES[family] ?? `'${String(family).replace(/'/g, '')}', Georgia, serif`;
 
+/**
+ * Is the page dark right now, whatever route it took to get there?
+ *
+ * The archive's own stylesheet is vendored faithfully and hardcodes colours
+ * for a light page — headings at #333, links at #111, panels at #fff. On a
+ * dark background that is dark text on dark, which is what made a chapter look
+ * blank. The overrides that correct it need one thing to hang off, and
+ * "dark" arrives four different ways.
+ */
+function themeIsDark() {
+  if (prefs.theme === 'dark' || prefs.theme === 'black') return true;
+  if (prefs.theme === 'sepia') return false;
+  if (prefs.theme === 'custom') return isDark(prefs.bg);
+  return Boolean(window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+}
+
 function applyPrefs() {
   const r = document.documentElement;
   if (prefs.theme === 'system' || prefs.theme === 'custom') r.removeAttribute('data-theme');
   else r.setAttribute('data-theme', prefs.theme);
+  r.toggleAttribute('data-dark', themeIsDark());
 
   if (prefs.theme === 'custom') {
     r.style.setProperty('--bg', prefs.bg);
@@ -868,10 +885,19 @@ addEventListener('resize', () => { for (const r of $$('.rail')) markOverflow(r);
  */
 /* Asked of the shell rather than written down here: a constant in the page is
    a fourth place to remember, and it drifted five releases behind. */
-const VERSION = (() => {
-  try { return nativeStatus().version ? `v${nativeStatus().version}` : 'development build'; }
-  catch { return 'development build'; }
-})();
+/**
+ * Which version this is, read from a file the build writes.
+ *
+ * It was asked of the package metadata first, and the package reported 0.1
+ * however it was stamped — through a manifest attribute, through aapt2's
+ * --version-name, through a generated manifest. This is a file with a version
+ * in it, written from the tag on every build, and nothing can override it.
+ */
+let VERSION = 'development build';
+fetch('/version.txt')
+  .then((r) => (r.ok ? r.text() : null))
+  .then((v) => { if (v?.trim()) VERSION = `v${v.trim()}`; })
+  .catch(() => {});
 
 /**
  * A tick where something commits — and nowhere else.
@@ -1033,6 +1059,35 @@ function archiveActions(w) {
     openSheet($('#comment-dialog'));
   };
 
+  /**
+   * Fetch this work again.
+   *
+   * Some works came in from EPUBs and carry the exporter's marks rather than
+   * the archive's — a table of contents counted as a first chapter, an empty
+   * last one. Repairing that in the database means guessing at what the
+   * archive meant; asking the archive is not a guess.
+   *
+   * Safe by construction: a replaced chapter is archived before the new one
+   * lands, so the copy on screen now is still readable afterwards.
+   */
+  const refetch = document.createElement('button');
+  refetch.className = 'archive-act';
+  refetch.append(icon('external', 'ic ic-inline'), document.createTextNode('Fetch again'));
+  refetch.onclick = async () => {
+    refetch.classList.add('is-busy');
+    toast('Fetching from the archive…');
+    try {
+      const out = await addWork(String(w.work_id));
+      tick('commit');
+      toast(`Updated “${out.title}” — ${out.chapters} chapters`);
+      openWork(w.work_id);
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      refetch.classList.remove('is-busy');
+    }
+  };
+
   const onArchive = document.createElement('button');
   onArchive.className = 'archive-act';
   onArchive.append(icon('external', 'ic ic-inline'), document.createTextNode('On the archive'));
@@ -1046,11 +1101,11 @@ function archiveActions(w) {
     earlier.append(icon('chapters', 'ic ic-inline'),
       document.createTextNode(`Earlier versions (${w.versions})`));
     earlier.onclick = () => showVersions(w.work_id);
-    row.append(kudos, bookmark, comment, onArchive, earlier);
+    row.append(kudos, bookmark, comment, onArchive, refetch, earlier);
     return row;
   }
 
-  row.append(kudos, bookmark, comment, onArchive);
+  row.append(kudos, bookmark, comment, onArchive, refetch);
   return row;
 }
 
