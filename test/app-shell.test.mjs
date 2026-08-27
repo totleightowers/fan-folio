@@ -410,3 +410,29 @@ test('no control is drawn with a font glyph any more', () => {
   assert.deepEqual(glyphs, [], `Unicode glyphs still used as icons: ${glyphs.join(' ')}`);
   assert.ok(!css.includes('.glyph'), 'the glyph styles should have gone with the glyphs');
 });
+
+/**
+ * The stylesheet animates; the code decides when the animation is over. If
+ * they disagree the class comes off mid-movement, which reads as a snap at the
+ * end of something smooth — the exact defect this scale was made to remove.
+ */
+test('the motion scale is the same in the stylesheet and the code', async () => {
+  const { DURATION, EASING } = await import('../app/core/motion.js');
+  const tokens = Object.fromEntries(
+    [...css.matchAll(/--(dur[a-z-]*|ease-[a-z]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()])
+  );
+
+  assert.equal(tokens['dur-tap'], `${DURATION.tap}ms`);
+  assert.equal(tokens['dur-quick'], `${DURATION.quick}ms`);
+  assert.equal(tokens['dur'], `${DURATION.base}ms`);
+  assert.equal(tokens['dur-enter'], `${DURATION.enter}ms`);
+  assert.equal(tokens['ease-out'], EASING.out);
+  assert.equal(tokens['ease-in'], EASING.in);
+});
+
+test('no motion value is written as a bare literal', () => {
+  // one scale, or it stops being a scale
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');            // comments may mention ms
+  const literals = [...rules.matchAll(/(?:transition|animation)[^;{]*?(\d+m?s)/g)].map((m) => m[1]);
+  assert.deepEqual(literals, [], `durations outside the scale: ${literals.join(', ')}`);
+});
