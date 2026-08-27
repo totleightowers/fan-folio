@@ -129,9 +129,37 @@ const TABBED = new Set(['home', 'library', 'results']);
 /** The view currently on screen. */
 const showing = () => VIEWS.find((v) => !$(`#${v}`).hidden) ?? 'home';
 
-function show(name) {
+/**
+ * How one screen gives way to another.
+ *
+ * Screens used to be swapped: everything hidden except the destination, which
+ * simply appeared. That is functionally correct and spatially mute — it
+ * removes the main cue an app uses to teach where you went and how to get
+ * back. Motion here is deliberately small; the goal is continuity, not
+ * animation. Reading is left still.
+ */
+const MOTION = { forward: 'in-forward', back: 'in-back', lateral: 'in-lateral' };
+
+/* A page turn animates its own content, and the swipe that starts a work is
+   already carrying the page off. A view transition on top would be two
+   animations disagreeing about the same movement. */
+let suppressMotion = false;
+
+function show(name, motion = 'none') {
   if (name !== 'reader') keepAwake(false);
+  clearBackPreview();
+  const entering = $(`#${name}`);
+  const changing = entering.hidden;
   for (const v of VIEWS) $(`#${v}`).hidden = v !== name;
+
+  if (changing && !suppressMotion && MOTION[motion]) {
+    entering.classList.remove(...Object.values(MOTION));
+    // reflow, or re-entering the same view replays nothing at all
+    void entering.offsetWidth;
+    entering.classList.add(MOTION[motion]);
+    entering.addEventListener('animationend',
+      () => entering.classList.remove(MOTION[motion]), { once: true });
+  }
   $('#back').hidden = stack.depth === 0;
   $('#tabs').hidden = !TABBED.has(name);
   for (const b of $$('#tabs button')) {
@@ -158,13 +186,13 @@ function here() {
 
 function go(name) {
   if (!stack.go(here(), name)) return;
-  show(name);
+  show(name, 'forward');
 }
 
 function goBack() {
   const from = stack.back();
   if (!from) return false;
-  show(from.screen);
+  show(from.screen, 'back');
   /* Views are hidden rather than torn down, so the library's rows, the results
      and the work page are all still in the DOM exactly as they were left —
      returning is a matter of showing them again at the right offset, with no
@@ -176,6 +204,53 @@ function goBack() {
 }
 
 $('#back').onclick = () => goBack();
+
+/**
+ * Previewing where Back is going.
+ *
+ * From Android 14 the shell reports the back gesture as it happens rather than
+ * only when it finishes, so the screen can move with the finger and show that
+ * letting go will leave it. Without this the gesture is a binary event and the
+ * reader learns nothing until they have already gone.
+ *
+ * The current screen eases back and away, which is the shape the system uses
+ * for the same gesture elsewhere. There is nothing behind it to reveal — the
+ * destination is not rendered until the navigation happens — so the preview
+ * says "this is leaving" rather than pretending to show what arrives.
+ */
+window.__onBackStart = () => {
+  // nothing to preview when Back will close the app: let the system show that
+  if (stack.depth === 0) return;
+  const view = $(`#${showing()}`);
+  view?.classList.add('backing');
+};
+
+window.__onBackProgress = (p) => {
+  const view = $(`#${showing()}`);
+  if (!view?.classList.contains('backing')) return;
+  const amount = Math.max(0, Math.min(Number(p) || 0, 1));
+  view.style.setProperty('--back', String(amount));
+};
+
+window.__onBackCancel = () => {
+  const view = $(`#${showing()}`);
+  if (!view) return;
+  view.classList.add('back-settling');
+  view.style.setProperty('--back', '0');
+  setTimeout(() => {
+    view.classList.remove('backing', 'back-settling');
+    view.style.removeProperty('--back');
+  }, 180);
+};
+
+/** Whatever happens next, the preview must not be left on screen. */
+function clearBackPreview() {
+  for (const v of VIEWS) {
+    const el = $(`#${v}`);
+    el.classList.remove('backing', 'back-settling');
+    el.style.removeProperty('--back');
+  }
+}
 
 /* The shell asks this before it closes the app; true means we handled it. */
 window.__onBack = () => {
@@ -1439,6 +1514,8 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
       return;
     }
 
+    suppressMotion = true;   // the gesture is the transition
+
     // carry the page off, swap the content, bring the next one in from the
     // side the finger was heading towards
     settle(SWIPE.OUT);
@@ -1449,6 +1526,7 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
     setX(forward ? window.innerWidth : -window.innerWidth);
     await (forward ? goLeft() : goRight());
 
+    suppressMotion = false;
     requestAnimationFrame(() => {
       settle(SWIPE.IN);
       setX(0);
@@ -1542,8 +1620,8 @@ for (const b of $$('#tabs button')) {
   b.onclick = () => {
     stack.reset();
     const tab = b.dataset.tab;
-    if (tab === 'search') { show('results'); $('#q').focus(); return; }
-    show(tab);
+    if (tab === 'search') { show('results', 'lateral'); $('#q').focus(); return; }
+    show(tab, 'lateral');
     if (tab === 'library' && !offset) loadMore(true);
     if (tab === 'home') { buildHome(); buildStartHere(); }
   };
