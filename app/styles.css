@@ -1140,3 +1140,31 @@ button:disabled, .opt:disabled {
   .sheet-in, .sheet-out, .sheet-in::backdrop { animation: none; }
   .sheet-settling { transition: none; }
 }
+
+/* A shelf that hides its scrollbar and ends flush with the screen edge looks
+   like a shelf that ends. The fade goes only on a side that continues — a
+   permanent one would dim the last card of a shelf that fits, announcing
+   content that is not there. */
+.rail[data-overflow="end"] {
+  -webkit-mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 88%, transparent 100%);
+}
+.rail[data-overflow="start"] {
+  -webkit-mask-image: linear-gradient(to left, #000 88%, transparent 100%);
+  mask-image: linear-gradient(to left, #000 88%, transparent 100%);
+}
+.rail[data-overflow="both"] {
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 6%, #000 94%, transparent 100%);
+}
+
+/* Room for more of the shelf, and a library that stops being one long
+   column, once there is width to spend. */
+@media (min-width: 44.01rem) {
+  .rail { grid-auto-columns: 12.5rem; }
+  .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 0 1.4rem; }
+  #home, #library, #results, #detail { max-width: 62rem; margin-inline: auto; }
+}
+@media (min-width: 70rem) {
+  #home, #library, #results, #detail { max-width: 72rem; }
+}
