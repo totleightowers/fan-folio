@@ -572,3 +572,45 @@ test('the chapter body is not a horizontal scroll container', () => {
   assert.match(css, /#workskin table[\s\S]{0,200}overflow-x:\s*auto/,
     'anything genuinely wider than the column keeps a scroller of its own');
 });
+
+/**
+ * `hidden` must mean hidden, everywhere.
+ *
+ * The attribute works by a user-agent rule of `display: none`, and any author
+ * rule setting display beats it. `#tabs` declared `display: flex`, so setting
+ * `.hidden` on it did nothing: the tab bar stayed on screen in the reader, over
+ * the chapter navigation — which was present and correct underneath it the
+ * whole time.
+ *
+ * There was already a test for this exact bug shape, but it only looked at
+ * dialogs. The rule below is global, and so is this.
+ */
+test('hidden is never overridden by a display rule', () => {
+  assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/,
+    'one global rule, because the next element to grow a display rule will not remember either');
+});
+
+test('elements the code hides are not given a competing display', () => {
+  const hiddenInJs = [...new Set(
+    [...js.matchAll(/\$\('#([a-z0-9-]+)'\)\.hidden\s*=/g)].map((m) => m[1])
+  )];
+  assert.ok(hiddenInJs.length > 3, 'the app should be hiding things by attribute');
+
+  // the global rule above is what saves these; without it each is a bug
+  for (const id of hiddenInJs) {
+    const rule = css.match(new RegExp(`^#${id}\\s*\\{([^}]*)\\}`, 'm'));
+    if (!rule) continue;
+    if (/display:\s*(flex|block|grid|inline)/.test(rule[1])) {
+      assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/,
+        `#${id} sets display and is hidden by attribute; only the global rule makes that safe`);
+    }
+  }
+});
+
+test('the reader bar sits above anything sharing the bottom edge', () => {
+  const chapnav = css.slice(css.indexOf('#chapnav {'), css.indexOf('}', css.indexOf('#chapnav {')));
+  const tabs = css.slice(css.indexOf('#tabs {'), css.indexOf('}', css.indexOf('#tabs {')));
+  const z = (rule) => Number(rule.match(/z-index:\s*(\d+)/)?.[1] ?? 0);
+  assert.ok(z(chapnav) > z(tabs),
+    'both are fixed to the bottom; the reader\'s own controls must not end up underneath');
+});
