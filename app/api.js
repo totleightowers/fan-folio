@@ -549,7 +549,7 @@ export async function leaveKudos(workId) {
      duplicate is an error, and an error that says "already left kudos" is the
      one outcome worth treating as success. */
   const already = /already left kudos/i.test(res.body ?? '');
-  if (!already && res.status >= 400) throw new Error('The archive refused the kudos');
+  if (!already && res.status >= 400) throw new Error(refusal(res, 'The archive refused the kudos'));
 
   native.markWork(String(workId), 'kudos_given', true);
   return { workId, already };
@@ -566,8 +566,12 @@ export async function leaveKudos(workId) {
 export async function bookmarkWork(workId, { notes = '', tags = '', isPrivate = false, rec = false } = {}) {
   requireSignedIn();
   const referer = `/works/${Number(workId)}`;
-  const html = await page(`${ORIGIN}/works/${Number(workId)}/bookmarks/new`);
-  const form = findForm(html, ['id="bookmark-form"', 'id="new_bookmark"', 'action="/works/']);
+  /* view_adult, for the same reason workPage sends it: without it a Mature
+     work answers with the consent interstitial instead of the page asked for,
+     and that interstitial carries a form of its own. */
+  const html = await page(`${ORIGIN}/works/${Number(workId)}/bookmarks/new?view_adult=true`);
+  const form = findForm(html, ['id="bookmark-form"', 'id="new_bookmark"',
+    `action="/works/${Number(workId)}/bookmarks"`]);
   if (!form) throw new Error('The archive did not offer a bookmark form for that work');
 
   const fields = { ...form.fields };
@@ -583,7 +587,7 @@ export async function bookmarkWork(workId, { notes = '', tags = '', isPrivate = 
   set('[rec]', rec);
 
   const res = await submit(form.action, fields, referer);
-  if (res.status >= 400) throw new Error('The archive refused the bookmark');
+  if (res.status >= 400) throw new Error(refusal(res, 'The archive refused the bookmark'));
 
   native.markWork(String(workId), 'in_bookmarks', true);
   if (rec) native.markWork(String(workId), 'rec', true);
@@ -603,7 +607,8 @@ export async function commentOnWork(workId, text) {
 
   const referer = `/works/${Number(workId)}`;
   const html = await page(workPage(workId));
-  const form = findForm(html, ['id="new_comment"', 'action="/works/']);
+  const form = findForm(html, ['id="new_comment"',
+    `action="/works/${Number(workId)}/comments"`]);
   if (!form) throw new Error('That work does not take comments');
 
   const fields = { ...form.fields };
@@ -612,6 +617,6 @@ export async function commentOnWork(workId, text) {
   fields[key] = content;
 
   const res = await submit(form.action, fields, referer);
-  if (res.status >= 400) throw new Error('The archive refused the comment');
+  if (res.status >= 400) throw new Error(refusal(res, 'The archive refused the comment'));
   return { workId };
 }
