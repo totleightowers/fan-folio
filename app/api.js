@@ -141,8 +141,12 @@ const LOCAL = {
     for (const t of sql('SELECT kind, name FROM tags WHERE work_id = ? ORDER BY kind, name', [workId])) {
       (tags[t.kind] ??= []).push(t.name);
     }
+    const progress = one(
+      'SELECT chapter, offset, chapters_read FROM reading WHERE work_id = ?', [workId]);
     return {
       ...work,
+      at_chapter: progress?.chapter ?? null,
+      chapters_read: progress?.chapters_read ?? 0,
       tags,
       meta_html: workMetaHtml(work, tags),
       preface_html: workPrefaceHtml(work, parseAuthors(work.authors)),
@@ -302,6 +306,24 @@ export function nativeStatus() {
 
 export function importDatabase() {
   if (isNative) native.importDatabase();
+}
+
+/**
+ * Record where the reader has got to.
+ *
+ * One store, not two: everything that shows progress reads the same table.
+ * Failures are swallowed — losing a scroll position is not worth interrupting
+ * somebody's reading with an error.
+ */
+export async function saveProgress(workId, chapter, offset) {
+  try {
+    if (isNative) {
+      native.saveProgress(String(workId), Number(chapter), Number(offset) || 0);
+      return;
+    }
+    await fetch(`/api/progress?workId=${encodeURIComponent(workId)}`
+      + `&chapter=${Number(chapter)}&offset=${Number(offset) || 0}`, { method: 'POST' });
+  } catch { /* the reader carries on regardless */ }
 }
 
 /* --------------------------------------------------------------- signing in */

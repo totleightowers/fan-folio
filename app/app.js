@@ -7,7 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -15,6 +15,8 @@ const $$ = (sel) => [...document.querySelectorAll(sel)];
 /* ------------------------------------------------------------------ state */
 
 const PREFS_KEY = 'archive.prefs';
+/* A cache of what the database already knows, so the reader can restore a
+   scroll offset without a round trip. The database is the source of truth. */
 const POS_KEY = 'archive.positions';
 const VIEW_KEY = 'archive.view';
 
@@ -282,29 +284,6 @@ async function loadMore(reset = false) {
 new IntersectionObserver((entries) => {
   if (entries[0].isIntersecting && offset < total && !loading) loadMore();
 }).observe($('#more'));
-
-async function buildChips() {
-  return;   // superseded by the filter panel
-  // eslint-disable-next-line no-unreachable
-  let facets = null;
-  try { facets = await api('/api/facets'); } catch { /* older backend */ }
-  const box = $('#chips');
-  box.textContent = '';
-  for (const [key, label] of Object.entries(FILTER_LABELS)) {
-    const n = facets?.counts?.[key];
-    if (n === 0 && key !== 'all') continue;              // don't offer an empty filter
-    const chip = document.createElement('button');
-    chip.className = 'chip' + (view.filter === key ? ' on' : '');
-    chip.textContent = n == null ? label : `${label} ${n}`;
-    chip.onclick = () => {
-      view.filter = key;
-      save(VIEW_KEY, view);
-      buildChips();
-      loadMore(true);
-    };
-    box.append(chip);
-  }
-}
 
 $('#sort').value = view.sort;
 $('#sort').onchange = () => {
@@ -624,12 +603,21 @@ $('#q').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
   const q = e.target.value.trim();
   // a keystroke is not a query; 42 million words deserve a moment's patience
-  searchTimer = setTimeout(() => (q ? runSearch(q) : backToLibrary()), 250);
+  searchTimer = setTimeout(() => (q ? runSearch(q) : leaveSearch()), 250);
 });
 
-function backToLibrary() {
-  stack = [];
-  show('home');
+/**
+ * Leave the results, back to wherever searching began.
+ *
+ * This used to clear the navigation stack and go Home, which threw away the
+ * reader's filters, their scroll position and their sense of place — for the
+ * ordinary act of emptying a text field.
+ */
+let searchOrigin = 'home';
+
+function leaveSearch() {
+  const back = stack.length ? stack.at(-1).name : searchOrigin;
+  show(back === 'results' ? searchOrigin : back);
 }
 
 /* ------------------------------------------------------------------- home */
@@ -796,8 +784,8 @@ async function buildStartHere() {
   const later = document.createElement('button');
   later.className = 'start-tile';
   later.innerHTML = '<b>Marked for later</b><span>what you meant to get to</span>';
-  later.onclick = () => { view.filter = 'later'; view.fandom = ''; save(VIEW_KEY, view);
-    buildChips(); loadMore(true); show('library'); };
+  later.onclick = () => { view.state = 'later'; save(VIEW_KEY, view);
+    paintActiveFilters(); loadMore(true); show('library'); };
 
   const unread = document.createElement('button');
   unread.className = 'start-tile';
@@ -810,6 +798,9 @@ async function buildStartHere() {
 }
 
 async function runSearch(q) {
+  // remember where searching started, so clearing the box can return there
+  const showing = VIEWS.find((v) => !$(`#${v}`).hidden);
+  if (showing && showing !== 'results') searchOrigin = showing;
   const box = $('#results');
   box.innerHTML = '<div class="count">Searching…</div>';
   show('results');
@@ -842,7 +833,7 @@ async function runSearch(q) {
     // the snippet is the one place server HTML is trusted: SQLite built it from
     // <mark> delimiters we chose, over text we stored
     node.querySelector('.snip').innerHTML = h.snippet;
-    node.onclick = () => openChapter(h.work_id, h.number);
+    node.onclick = () => openChapter(h.work_id, h.number, { transient: true });
     box.append(node);
   }
   if (stack.at(-1)?.name !== 'results') stack.push({ name: 'results', scroll: 0 });
@@ -855,6 +846,11 @@ let currentWork = null;
 async function openWork(workId) {
   const w = await api(`/api/works/${workId}`);
   currentWork = w;
+  // the database is authoritative; the local cache only remembers the exact
+  // scroll offset, which is not worth a column of its own
+  if (w.at_chapter && (!positions[workId] || positions[workId].chapter !== w.at_chapter)) {
+    positions[workId] = { ...(positions[workId] ?? {}), chapter: w.at_chapter, y: 0 };
+  }
   const box = $('#detail');
   box.textContent = '';
 
@@ -908,7 +904,12 @@ async function openWork(workId) {
 
 let current = { workId: null, chapter: 1, count: 1 };
 
-async function openChapter(workId, number) {
+/* True while reading somewhere the reader jumped to from a search result.
+   Their bookmark stays where it was until they navigate deliberately. */
+let readingIsTransient = false;
+
+async function openChapter(workId, number, { transient = false } = {}) {
+  readingIsTransient = transient;
   const w = currentWork?.work_id === workId ? currentWork : await api(`/api/works/${workId}`);
   currentWork = w;
   const ch = await api(`/api/works/${workId}/chapters/${number}`);
@@ -943,6 +944,7 @@ async function openChapter(workId, number) {
   updateProgress();
 }
 
+// moving by hand is deliberate, so the bookmark starts following again
 $('#prev').onclick = () => openChapter(current.workId, current.chapter - 1);
 $('#next').onclick = () => openChapter(current.workId, current.chapter + 1);
 
@@ -990,10 +992,13 @@ addEventListener('scroll', () => {
   updateProgress();
   clearTimeout(posTimer);
   posTimer = setTimeout(() => {
+    // a search excursion must not move the reader's bookmark
+    if (readingIsTransient) return;
     positions[current.workId] = {
       chapter: current.chapter, y: Math.round(window.scrollY), at: Date.now(),
     };
     save(POS_KEY, positions);
+    saveProgress(current.workId, current.chapter, window.scrollY);
   }, 400);
 }, { passive: true });
 

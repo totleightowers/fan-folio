@@ -157,3 +157,28 @@ test('a proxied url is not decoded twice', () => {
   assert.ok(!java.includes('URLDecoder.decode'),
     'the query parameter arrives decoded already');
 });
+
+test('reading history is not handed to cloud backup by default', () => {
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  assert.match(manifest, /android:allowBackup="false"/,
+    'a record of what someone reads should not sync anywhere unasked');
+});
+
+test('reading position is written to one place, not two', () => {
+  // the reader once kept position in localStorage while every other view read
+  // the database, so Home called a half-read work unopened
+  assert.ok(js.includes('saveProgress('), 'the reader writes progress to the store');
+  const scroll = js.slice(js.indexOf("addEventListener('scroll'"), js.indexOf("/* ------------------------------------------------------- feeling like an app */"));
+  assert.ok(scroll.includes('saveProgress'), 'the scroll handler updates the shared store');
+  assert.ok(scroll.includes('readingIsTransient'), 'a search excursion does not move the bookmark');
+});
+
+test('the manifest is well-formed XML', () => {
+  // a comment inside an attribute list builds "successfully" right up until
+  // aapt2 refuses it, which is a slow way to find a typo
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  const opens = (manifest.match(/</g) || []).length;
+  const closes = (manifest.match(/>/g) || []).length;
+  assert.equal(opens, closes, 'angle brackets must balance');
+  assert.ok(!/<[a-z-]+\s[^>]*<!--/i.test(manifest), 'no comment inside a tag');
+});
