@@ -271,6 +271,7 @@ createServer(async (req, res) => {
         end_notes_html: work.end_notes_html ? sanitiseHtml(work.end_notes_html) : null,
         tags,
         chapters: Q.chapters.all(m[1]),
+        versions: db.prepare('SELECT count(*) AS n FROM chapter_versions WHERE work_id = ?').get(m[1])?.n ?? 0,
       });
     }
 
@@ -303,6 +304,26 @@ createServer(async (req, res) => {
         const raw = await readFile(new URL('../data/prefs.json', import.meta.url).pathname, 'utf8');
         return json(res, JSON.parse(raw));
       } catch { return json(res, { prefs: null }); }
+    }
+
+    if ((m = p.match(/^\/api\/works\/(\d+)\/versions$/))) {
+      return json(res, { versions: db.prepare(`
+        SELECT id, number, title, words, reason, archived_at
+          FROM chapter_versions WHERE work_id = ?
+         ORDER BY archived_at DESC, number ASC`).all(m[1]) });
+    }
+
+    if ((m = p.match(/^\/api\/works\/(\d+)\/versions\/(\d+)$/))) {
+      const row = db.prepare(`SELECT id, number, title, html, words, reason, archived_at
+                                FROM chapter_versions WHERE work_id = ? AND id = ?`).get(m[1], Number(m[2]));
+      if (!row) { res.writeHead(404); return res.end(); }
+      const work = Q.work.get(m[1]);
+      const images = new Map(Q.images.all(m[1]).map((i) => [i.url, `/img/${i.sha256}`]));
+      return json(res, {
+        ...row,
+        workTitle: work?.title ?? '',
+        ...renderChapter(row, { skinCss: work?.skin_css ?? null, images }),
+      });
     }
 
     if (p === '/api/search') {

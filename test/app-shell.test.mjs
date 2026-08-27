@@ -680,8 +680,10 @@ test('forwards still stops at the end of the work', () => {
   // past the last chapter there genuinely is nothing, and the resistance says so
   const wire = js.slice(js.indexOf('function wireSwipe('));
   const body = wire.slice(0, wire.indexOf('\n}\n'));
-  assert.match(body, /canLeft \?\? \(\(\) => current\.chapter < current\.count\)/,
+  assert.match(body, /canLeft \?\?[^\n]*current\.chapter < current\.count/,
     'the forward limit is still the last chapter');
+  assert.match(body, /canLeft \?\?[^\n]*!viewingArchive/,
+    'and an archived copy turns no pages at all: the chapter beside it is the current text');
 });
 
 /**
@@ -753,4 +755,36 @@ test('the settings icon is a cog, not a sun', () => {
   const rays = [...symbol.matchAll(/M[\d.]+ [\d.]+v[\d.]+/g)].length;
   assert.ok(rays < 4, 'radiating strokes read as a sun, whatever they were meant to be');
   assert.ok(symbol.includes('<circle'), 'a cog has a hub');
+});
+
+/**
+ * Kept chapters must be reachable.
+ *
+ * Versioning archived every replaced chapter from the day it went in, and
+ * nothing surfaced one — which makes keeping them a gesture rather than a
+ * feature. These copies are not on the archive any more; this is the only
+ * place they exist.
+ */
+test('a work with earlier versions offers them', () => {
+  const fn = js.slice(js.indexOf('function archiveActions('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /w\.versions > 0/, 'offered only when there is something to look at');
+  assert.match(body, /showVersions\(/, 'and it opens the list');
+});
+
+test('reading an archived copy does not move your place', () => {
+  const fn = js.slice(js.indexOf('async function openVersion('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /readingIsTransient = true/, 'an old copy must not move the bookmark');
+  assert.match(body, /viewingArchive = true/, 'and the page turns know to refuse');
+  assert.match(body, /#prev'\)\.disabled = true/, 'as do the buttons');
+});
+
+test('both backends can hand back a kept chapter', () => {
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  const serve = readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8');
+  for (const [name, src] of [['api.js', api], ['serve.mjs', serve]]) {
+    assert.match(src, /FROM chapter_versions WHERE work_id = \?/, `${name} lists versions`);
+    assert.match(src, /versions\\\/(\(\\d\+\)|\\d)/, `${name} routes to one`);
+  }
 });
