@@ -123,3 +123,12 @@ test('facets count within the current filter, not the whole library', () => {
 test('an unknown tag kind is refused', () => {
   assert.throws(() => buildFacetQuery({}, 'nonsense; DROP TABLE tags'), /unknown tag kind/);
 });
+
+test('a starred bookmark is filterable as a rec', () => {
+  const db = library();
+  db.prepare('UPDATE works SET rec = 1, in_bookmarks = 1 WHERE work_id = ?').run('2');
+  db.prepare('UPDATE works SET in_history = 1 WHERE work_id = ?').run('3');
+  assert.deepEqual(run(db, { state: 'rec' }), ['2']);
+  assert.deepEqual(run(db, { state: 'bookmarked' }), ['2']);
+  assert.deepEqual(run(db, { state: 'history' }), ['3']);
+});

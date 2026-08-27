@@ -33,6 +33,9 @@ export const STATES = {
   unread: 'COALESCE(r.chapters_read, 0) = 0 AND COALESCE(r.chapter, 0) <= 1',
   finished: 'r.chapters_read >= w.chapter_count AND w.chapter_count > 0',
   later: 'r.marked_later = 1',
+  rec: 'w.rec = 1',
+  bookmarked: 'w.in_bookmarks = 1',
+  history: 'w.in_history = 1',
 };
 
 export const TAG_KINDS = ['fandom', 'relationship', 'character', 'freeform', 'warning', 'category'];
@@ -114,6 +117,7 @@ export function buildWorksQuery(filters = {}) {
                  w.chapters_planned, w.complete, w.rating, w.published, w.updated,
                  w.downloaded_at, w.language,
                  w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
+                 w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship

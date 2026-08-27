@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS works (
   source_file    TEXT,
   fetched_at     TEXT,
   in_bookmarks   INTEGER DEFAULT 0,
+  -- a starred bookmark: the archive calls it a rec, and it is the strongest
+  -- signal in the whole library of what someone actually thought was good
+  rec            INTEGER DEFAULT 0,
   in_history     INTEGER DEFAULT 0,
   bookmarked_at  TEXT,
   last_visited   TEXT,
