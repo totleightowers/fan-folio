@@ -635,3 +635,29 @@ test('the chapter bar is defined once', () => {
   const blocks = [...css.matchAll(/^#chapnav \{/gm)].length;
   assert.equal(blocks, 1, 'one rule, not a stack of amendments to it');
 });
+
+/**
+ * A chapter must say what it belongs to.
+ *
+ * It began with bare prose: nothing named the work, and scrolling to the top
+ * to look for its front matter found nothing at all. The only route back was
+ * an unlabelled book icon in a row of six.
+ */
+test('the reader names the work, above the chapter', () => {
+  const reader = html.slice(html.indexOf('<section id="reader"'),
+    html.indexOf('</section>', html.indexOf('<section id="reader"')));
+  assert.ok(reader.includes('id="reader-head"'), 'the chapter carries a head');
+  assert.ok(reader.indexOf('id="reader-head"') < reader.indexOf('id="workskin"'),
+    'and it sits above the prose, where scrolling up arrives');
+
+  for (const id of ['rh-title', 'rh-by', 'rh-chapter']) {
+    assert.ok(reader.includes(`id="${id}"`), `#${id} is missing`);
+    assert.ok(js.includes(`$('#${id}').textContent`), `#${id} is never filled in`);
+  }
+});
+
+test('the head of the chapter is a way back to the work', () => {
+  assert.match(js, /\$\('#reader-head'\)\.onclick[\s\S]{0,80}openWork\(/,
+    'tapping the work title should open the work');
+  assert.match(html, /id="rh-go"[^>]*>[^<]+</, 'and it says where it goes, rather than hoping');
+});
