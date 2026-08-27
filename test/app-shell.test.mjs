@@ -281,3 +281,21 @@ test('a late response cannot overwrite a newer navigation', () => {
     assert.ok(/token !== pending/.test(source), `${fn} should stand down if superseded`);
   }
 });
+
+/**
+ * The back preview is driven by the shell, frame by frame, and the shell has
+ * no way to know whether the page cleaned up after itself. A preview left
+ * applied would leave a screen permanently shrunk and offset.
+ */
+test('every back-gesture hook the shell calls exists in the page', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  for (const hook of [...java.matchAll(/window\.(__on[A-Za-z]+)\s*&&/g)].map((m) => m[1])) {
+    assert.ok(js.includes(`window.${hook} =`), `the shell calls ${hook}, the page never defines it`);
+  }
+});
+
+test('navigating clears any half-finished back preview', () => {
+  const show = js.slice(js.indexOf('function show(name, motion'), js.indexOf('\n}\n', js.indexOf('function show(name, motion')));
+  assert.ok(show.includes('clearBackPreview()'),
+    'a cancelled or completed gesture must not leave a screen shrunk and offset');
+});
