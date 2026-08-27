@@ -66,7 +66,14 @@ body {
   color: inherit; padding: .4rem .7rem; cursor: pointer; min-width: 2.6rem;
 }
 
-.view { padding: .5rem .7rem 4rem; }
+.view {
+  padding: .5rem .7rem 4rem;
+  /* A view only as tall as its content leaves the space beneath it belonging
+     to nobody: a swipe started there reached the page, not the view, and the
+     gesture silently did nothing. On a work with a short summary that dead
+     zone is most of the screen. */
+  min-height: calc(100dvh - 3.5rem);
+}
 .list { display: flex; flex-direction: column; }
 
 /* ---------------------------------------------------------------- a work */

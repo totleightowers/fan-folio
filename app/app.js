@@ -8,7 +8,7 @@
  */
 
 import { History } from './core/nav.js';
-import { axisOf, travel, commits, inSystemEdge } from './core/gesture.js';
+import { axisOf, travel, commits, inSystemEdge, ownsHorizontal } from './core/gesture.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -1331,6 +1331,23 @@ function keepAwake(on) {
  * to, and either completes or visibly settles back. The requirement is not the
  * animation — it is that the surface answers the finger continuously.
  */
+/**
+ * Whether this point belongs to something that scrolls sideways itself.
+ *
+ * A tag row and a shelf of cards both pan horizontally, and a finger that
+ * lands on one is asking for that pan, not for a page turn.
+ */
+function scrollsSideways(node) {
+  for (let el = node; el && el !== document.body; el = el.parentElement) {
+    const { scrollWidth, clientWidth } = el;
+    if (scrollWidth <= clientWidth + 4) continue;      // cheap test before styles
+    if (ownsHorizontal({ scrollWidth, clientWidth, overflowX: getComputedStyle(el).overflowX })) {
+      return true;
+    }
+  }
+  return false;
+}
+
 const SWIPE = {
   OUT: 180,          // ms to carry a committed page off screen
   IN: 200,           // ms to bring the next one on
@@ -1372,6 +1389,11 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
     // the screen edges belong to the system, not to us
     if (inSystemEdge(e.clientX, window.innerWidth)) return;
     if (el.classList.contains('settling')) return;
+    /* A row of tags or a shelf of cards scrolls sideways under the finger, and
+       that scroll is the gesture the reader meant. The work page is mostly
+       such rows, which is why swiping it so often appeared to do nothing:
+       whichever surface the finger landed on had already claimed the movement. */
+    if (scrollsSideways(e.target)) return;
     x0 = e.clientX; y0 = e.clientY;
     tracking = true; dragging = false;
     pointerId = e.pointerId;
