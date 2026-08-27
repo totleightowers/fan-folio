@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    No versionCode or versionName here on purpose: the build generates them
+    from the tag that names the release, into a copy of this file. A version
+    written here would win over anything the build supplied, which is how the
+    package came to keep reporting 0.1.
+-->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.fanfolio"
-    android:versionCode="1"
-    android:versionName="0.1">
+    package="org.fanfolio">
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
