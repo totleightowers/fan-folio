@@ -104,6 +104,7 @@ public class MainActivity extends Activity {
 
         registerBackGesture();
         openDatabase();
+        pendingLink = linkFrom(getIntent());
         web.loadUrl(ORIGIN + "/index.html");
     }
 
@@ -148,6 +149,53 @@ public class MainActivity extends Activity {
     @Override public void onBackPressed() {
         if (Build.VERSION.SDK_INT >= 33) return;     // the dispatcher owns it there
         handleBack();
+    }
+
+    /* --------------------------------------------------------- opening links */
+
+    /**
+     * A link the reader opened or shared into the app.
+     *
+     * Held until the page says it is ready. An intent can arrive before the
+     * WebView has loaded — that is the usual case on a cold start — and
+     * calling into a page that does not exist yet silently does nothing.
+     */
+    private String pendingLink;
+
+    /** The work link out of an intent, whether opened or shared. */
+    private String linkFrom(Intent intent) {
+        if (intent == null) return null;
+        String action = intent.getAction();
+        if (Intent.ACTION_VIEW.equals(action)) {
+            Uri data = intent.getData();
+            return data == null ? null : data.toString();
+        }
+        if (Intent.ACTION_SEND.equals(action)) {
+            // shared text is often "Title https://…" rather than a bare link
+            String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+            if (text == null) return null;
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("https?://\\S*/works/\\d+\\S*").matcher(text);
+            return m.find() ? m.group() : text.trim();
+        }
+        return null;
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String link = linkFrom(intent);
+        if (link != null) deliverLink(link);
+    }
+
+    private void deliverLink(final String link) {
+        if (web == null) { pendingLink = link; return; }
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                web.evaluateJavascript(
+                    "window.__openLink && window.__openLink(" + quote(link) + ")", null);
+            }
+        });
     }
 
     /* ------------------------------------------------------------ database */
@@ -623,6 +671,17 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
             }
+        }
+
+        /**
+         * The page is ready. Hand over anything that arrived before it was.
+         */
+        @JavascriptInterface
+        public String takePendingLink() {
+            mustBeOurPage();
+            String link = pendingLink;
+            pendingLink = null;
+            return link == null ? "" : link;
         }
 
         /** Open the archive's login page. */

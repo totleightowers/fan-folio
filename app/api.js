@@ -308,6 +308,12 @@ export function importDatabase() {
   if (isNative) native.importDatabase();
 }
 
+/** A link the shell was opened with, if it arrived before the page was ready. */
+export function pendingLink() {
+  if (!isNative) return '';
+  try { return native.takePendingLink() || ''; } catch { return ''; }
+}
+
 /**
  * Record where the reader has got to.
  *
