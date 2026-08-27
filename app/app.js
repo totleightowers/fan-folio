@@ -7,6 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
+import { History } from './core/nav.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -119,15 +120,18 @@ function applyPrefs() {
 /* ------------------------------------------------------------------ views */
 
 const VIEWS = ['setup', 'home', 'library', 'results', 'detail', 'reader'];
-let stack = [];
+const stack = new History();
 
 /** Views the tab bar owns; anything deeper hides it and shows Back instead. */
 const TABBED = new Set(['home', 'library', 'results']);
 
+/** The view currently on screen. */
+const showing = () => VIEWS.find((v) => !$(`#${v}`).hidden) ?? 'home';
+
 function show(name) {
   if (name !== 'reader') keepAwake(false);
   for (const v of VIEWS) $(`#${v}`).hidden = v !== name;
-  $('#back').hidden = stack.length === 0;
+  $('#back').hidden = stack.depth === 0;
   $('#tabs').hidden = !TABBED.has(name);
   for (const b of $$('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === (name === 'results' ? 'search' : name));
@@ -136,17 +140,37 @@ function show(name) {
   window.scrollTo(0, 0);
 }
 
+/**
+ * Where the reader was, recorded so they can be put back there exactly.
+ *
+ * The stack used to hold the screen being *entered*, along with the scroll
+ * offset of the screen being left — two halves of different places in one
+ * entry. Since opening a tab empties the stack, opening a work from the
+ * library pushed the only entry there was, and going back popped it and found
+ * nothing underneath: the library became Home, at somebody else's scroll
+ * position. An entry now describes the place it came from, which is the only
+ * thing Back ever needs to know.
+ */
+function here() {
+  return { screen: showing(), scrollY: window.scrollY, query: $('#q').value };
+}
+
 function go(name) {
-  stack.push({ name, scroll: window.scrollY });
+  if (!stack.go(here(), name)) return;
   show(name);
 }
 
 function goBack() {
-  if (!stack.length) return false;
-  stack.pop();
-  const prev = stack.at(-1);
-  show(prev?.name ?? 'home');
-  if (prev) window.scrollTo(0, prev.scroll);
+  const from = stack.back();
+  if (!from) return false;
+  show(from.screen);
+  /* Views are hidden rather than torn down, so the library's rows, the results
+     and the work page are all still in the DOM exactly as they were left —
+     returning is a matter of showing them again at the right offset, with no
+     refetch and no flash of rebuilt content. */
+  $('#q').value = from.query ?? '';
+  paintSearchPlaceholder();
+  requestAnimationFrame(() => window.scrollTo(0, from.scrollY ?? 0));
   return true;
 }
 
@@ -654,15 +678,17 @@ function paintSearchPlaceholder() {
 /**
  * Leave the results, back to wherever searching began.
  *
- * This used to clear the navigation stack and go Home, which threw away the
- * reader's filters, their scroll position and their sense of place — for the
- * ordinary act of emptying a text field.
+ * Emptying the box is the same movement as pressing Back: it returns to the
+ * place the search was typed from, at the offset it was typed from. This used
+ * to clear the stack and go Home, throwing away the reader's filters, their
+ * scroll position and their sense of place for the ordinary act of emptying a
+ * text field.
  */
 let searchOrigin = 'home';
 
 function leaveSearch() {
-  const back = stack.length ? stack.at(-1).name : searchOrigin;
-  show(back === 'results' ? searchOrigin : back);
+  if (showing() !== 'results') return;
+  if (!goBack()) show(searchOrigin);
 }
 
 /* ------------------------------------------------------------------- home */
@@ -850,7 +876,7 @@ async function runSearch(q) {
   searchInScope = scope;
   const box = $('#results');
   box.innerHTML = '<div class="count">Searching…</div>';
-  show('results');
+  go('results');
 
   const params = new URLSearchParams({ q, scope });
   // searching the library searches *this* library: whatever is already
@@ -934,7 +960,6 @@ async function runSearch(q) {
     for (const h of hits) box.append(passage(h));
   }
 
-  if (stack.at(-1)?.name !== 'results') stack.push({ name: 'results', scroll: 0 });
 }
 
 const SCOPE_SUMMARY = {
@@ -1067,7 +1092,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
   $('#prev').disabled = number <= 1;
   $('#next').disabled = number >= w.chapter_count;
 
-  if (stack.at(-1)?.name !== 'reader') go('reader'); else show('reader');
+  go('reader');   // a no-op when already reading, e.g. turning a page
   keepAwake(true);
 
   const saved = positions[workId];
@@ -1260,7 +1285,7 @@ for (const [id, key, transform] of [
 
 for (const b of $$('#tabs button')) {
   b.onclick = () => {
-    stack = [];
+    stack.reset();
     const tab = b.dataset.tab;
     if (tab === 'search') { show('results'); $('#q').focus(); return; }
     show(tab);
