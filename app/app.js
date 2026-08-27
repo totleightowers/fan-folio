@@ -9,6 +9,7 @@
 
 import { History } from './core/nav.js';
 import { DURATION } from './core/motion.js';
+import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
@@ -772,6 +773,7 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
+  '#to-work', '#on-archive',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -1746,6 +1748,17 @@ async function showChapterDrawer(workId, at) {
 /* The chapter, on the archive. Chapter ids are the archive's own and are not
    stored here, so this opens the full-work view at the right anchor — which is
    the same place, reached by a route that needs nothing we do not have. */
+/**
+ * Up to the work, which is not the same as back.
+ *
+ * A card on the Continue reading shelf opens the chapter directly, so the
+ * work's own page was never visited and Back rightly returns to the shelf. That
+ * left no route to it at all: the summary, the tags, the chapter list, the
+ * kudos button. This is that route, and it exists whether or not the work page
+ * happens to be behind us.
+ */
+$('#to-work').onclick = () => current.workId && openWork(current.workId);
+
 $('#on-archive').onclick = () => {
   if (!current.workId) return;
   openOnArchive(`/works/${current.workId}?view_full_work=true#chapter-${current.chapter}`);
@@ -1837,121 +1850,29 @@ const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)
  * @param surface   the element whose --page-x is animated (the content, not
  *                  the chrome: the chapter bar must not slide off with the prose)
  */
+/**
+ * Turning a page.
+ *
+ * The gesture itself lives in core/swipe.js so it can be run outside a
+ * browser: two attempts at fixing page turns were made by reasoning about this
+ * code and shipping an APK, and both were wrong. Everything it touches is
+ * passed in, and there are tests that drive a fake finger across a fake
+ * surface and assert that the page turned.
+ */
 function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight = null } = {}) {
-  const allowLeft = canLeft ?? (() => current.chapter < current.count);
-  const allowRight = canRight ?? (() => current.chapter > 1);
-  const goLeft = onLeft ?? (() => openChapter(current.workId, current.chapter + 1));
-  const goRight = onRight ?? (() => openChapter(current.workId, current.chapter - 1));
-
-  let x0 = 0; let y0 = 0;
-  let origin = null;       // what the finger actually landed on
-  let tracking = false;    // finger down, axis not yet decided
-  let dragging = false;    // committed to the horizontal axis
-  let pointerId = null;
-
-  const setX = (px) => el.style.setProperty('--page-x', `${px}px`);
-  const settle = (ms) => {
-    el.style.setProperty('--page-ms', `${ms}ms`);
-    el.classList.add('settling');
-  };
-  const done = () => {
-    el.classList.remove('settling', 'swiping');
-    el.style.removeProperty('--page-x');
-    el.style.removeProperty('--page-ms');
-    tracking = dragging = false;
-    pointerId = null;
-  };
-
-  el.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    // the screen edges belong to the system, not to us
-    if (inSystemEdge(e.clientX, window.innerWidth)) return;
-    if (el.classList.contains('settling')) return;
-    origin = e.target;
-    x0 = e.clientX; y0 = e.clientY;
-    tracking = true; dragging = false;
-    pointerId = e.pointerId;
-  }, { passive: true });
-
-  el.addEventListener('pointermove', (e) => {
-    if (!tracking || e.pointerId !== pointerId) return;
-    const dx = e.clientX - x0;
-    const dy = e.clientY - y0;
-
-    if (!dragging) {
-      const axis = axisOf(dx, dy);
-      if (axis === 'vertical') { tracking = false; return; }   // the browser's
-      if (axis === 'undecided') return;
-
-      /* A tag row or a shelf under the finger owns the movement — but only
-         while it still has somewhere to go that way. This cannot be decided on
-         pointerdown, because the direction is not known until the finger has
-         moved, and deciding it early is what stopped chapters turning at all. */
-      if (scrollsSideways(origin, Math.sign(dx))) { tracking = false; return; }
-
-      dragging = true;
-      el.classList.add('swiping');
-      el.setPointerCapture?.(e.pointerId);
-    }
-
-    const blocked = (dx < 0 && !allowLeft()) || (dx > 0 && !allowRight());
-    setX(travel(dx, { blocked }));
-  }, { passive: true });
-
-  const release = async (e) => {
-    if (!tracking || (pointerId != null && e.pointerId !== pointerId)) return;
-    if (!dragging) { done(); return; }
-
-    const dx = e.clientX - x0;
-    const forward = dx < 0;
-    const allowed = forward ? allowLeft() : allowRight();
-    const committed = commits(dx, window.innerWidth, { allowed });
-
-    if (!committed) {
-      // a pull towards a chapter that isn't there: the resistance already said
-      // so, and this is the same refusal in another sense
-      if (!allowed && commits(dx, window.innerWidth)) tick('reject');
-      settle(DURATION.base);           // visibly back where it started
-      setX(0);
-      setTimeout(done, DURATION.base + 10);
-      return;
-    }
-
-    tick('commit');
-
-    if (reduceMotion()) {
-      done();
-      await (forward ? goLeft() : goRight());
-      return;
-    }
-
-    suppressMotion = true;   // the gesture is the transition
-
-    // carry the page off, swap the content, bring the next one in from the
-    // side the finger was heading towards
-    settle(SWIPE.OUT);
-    setX(forward ? -window.innerWidth : window.innerWidth);
-    await new Promise((r) => setTimeout(r, SWIPE.OUT));
-
-    el.classList.remove('settling');
-    setX(forward ? window.innerWidth : -window.innerWidth);
-    await (forward ? goLeft() : goRight());
-
-    suppressMotion = false;
-    requestAnimationFrame(() => {
-      settle(SWIPE.IN);
-      setX(0);
-      setTimeout(done, SWIPE.IN + 10);
-    });
-  };
-
-  el.addEventListener('pointerup', release, { passive: true });
-  el.addEventListener('pointercancel', () => {
-    if (!dragging) { done(); return; }
-    settle(DURATION.base);
-    setX(0);
-    setTimeout(done, DURATION.base + 10);
-  }, { passive: true });
+  return createSwipe(el, {
+    onLeft: onLeft ?? (() => openChapter(current.workId, current.chapter + 1)),
+    onRight: onRight ?? (() => openChapter(current.workId, current.chapter - 1)),
+    canLeft: canLeft ?? (() => current.chapter < current.count),
+    canRight: canRight ?? (() => current.chapter > 1),
+    viewportWidth: () => window.innerWidth,
+    scrollsSideways,
+    reduceMotion,
+    onCommit: () => { tick('commit'); suppressMotion = true; },
+    onReject: () => tick('reject'),
+    duration: { out: DURATION.base, in: DURATION.enter, settle: DURATION.base },
+    frame: (fn) => { suppressMotion = false; requestAnimationFrame(fn); },
+  });
 }
 
 wireSwipe($('#reader'));
