@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private static final String HOST = "appassets.androidplatform.net";
     private static final String ORIGIN = "https://" + HOST;
     private static final int PICK_DATABASE = 1;
+    private static final int SAVE_DATABASE = 2;
     private static final int MAX_ROWS = 2000;
 
     /* Statements that read nothing useful and reach outside this archive. */
@@ -831,6 +832,33 @@ public class MainActivity extends Activity {
             pick.setType("*/*");
             try { startActivityForResult(pick, PICK_DATABASE); } catch (Exception ignored) {}
         }
+
+        /**
+         * Write the whole library somewhere the reader chooses.
+         *
+         * Everything the app holds — the works, the chapters, the reading
+         * positions, the search index — is that one file, and until now there
+         * was no way to get a copy of it off the phone. A library assembled
+         * over months with no way to back it up is a library waiting to be
+         * lost.
+         */
+        @JavascriptInterface
+        public void exportDatabase() {
+            mustBeOurPage();
+            Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            save.addCategory(Intent.CATEGORY_OPENABLE);
+            save.setType("application/octet-stream");
+            save.putExtra(Intent.EXTRA_TITLE, "fanfolio-" + today() + ".db");
+            try { startActivityForResult(save, SAVE_DATABASE); } catch (Exception ignored) {}
+        }
+
+        /** Bytes on disk, so the page can say what a backup will cost. */
+        @JavascriptInterface
+        public long databaseSize() {
+            mustBeOurPage();
+            File f = databaseFile();
+            return f.exists() ? f.length() : 0L;
+        }
     }
 
     /** The work row, its tags, its chapters and their index entries. */
@@ -913,9 +941,44 @@ public class MainActivity extends Activity {
             .format(new java.util.Date());
     }
 
+    private static String today() {
+        return new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .format(new java.util.Date());
+    }
+
+    /**
+     * Copy the library out to the document the reader picked.
+     *
+     * The database runs in WAL mode, so it is really several files: copying
+     * archive.db alone silently drops whatever the write-ahead log still
+     * holds, which is the most recent reading of all. Checkpointing first
+     * folds the log back into the file being copied.
+     */
+    private void saveDatabaseTo(Uri target) {
+        try {
+            if (db != null) db.execSQL("PRAGMA wal_checkpoint(TRUNCATE)");
+        } catch (Exception ignored) {
+            // an un-checkpointable database still copies; it just may lag
+        }
+        boolean ok = true;
+        try (InputStream in = new java.io.FileInputStream(databaseFile());
+             OutputStream out = getContentResolver().openOutputStream(target)) {
+            byte[] buf = new byte[1 << 16];
+            int read;
+            while ((read = in.read(buf)) > 0) out.write(buf, 0, read);
+        } catch (Exception e) {
+            ok = false;
+        }
+        final String js = ok ? "window.__backupDone && window.__backupDone()"
+                             : "window.__backupFailed && window.__backupFailed()";
+        runOnUiThread(new Runnable() { @Override public void run() { toPage(js); } });
+    }
+
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request != PICK_DATABASE || result != RESULT_OK || data == null || data.getData() == null) return;
+        if (result != RESULT_OK || data == null || data.getData() == null) return;
+        if (request == SAVE_DATABASE) { saveDatabaseTo(data.getData()); return; }
+        if (request != PICK_DATABASE) return;
         try (InputStream in = getContentResolver().openInputStream(data.getData());
              OutputStream out = new FileOutputStream(databaseFile())) {
             byte[] buf = new byte[1 << 16];

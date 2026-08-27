@@ -9,6 +9,7 @@
 
 import { History } from './core/nav.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
+import { exportDatabase, databaseSize } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -120,7 +121,7 @@ function applyPrefs() {
 
 /* ------------------------------------------------------------------ views */
 
-const VIEWS = ['setup', 'home', 'library', 'results', 'detail', 'reader'];
+const VIEWS = ['setup', 'home', 'library', 'results', 'detail', 'reader', 'settings'];
 const stack = new History();
 
 /** Views the tab bar owns; anything deeper hides it and shows Back instead. */
@@ -793,10 +794,14 @@ function markOverflow(rail) {
 /** Watch every rail on screen, and any that appear later. */
 function watchRails(root = document) {
   for (const rail of root.querySelectorAll?.('.rail') ?? []) {
-    if (rail.dataset.watched) continue;
-    rail.dataset.watched = '1';
+    if (!rail.dataset.watched) {
+      rail.dataset.watched = '1';
+      rail.addEventListener('scroll', () => markOverflow(rail), { passive: true });
+    }
+    /* Re-measured every time, not only when first seen: a rail is watched the
+       moment it exists, which is before its cards are in it. Measuring once
+       would decide an empty rail has nothing more on it and never look again. */
     markOverflow(rail);
-    rail.addEventListener('scroll', () => markOverflow(rail), { passive: true });
   }
 }
 
@@ -804,6 +809,82 @@ function watchRails(root = document) {
    would miss all of them. */
 new MutationObserver(() => watchRails()).observe(document.body, { childList: true, subtree: true });
 addEventListener('resize', () => { for (const r of $$('.rail')) markOverflow(r); }, { passive: true });
+
+/* --------------------------------------------------------------- settings */
+
+/**
+ * One place for the things that are not reading.
+ *
+ * The account button used to live inside the reading-settings dialog, between
+ * line spacing and text alignment, which is not where anybody would look for
+ * it. Backing up had no home at all — the library is a single file assembled
+ * over months and there was no way to get a copy of it off the phone.
+ */
+const VERSION = 'v0.14.0';
+
+async function buildSettings() {
+  const facts = $('#library-facts');
+  facts.textContent = '';
+  const add = (term, value) => {
+    const dt = document.createElement('dt');
+    const dd = document.createElement('dd');
+    dt.textContent = term;
+    dd.textContent = value;
+    facts.append(dt, dd);
+  };
+
+  try {
+    const home = await api('/api/home');
+    const s = home.stats ?? {};
+    add('Works', fmt(s.works ?? 0));
+    add('Words', fmt(s.words ?? 0));
+    add('Finished', fmt(s.finished ?? 0));
+    add('Words read', fmt(s.wordsRead ?? 0));
+  } catch (e) {
+    add('Library', `could not be read: ${e.message}`);
+  }
+
+  const bytes = databaseSize();
+  if (bytes) add('Backup size', `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`);
+
+  $('#version').textContent = `Fan Folio ${VERSION}`;
+  paintAccount();
+}
+
+$('#open-settings').onclick = () => { go('settings'); buildSettings(); };
+$('#open-typo').onclick = () => openSheet($('#typography'));
+
+/* The setup screen has its own import button; this is the same action reached
+   from a library that already exists, so it warns rather than simply doing it. */
+$('#import-replace').onclick = () => {
+  if (!isNative) { toast('Import is only available in the app'); return; }
+  importDatabase();
+};
+
+$('#backup').onclick = () => {
+  const state = $('#backup-state');
+  if (!exportDatabase()) { toast('Backing up needs the app'); return; }
+  state.hidden = false;
+  state.textContent = 'Choose where to put it…';
+  $('#backup').classList.add('is-busy');
+};
+
+/* The shell tells the page how the copy went; it cannot report from inside the
+   file picker, and a backup that silently did nothing is worse than none. */
+window.__backupDone = () => {
+  $('#backup').classList.remove('is-busy');
+  const state = $('#backup-state');
+  state.hidden = false;
+  state.textContent = 'Backed up. Keep it somewhere that is not this phone.';
+  toast('Library backed up');
+};
+
+window.__backupFailed = () => {
+  $('#backup').classList.remove('is-busy');
+  const state = $('#backup-state');
+  state.hidden = false;
+  state.textContent = 'That did not save. There may not be room for it.';
+};
 
 /* ------------------------------------------------------------------ sheets */
 
