@@ -592,6 +592,58 @@ public class MainActivity extends Activity {
         return false;
     }
 
+    /**
+     * Open a page in a browser, and never in here.
+     *
+     * Handing ACTION_VIEW to a chooser and asking it to exclude this app did
+     * not work: the chooser came back empty and said no app could perform the
+     * action, on a phone with browsers on it. Whatever the chooser was doing,
+     * relying on it to do the filtering was the mistake.
+     *
+     * Browsers are found instead by asking who handles an ordinary web address
+     * — an app that has merely registered an archive link does not answer that
+     * — and the real link is then handed to one of them explicitly. Nothing is
+     * left to a chooser's judgement about what belongs in the list.
+     */
+    private void toBrowser(URL u) {
+        Uri target = Uri.parse(u.toString());
+        Intent probe = new Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com"));
+        probe.addCategory(Intent.CATEGORY_BROWSABLE);
+
+        java.util.List<Intent> options = new java.util.ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (android.content.pm.ResolveInfo r
+                : getPackageManager().queryIntentActivities(probe, 0)) {
+            if (r.activityInfo == null) continue;
+            String pkg = r.activityInfo.packageName;
+            if (getPackageName().equals(pkg) || !seen.add(pkg)) continue;
+            Intent open = new Intent(Intent.ACTION_VIEW, target);
+            open.addCategory(Intent.CATEGORY_BROWSABLE);
+            open.setPackage(pkg);
+            options.add(open);
+        }
+
+        if (options.isEmpty()) {
+            toPage("window.__noBrowser && window.__noBrowser()");
+            return;
+        }
+
+        try {
+            if (options.size() == 1) {
+                startActivity(options.get(0));
+                return;
+            }
+            /* Several browsers: a chooser built from intents that already name
+               their target, rather than one asked to work out the list itself. */
+            Intent chooser = Intent.createChooser(options.remove(0), "Open on the archive");
+            chooser.putExtra(Intent.EXTRA_INITIAL_INTENTS,
+                options.toArray(new android.os.Parcelable[0]));
+            startActivity(chooser);
+        } catch (Exception e) {
+            toPage("window.__noBrowser && window.__noBrowser()");
+        }
+    }
+
     private static String errorJson(String message) {
         return "{\"error\":" + org.json.JSONObject.quote(String.valueOf(message)) + "}";
     }
@@ -917,54 +969,9 @@ public class MainActivity extends Activity {
             mustBeOurPage();
             final URL u = archiveUrl(path);
             if (u == null) return;
-            runOnUiThread(new Runnable() { @Override public void run() {
-                Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(u.toString()));
-                view.addCategory(Intent.CATEGORY_BROWSABLE);
-
-                /* Everything that could open this, minus ourselves. If that
-                   leaves nothing, an empty chooser saying no app can perform
-                   the action is worse than saying so plainly — so the page is
-                   told instead. */
-                java.util.List<android.content.pm.ResolveInfo> handlers =
-                    getPackageManager().queryIntentActivities(view, 0);
-                boolean somebodyElse = false;
-                for (android.content.pm.ResolveInfo r : handlers) {
-                    if (r.activityInfo != null
-                            && !getPackageName().equals(r.activityInfo.packageName)) {
-                        somebodyElse = true;
-                        break;
-                    }
-                }
-                if (!somebodyElse) {
-                    toPage("window.__noBrowser && window.__noBrowser()");
-                    return;
-                }
-
-                try {
-                    Intent chooser = Intent.createChooser(view, "Open on the archive");
-                    chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS,
-                        new android.content.ComponentName[]{
-                            new android.content.ComponentName(MainActivity.this, MainActivity.class)
-                        });
-                    startActivity(chooser);
-                } catch (Exception e) {
-                    toPage("window.__noBrowser && window.__noBrowser()");
-                }
-            }});
+            runOnUiThread(new Runnable() { @Override public void run() { toBrowser(u); } });
         }
 
-        @JavascriptInterface
-        public void keepAwake(final boolean on) {
-            mustBeOurPage();
-            runOnUiThread(new Runnable() {
-                @Override public void run() {
-                    if (on) getWindow().addFlags(
-                        android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                    else getWindow().clearFlags(
-                        android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-                }
-            });
-        }
 
         /**
          * Store a work the page has just fetched and parsed.
