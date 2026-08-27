@@ -1454,3 +1454,38 @@ button:disabled, .opt:disabled {
   color: var(--accent);
 }
 #rh-go::after { content: ' \203a'; }
+
+/* ------------------------------------------------ metadata worth tapping
+ *
+ * The work page listed its tags, its author, its rating and its language as
+ * plain text: it told you the work was Fluff and left you to go and type that
+ * somewhere else. Each is now a way into the library.
+ *
+ * They keep AO3's own tag classes so its stylesheet still dresses them; this
+ * only undoes the parts of a button nobody wants here.
+ */
+.metapill {
+  font: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: var(--link, var(--accent));
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  /* the visible text stays inline with its neighbours; only what answers a
+     finger is grown, and only downwards, since these sit in wrapped rows */
+  position: relative;
+}
+.metapill::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  translate: 0 -50%;
+  height: max(100%, 2.75rem);
+}
+.metapill:active { text-decoration: underline; text-decoration-thickness: 2px; }
+.ao3page .byline .metapill { font: inherit; color: var(--link, var(--accent)); }
