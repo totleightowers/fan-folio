@@ -207,6 +207,37 @@
   </div>
 </dialog>
 
+<dialog id="bookmark-dialog">
+  <h2>Bookmark on the archive</h2>
+  <label class="stacked">Notes
+    <textarea id="bm-notes" rows="3" placeholder="Why you kept it"></textarea>
+  </label>
+  <label class="stacked">Tags
+    <input id="bm-tags" type="text" placeholder="comma, separated">
+  </label>
+  <label>Private <input id="bm-private" type="checkbox"></label>
+  <label>Recommend <input id="bm-rec" type="checkbox"></label>
+  <p id="bm-status" class="addwork-status" hidden></p>
+  <div class="filter-foot">
+    <button data-close="bookmark-dialog">Cancel</button>
+    <button id="bm-go" class="primary">Bookmark</button>
+  </div>
+</dialog>
+
+<dialog id="comment-dialog">
+  <h2>Comment</h2>
+  <p class="setting-note">This is posted to the archive under your account, and authors are
+    notified. It cannot be taken back from here.</p>
+  <label class="stacked">Comment
+    <textarea id="cm-text" rows="5" placeholder="Say something to the author"></textarea>
+  </label>
+  <p id="cm-status" class="addwork-status" hidden></p>
+  <div class="filter-foot">
+    <button data-close="comment-dialog">Cancel</button>
+    <button id="cm-go" class="primary">Post comment</button>
+  </div>
+</dialog>
+
 <dialog id="filters">
   <div class="filter-head">
     <button class="close-x" data-close="filters" aria-label="Close">×</button>

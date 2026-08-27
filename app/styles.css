@@ -846,7 +846,7 @@ dialog h2 {
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --press: rgb(255 255 255 / .11); } }
 
 .work, .hit, .card, .continue-card, .start-tile, .work-card, .tagpill, .chip,
-#chapnav button, #read-now, #closetypo, #chappos,
+#chapnav button, #read-now, #closetypo, #chappos, .archive-act,
 .icon, .browse-tab, .filter-btn, .active-pill, .close-x, .sec-head, .show-more,
 .opt, .account-btn, .chapters-open, .shelf-head button, .fandom-list button,
 #tabs button, #chapter-list button, #detail .chapters button,
@@ -862,6 +862,7 @@ button.primary, .linkish {
 }
 
 #chapnav button:active, #read-now:active, #closetypo:active, #chappos:active,
+.archive-act:active,
 .work:active, .hit:active, .card:active, .continue-card:active, .start-tile:active,
 .work-card:active, .tagpill:active, .chip:active, .icon:active, .browse-tab:active,
 .filter-btn:active, .active-pill:active, .close-x:active, .sec-head:active,
@@ -1297,3 +1298,40 @@ button:disabled, .opt:disabled {
 
 /* On a card the marks sit with the title and must not push it around. */
 .card-title .ic-inline { vertical-align: -.1em; margin-right: .25em; }
+
+/* ------------------------------------------------- acting on the archive
+ *
+ * These three leave the phone. Kudos are permanent, a comment notifies the
+ * author, and a bookmark shows on a public profile unless marked private —
+ * so they sit apart from Read, which only ever affects this device.
+ */
+.archive-actions {
+  display: flex; flex-wrap: wrap; gap: .5rem;
+  margin: .2rem 0 1.2rem;
+  padding-top: .9rem;
+  border-top: 1px solid var(--rule);
+}
+.archive-act {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font: inherit; font-size: .85rem;
+  background: var(--pane); color: inherit;
+  border: 1px solid var(--rule); border-radius: 999px;
+  padding: .5rem .95rem; cursor: pointer;
+}
+.archive-act:disabled { opacity: .55; cursor: default; }
+
+/* A label whose control is too big to sit beside it. */
+.stacked {
+  display: block;
+  margin: .8rem 0;
+  font-size: .86rem;
+  color: var(--muted);
+}
+.stacked textarea, .stacked input[type=text] {
+  display: block; width: 100%; margin-top: .35rem;
+  font: inherit; font-size: .95rem; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--rule); border-radius: 10px;
+  padding: .55rem .7rem;
+  max-width: none;
+}
+.stacked textarea { resize: vertical; min-height: 3.5rem; }

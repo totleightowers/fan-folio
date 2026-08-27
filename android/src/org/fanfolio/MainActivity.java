@@ -290,6 +290,7 @@ public class MainActivity extends Activity {
         {"in_bookmarks", "INTEGER DEFAULT 0"}, {"rec", "INTEGER DEFAULT 0"},
         {"in_history", "INTEGER DEFAULT 0"}, {"bookmarked_at", "TEXT"},
         {"last_visited", "TEXT"}, {"visits", "INTEGER"},
+        {"kudos_given", "INTEGER DEFAULT 0"},
     };
 
     /**
@@ -534,11 +535,137 @@ public class MainActivity extends Activity {
         "archiveofourown.org", "fonts.googleapis.com", "fonts.gstatic.com",
     };
 
+    /**
+     * Is this the archive itself, and not merely a name ending in it?
+     *
+     * endsWith("archiveofourown.org") is true of evilarchiveofourown.org, which
+     * is somebody else's domain entirely. Anywhere that decision gates a
+     * session cookie, the dot is the whole security boundary.
+     */
+    private static final String ARCHIVE = "https://archiveofourown.org";
+
+    /**
+     * A path on the archive, and nothing else.
+     *
+     * Anything that could name somewhere else is refused rather than repaired:
+     * a scheme, a protocol-relative //host, or a path that does not begin at
+     * the root. What survives is concatenated onto a constant host, so the
+     * destination of a write is not something any caller can influence.
+     */
+    private static String safePath(String path) {
+        if (path == null || path.isEmpty()) return null;
+        if (!path.startsWith("/") || path.startsWith("//")) return null;
+        if (path.contains("://") || path.contains("\\")) return null;
+        return path;
+    }
+
+    /**
+     * The host is a separate argument, not part of a string.
+     *
+     * Concatenating a path onto a host produces one URL string in which the
+     * host is no longer distinguishable from the part that came from the page.
+     * This constructor takes the protocol and host as their own literals, so
+     * the only thing a caller supplies is the file — which is the whole claim
+     * being made, expressed in a way that reads as true rather than argued for
+     * in a comment.
+     */
+    private static URL archiveUrl(String path) {
+        String p = safePath(path);
+        if (p == null) return null;
+        try {
+            return new URL("https", "archiveofourown.org", p);
+        } catch (java.net.MalformedURLException e) {
+            return null;
+        }
+    }
+
+    private static boolean isArchiveHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.ROOT);
+        return h.equals("archiveofourown.org") || h.endsWith(".archiveofourown.org");
+    }
+
     private static boolean allowedHost(String host) {
         if (host == null) return false;
         String h = host.toLowerCase(Locale.ROOT);
         for (String ok : ALLOWED) if (h.equals(ok) || h.endsWith("." + ok)) return true;
         return false;
+    }
+
+    private static String errorJson(String message) {
+        return "{\"error\":" + org.json.JSONObject.quote(String.valueOf(message)) + "}";
+    }
+
+    /**
+     * One form submission, following the archive's redirect far enough to know
+     * whether it worked.
+     *
+     * Rails answers a successful form with a 302 to the thing it created and a
+     * failed one with a 200 that redisplays the form with errors, so the status
+     * alone says almost nothing. Both the code and the landing page are handed
+     * back for the page to judge.
+     */
+    private String postOnce(URL u, String body, String referer) throws IOException {
+        HttpURLConnection c = open(u);
+        c.setRequestMethod("POST");
+        c.setDoOutput(true);
+        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+        c.setRequestProperty("Accept", "text/html, application/xhtml+xml");
+        // Rails checks this on non-GET requests; without it the token is rejected
+        if (referer != null && !referer.isEmpty()) c.setRequestProperty("Referer", referer);
+        c.setRequestProperty("Origin", "https://archiveofourown.org");
+
+        byte[] out = body.getBytes("UTF-8");
+        c.setFixedLengthStreamingMode(out.length);
+        try (OutputStream os = c.getOutputStream()) { os.write(out); }
+
+        int status = c.getResponseCode();
+        String location = c.getHeaderField("Location");
+        String text = readBody(c);
+        c.disconnect();
+
+        /* A redirect is the usual answer to a form that worked, and where it
+           points is often the only confirmation there is. It is followed once,
+           with a GET, so the page can see what was made. */
+        if ((status == 302 || status == 303 || status == 301) && location != null) {
+            try {
+                /* Where a redirect points is chosen by the response, not by
+                   us. It is resolved, checked, and then rebuilt from its path
+                   onto the constant host — so even a redirect cannot move a
+                   signed-in request to another server. */
+                URL resolved = new URL(u, location);
+                if (!isArchiveHost(resolved.getHost())) throw new IOException("redirected off the archive");
+                URL next = archiveUrl(resolved.getFile());
+                if (next == null) throw new IOException("redirected somewhere unusable");
+                HttpURLConnection follow = open(next);
+                status = follow.getResponseCode();
+                text = readBody(follow);
+                follow.disconnect();
+            } catch (Exception ignored) {
+                // the write may well have succeeded; the page judges on location
+            }
+        }
+
+        org.json.JSONObject res = new org.json.JSONObject();
+        try {
+            res.put("status", status);
+            res.put("location", location == null ? org.json.JSONObject.NULL : location);
+            res.put("body", text);
+        } catch (org.json.JSONException e) {
+            return errorJson("could not describe the response");
+        }
+        return res.toString();
+    }
+
+    private static String readBody(HttpURLConnection c) throws IOException {
+        int code = c.getResponseCode();
+        InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+        if (in == null) return "";
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        byte[] chunk = new byte[1 << 14];
+        int read;
+        while ((read = in.read(chunk)) > 0) buf.write(chunk, 0, read);
+        return buf.toString("UTF-8");
     }
 
     private HttpURLConnection open(URL u) throws IOException {
@@ -547,9 +674,9 @@ public class MainActivity extends Activity {
         c.setConnectTimeout(20000);
         c.setReadTimeout(30000);
         c.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(this));
-        // the session travels only to the archive, never to the font host
-        String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
-        if (host.endsWith("archiveofourown.org")) {
+        // the session travels only to the archive, never to the font host —
+        // and never to a domain that merely ends with the archive's name
+        if (isArchiveHost(u.getHost())) {
             String cookies = archiveCookies();
             if (!cookies.isEmpty()) c.setRequestProperty("Cookie", cookies);
         }
@@ -713,6 +840,39 @@ public class MainActivity extends Activity {
                 }
                 try { web.performHapticFeedback(effect); } catch (Exception ignored) {}
             }});
+        }
+
+        /**
+         * Send a form to the archive.
+         *
+         * Leaving kudos, bookmarking and commenting are writes, and a write
+         * cannot go through /__net/ at all: shouldInterceptRequest is never
+         * given a request body, so the proxy the rest of the app uses can only
+         * ever perform a GET. This is the narrowest thing that does the job —
+         * one host, one method, a body the page has already built from a form
+         * the archive itself served.
+         *
+         * The session cookie goes with it, which is the entire point: these
+         * act as the signed-in reader. Nothing else may call it, and nothing
+         * but the archive may receive it.
+         */
+        @JavascriptInterface
+        public String archivePost(String path, String body, String refererPath) {
+            mustBeOurPage();
+            try {
+                /* The page supplies a path, never a URL. There is deliberately
+                   no way for it to name a host: the host is a constant here, so
+                   no value crossing the bridge can decide where a signed-in
+                   write is sent. Checking a caller-supplied URL and hoping the
+                   check is airtight is the weaker arrangement, and it is the
+                   one CodeQL objected to. */
+                URL u = archiveUrl(path);
+                if (u == null) return errorJson("that is not a path on the archive");
+                String referer = ARCHIVE + (refererPath == null ? "/" : safePath(refererPath));
+                return postOnce(u, body == null ? "" : body, referer);
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
         }
 
         @JavascriptInterface
