@@ -796,3 +796,137 @@ dialog h2 {
   text-align: center; color: var(--muted); font-size: .76rem;
   margin: 1.2rem 0 .4rem; opacity: .8;
 }
+
+/* ------------------------------------------------------- interaction layer
+ *
+ * The app read as inert because almost nothing acknowledged a finger. Of the
+ * three dozen surfaces styled `cursor: pointer`, exactly three had any pressed
+ * state: a tap on a card, a library row, a tab or a chip looked identical to
+ * no tap at all until the next screen arrived. Where a database query ran
+ * first, that could be long enough to doubt the tap had landed.
+ *
+ * One treatment, applied everywhere, rather than each component growing its
+ * own. The state layer is an inset shadow because it tints whatever the
+ * element's own background happens to be, follows its border-radius, needs no
+ * extra element, and paints under the content instead of over it — several of
+ * these surfaces already use ::before for a spine or a progress bar.
+ */
+:root {
+  --press: rgb(0 0 0 / .10);
+  --tap-min: 48px;          /* Android's accessibility floor for a target */
+}
+:root:not([data-theme="light"]) { --press: rgb(255 255 255 / .11); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --press: rgb(255 255 255 / .11); } }
+
+.work, .hit, .card, .continue-card, .start-tile, .work-card, .tagpill, .chip,
+#chapnav button, #read-now, #closetypo, #chappos,
+.icon, .browse-tab, .filter-btn, .active-pill, .close-x, .sec-head, .show-more,
+.opt, .account-btn, .chapters-open, .shelf-head button, .fandom-list button,
+#tabs button, #chapter-list button, #detail .chapters button,
+.work-card .rowactions button, .addwork-signin button, .filter-foot button,
+button.primary, .linkish {
+  /* the WebView's own blue flash is the wrong shape, the wrong colour and
+     arrives late; ours replaces it rather than joining it */
+  -webkit-tap-highlight-color: transparent;
+  /* no 300ms wait for a second tap, and no accidental double-tap zoom */
+  touch-action: manipulation;
+  transition: box-shadow .09s ease-out, transform .09s ease-out, opacity .09s ease-out;
+}
+
+#chapnav button:active, #read-now:active, #closetypo:active, #chappos:active,
+.work:active, .hit:active, .card:active, .continue-card:active, .start-tile:active,
+.work-card:active, .tagpill:active, .chip:active, .icon:active, .browse-tab:active,
+.filter-btn:active, .active-pill:active, .close-x:active, .sec-head:active,
+.show-more:active, .opt:active, .account-btn:active, .chapters-open:active,
+.shelf-head button:active, .fandom-list button:active,
+#tabs button:active, #chapter-list button:active, #detail .chapters button:active,
+.work-card .rowactions button:active, .addwork-signin button:active,
+.filter-foot button:active, button.primary:active, .linkish:active {
+  box-shadow: inset 0 0 0 999px var(--press);
+}
+
+/* Cards and tiles are large enough that a slight yield reads as depression
+   rather than as the layout shifting. Rows and full-width bars are not. */
+.card:active, .start-tile:active, .work-card:active, .continue-card:active {
+  transform: scale(.985);
+}
+
+/* A finger that has begun dragging a shelf is no longer pressing the card it
+   started on, and the card must not keep pretending otherwise. */
+.dragging, .dragging * { transition: none !important; }
+.dragging .card, .dragging .start-tile { box-shadow: none; transform: none; }
+
+/* Keyboard and switch access get the same courtesy as touch. */
+.work:focus-visible, .hit:focus-visible, .card:focus-visible, .continue-card:focus-visible,
+.start-tile:focus-visible, .work-card:focus-visible, .tagpill:focus-visible, .chip:focus-visible,
+.icon:focus-visible, .browse-tab:focus-visible, .filter-btn:focus-visible, .opt:focus-visible,
+.chapters-open:focus-visible, #tabs button:focus-visible, #chapter-list button:focus-visible,
+button.primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Disabled must look disabled, not merely fail silently when pressed. */
+button:disabled, .opt:disabled {
+  opacity: .38;
+  box-shadow: none !important;
+  transform: none !important;
+  cursor: default;
+}
+
+/* A control busy with something that cannot finish this frame says so. */
+.is-busy { opacity: .6; pointer-events: none; }
+
+/*
+ * Touch targets.
+ *
+ * The visible chip stays small — a row of pills the height of a thumb would
+ * be absurd — but the area that answers a finger does not have to match what
+ * is painted. A centred pseudo-element expands the hit area to the 48dp floor
+ * without moving anything, so neighbouring controls keep their spacing and
+ * their look while becoming forgiving to hit.
+ */
+.chip, .tagpill, .icon, .close-x, .active-pill, .show-more, .browse-tab, #chappos,
+.shelf-head button, .work-card .rowactions button, .linkish {
+  position: relative;
+}
+.chip::before, .tagpill::before, .icon::before, .close-x::before, #chappos::before,
+.active-pill::before, .show-more::before, .browse-tab::before,
+.shelf-head button::before, .work-card .rowactions button::before, .linkish::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  translate: -50% -50%;
+  width: max(100%, var(--tap-min));
+  height: max(100%, var(--tap-min));
+  /* the expansion catches the finger; it must never catch the pointer of a
+     parent that is itself scrollable, nor paint anything */
+  pointer-events: auto;
+}
+
+/* Rows of small controls sit close together; an expanded area that overlaps
+   its neighbour ambiguously is worse than one that is merely small, so where
+   they are packed the expansion is vertical only. */
+.chips .chip::before, .rowactions button::before { width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .work, .hit, .card, .continue-card, .start-tile, .work-card, .tagpill, .chip,
+  .icon, .browse-tab, .filter-btn, .active-pill, .opt, .chapters-open,
+  #tabs button, button.primary { transition: none; }
+  .card:active, .start-tile:active, .work-card:active, .continue-card:active {
+    transform: none;
+  }
+}
+
+/* The class the pointer layer sets, matching the :active treatment above.
+   A WebView withholds :active while it decides whether a touch is the start
+   of a scroll, which is exactly the hesitation this is meant to remove. */
+.is-pressed { box-shadow: inset 0 0 0 999px var(--press); }
+.card.is-pressed, .start-tile.is-pressed, .work-card.is-pressed, .continue-card.is-pressed {
+  transform: scale(.985);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.is-pressed, .start-tile.is-pressed, .work-card.is-pressed, .continue-card.is-pressed {
+    transform: none;
+  }
+}
