@@ -279,7 +279,7 @@ button.primary:active { opacity: .85; }
   position: fixed; left: 0; right: 0; bottom: 0; height: 2px;
   background: transparent; pointer-events: none; z-index: 20;
 }
-#progress-bar { height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+#progress-bar { height: 100%; width: 0; background: var(--accent); transition: width var(--dur-tap) linear; }
 
 /* -------------------------------------------------------------- actions */
 
@@ -594,7 +594,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sec-sel.has { color: var(--accent); }
-.sec-chev { flex: 0 0 auto; color: var(--muted); transition: transform .15s ease; }
+.sec-chev { flex: 0 0 auto; color: var(--muted); }
 .filter-section.open .sec-chev { transform: rotate(90deg); }
 .sec-body { display: none; padding: 0 .1rem .8rem; }
 .filter-section.open .sec-body { display: block; }
@@ -804,6 +804,26 @@ dialog h2 {
   margin: 1.2rem 0 .4rem; opacity: .8;
 }
 
+/* --------------------------------------------------------- the motion scale
+ *
+ * Durations had accumulated one at a time — nine of them, close enough to look
+ * deliberate and different enough not to be. These four are the whole
+ * vocabulary, and app/core/motion.js declares the same numbers so the code
+ * that ends an animation cannot disagree with the stylesheet about when it
+ * finished. A test fails if they drift.
+ */
+:root {
+  --dur-tap: 90ms;      /* a pressed state: as close to instant as is visible */
+  --dur-quick: 130ms;   /* a crossfade between peers, a colour change */
+  --dur: 180ms;         /* the standard movement: forward, back, settle */
+  --dur-enter: 230ms;   /* a surface arriving from an edge, which goes further */
+  --ease-out: cubic-bezier(.2, 0, 0, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  /* a loop rather than a movement between states: slow enough to read as
+     waiting rather than as something going wrong */
+  --dur-sweep: 1400ms;
+}
+
 /* ------------------------------------------------------- interaction layer
  *
  * The app read as inert because almost nothing acknowledged a finger. Of the
@@ -837,7 +857,8 @@ button.primary, .linkish {
   -webkit-tap-highlight-color: transparent;
   /* no 300ms wait for a second tap, and no accidental double-tap zoom */
   touch-action: manipulation;
-  transition: box-shadow .09s ease-out, transform .09s ease-out, opacity .09s ease-out;
+  transition: box-shadow var(--dur-tap) ease-out, transform var(--dur-tap) ease-out,
+              opacity var(--dur-tap) ease-out;
 }
 
 #chapnav button:active, #read-now:active, #closetypo:active, #chappos:active,
@@ -957,7 +978,7 @@ button:disabled, .opt:disabled {
    where the finger is, not chase it. The transition appears only for the
    settle or the completion, once the finger has gone. */
 #reader.settling #workskin, #reader.settling #endnotes, #detail.settling {
-  transition: translate var(--page-ms, 180ms) cubic-bezier(.2, 0, 0, 1);
+  transition: translate var(--page-ms, var(--dur)) var(--ease-out);
 }
 
 /* Text selection during a page turn produces a highlighted smear across the
@@ -1002,7 +1023,7 @@ button:disabled, .opt:disabled {
     background: linear-gradient(90deg, var(--rule) 25%,
       color-mix(in srgb, var(--rule) 45%, var(--pane)) 50%, var(--rule) 75%);
     background-size: 300% 100%;
-    animation: sk-sweep 1.4s ease-in-out infinite;
+    animation: sk-sweep var(--dur-sweep) ease-in-out infinite;
   }
   @keyframes sk-sweep {
     from { background-position: 150% 0; }
@@ -1039,14 +1060,14 @@ button:disabled, .opt:disabled {
   to   { opacity: 1; }
 }
 
-.in-forward { animation: in-forward 190ms cubic-bezier(.2, 0, 0, 1); }
-.in-back    { animation: in-back 190ms cubic-bezier(.2, 0, 0, 1); }
-.in-lateral { animation: in-lateral 130ms ease-out; }
+.in-forward { animation: in-forward var(--dur) var(--ease-out); }
+.in-back    { animation: in-back var(--dur) var(--ease-out); }
+.in-lateral { animation: in-lateral var(--dur-quick) ease-out; }
 
 /* Anyone who has asked for less motion still gets the change of screen —
    just not the travel. */
 @media (prefers-reduced-motion: reduce) {
-  .in-forward, .in-back { animation: in-lateral 100ms ease-out; }
+  .in-forward, .in-back { animation: in-lateral var(--dur-quick) ease-out; }
   .in-lateral { animation: none; }
 }
 
@@ -1062,7 +1083,7 @@ button:disabled, .opt:disabled {
   overflow: hidden;
   will-change: transform;
 }
-.back-settling { transition: transform 170ms cubic-bezier(.2, 0, 0, 1), border-radius 170ms; }
+.back-settling { transition: transform var(--dur) var(--ease-out), border-radius var(--dur); }
 
 @media (prefers-reduced-motion: reduce) {
   .backing { transform: none; border-radius: 0; }
@@ -1122,17 +1143,17 @@ button:disabled, .opt:disabled {
 }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
 
-.sheet-in { animation: sheet-up 230ms cubic-bezier(.2, 0, 0, 1); }
-.sheet-out { animation: sheet-down 190ms cubic-bezier(.4, 0, 1, 1) forwards; }
-.sheet-in::backdrop { animation: backdrop-in 230ms ease-out; }
+.sheet-in { animation: sheet-up var(--dur-enter) var(--ease-out); }
+.sheet-out { animation: sheet-down var(--dur) var(--ease-in) forwards; }
+.sheet-in::backdrop { animation: backdrop-in var(--dur-enter) ease-out; }
 
 @media (min-width: 44.01rem) {
-  #filters.sheet-in, #chapters-dialog.sheet-in { animation: side-sheet-in 230ms cubic-bezier(.2, 0, 0, 1); }
+  #filters.sheet-in, #chapters-dialog.sheet-in { animation: side-sheet-in var(--dur-enter) var(--ease-out); }
 }
 
 /* While a finger is on the handle the sheet sits exactly where the finger is;
    the transition belongs to the settle, once the finger has gone. */
-.sheet-settling { transition: translate 190ms cubic-bezier(.2, 0, 0, 1); }
+.sheet-settling { transition: translate var(--dur) var(--ease-out); }
 .sheet-dragging { transition: none; }
 .sheet-grab, dialog h2 { touch-action: none; cursor: grab; }
 
@@ -1237,7 +1258,7 @@ button:disabled, .opt:disabled {
 
 /* A chevron that means "this section is open" turns rather than swapping for
    a second icon, which keeps one drawing doing one job. */
-.filter-section .sec-chev { transition: rotate 160ms cubic-bezier(.2, 0, 0, 1); }
+.filter-section .sec-chev { transition: rotate var(--dur) var(--ease-out); }
 .filter-section.open .sec-chev { rotate: 90deg; }
 
 /*
@@ -1248,7 +1269,7 @@ button:disabled, .opt:disabled {
  * and the accent colour. One icon, two states, nothing to keep in sync.
  */
 #tabs button { position: relative; }
-#tabs .ic-tab { transition: color 140ms ease-out; }
+#tabs .ic-tab { transition: color var(--dur-quick) ease-out; }
 #tabs button.on::before {
   content: '';
   position: absolute;
