@@ -318,6 +318,17 @@ export function databaseSize() {
   try { return Number(native.databaseSize()) || 0; } catch { return 0; }
 }
 
+/**
+ * A tick at the moment something commits.
+ *
+ * The shell routes this through the system's own haptic setting, so a phone
+ * with haptics turned off gets nothing without the app having to ask.
+ */
+export function haptic(kind = 'tick') {
+  if (!isNative) return;
+  try { native.haptic(kind); } catch { /* a device without an actuator */ }
+}
+
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }

@@ -8,8 +8,9 @@
  */
 
 import { History } from './core/nav.js';
+import { DURATION } from './core/motion.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize } from './api.js';
+import { exportDatabase, databaseSize, haptic } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -41,6 +42,7 @@ const prefs = load(PREFS_KEY, {
   theme: 'system', bg: '#fbf9f5', fg: '#1b1a17',
   face: 'Georgia', weight: 400, size: 19, lh: 170,
   margin: 20, vmargin: 24, align: 'start',
+  haptics: true,
 });
 /* The full filter set, kept together so it can be sent, saved and shown as one. */
 const view = load(VIEW_KEY, {
@@ -241,7 +243,7 @@ window.__onBackCancel = () => {
   setTimeout(() => {
     view.classList.remove('backing', 'back-settling');
     view.style.removeProperty('--back');
-  }, 180);
+  }, DURATION.base);
 };
 
 /** Whatever happens next, the preview must not be left on screen. */
@@ -835,7 +837,20 @@ addEventListener('resize', () => { for (const r of $$('.rail')) markOverflow(r);
  * it. Backing up had no home at all — the library is a single file assembled
  * over months and there was no way to get a copy of it off the phone.
  */
-const VERSION = 'v0.14.0';
+const VERSION = 'v0.15.0';
+
+/**
+ * A tick where something commits — and nowhere else.
+ *
+ * Haptics reinforce a commitment that is already visible; they are not the
+ * feedback. A buzz over a screen that did not move still feels wrong, so this
+ * is used only where the interface has already moved: a page that turned, a
+ * page that refused to, a sheet pushed away, a filter applied.
+ */
+function tick(kind = 'tick') {
+  if (prefs.haptics === false) return;
+  haptic(kind);
+}
 
 async function buildSettings() {
   const facts = $('#library-facts');
@@ -861,6 +876,14 @@ async function buildSettings() {
 
   const bytes = databaseSize();
   if (bytes) add('Backup size', `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`);
+
+  const haptics = $('#haptics');
+  haptics.checked = prefs.haptics !== false;
+  haptics.onchange = () => {
+    prefs.haptics = haptics.checked;
+    save(PREFS_KEY, prefs);
+    if (haptics.checked) tick('commit');    // show what was just turned on
+  };
 
   $('#version').textContent = `Fan Folio ${VERSION}`;
   paintAccount();
@@ -915,7 +938,7 @@ window.__backupFailed = () => {
  * `close()` is immediate and cannot be animated, so the exit is played first
  * and the dialog closed at the end of it.
  */
-const SHEET_OUT = 190;
+const SHEET_OUT = DURATION.base;
 
 function sheetHandle(d) {
   if (d.querySelector('.sheet-grab')) return;
@@ -977,11 +1000,12 @@ function draggableSheet(d) {
     const dy = e.clientY - y0;
     const speed = dy / Math.max(1, performance.now() - t0);   // px per ms
     if (dismisses(dy, d.getBoundingClientRect().height, { velocity: speed })) {
+      tick('commit');
       closeSheet(d);
     } else {
       d.classList.add('sheet-settling');
       d.style.setProperty('--sheet-y', '0px');
-      setTimeout(() => d.classList.remove('sheet-settling'), 190);
+      setTimeout(() => d.classList.remove('sheet-settling'), DURATION.base);
     }
   };
   d.addEventListener('pointerup', release, { passive: true });
@@ -1643,8 +1667,8 @@ function scrollsSideways(node) {
 }
 
 const SWIPE = {
-  OUT: 180,          // ms to carry a committed page off screen
-  IN: 200,           // ms to bring the next one on
+  OUT: DURATION.base,     // carrying a committed page off screen
+  IN: DURATION.enter,     // bringing the next one on, which travels further
 };
 
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1721,11 +1745,16 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
     const committed = commits(dx, window.innerWidth, { allowed });
 
     if (!committed) {
-      settle(160);                     // visibly back where it started
+      // a pull towards a chapter that isn't there: the resistance already said
+      // so, and this is the same refusal in another sense
+      if (!allowed && commits(dx, window.innerWidth)) tick('reject');
+      settle(DURATION.base);           // visibly back where it started
       setX(0);
-      setTimeout(done, 170);
+      setTimeout(done, DURATION.base + 10);
       return;
     }
+
+    tick('commit');
 
     if (reduceMotion()) {
       done();
@@ -1754,7 +1783,12 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
   };
 
   el.addEventListener('pointerup', release, { passive: true });
-  el.addEventListener('pointercancel', () => { if (dragging) { settle(160); setX(0); setTimeout(done, 170); } else done(); }, { passive: true });
+  el.addEventListener('pointercancel', () => {
+    if (!dragging) { done(); return; }
+    settle(DURATION.base);
+    setX(0);
+    setTimeout(done, DURATION.base + 10);
+  }, { passive: true });
 }
 
 wireSwipe($('#reader'));

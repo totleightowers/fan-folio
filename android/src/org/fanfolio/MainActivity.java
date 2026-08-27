@@ -683,6 +683,38 @@ public class MainActivity extends Activity {
          * Nothing is more obviously not-an-app than the display timing out
          * mid-page because the reader has not touched it for a minute.
          */
+        /**
+         * A tick at the moment something commits.
+         *
+         * performHapticFeedback rather than the vibrator: it goes through the
+         * system's own haptic setting, so someone who has turned haptics off
+         * on their phone gets nothing without the app having to ask, and it
+         * uses whatever the device's actuator does well rather than a
+         * duration we guessed at.
+         *
+         * Haptics reinforce a commitment that is already visible. They are not
+         * the feedback — a buzz over a screen that did not move still feels
+         * wrong.
+         */
+        @JavascriptInterface
+        public void haptic(final String kind) {
+            mustBeOurPage();
+            if (web == null) return;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                int effect = android.view.HapticFeedbackConstants.CONTEXT_CLICK;
+                if ("commit".equals(kind)) {
+                    effect = Build.VERSION.SDK_INT >= 30
+                        ? android.view.HapticFeedbackConstants.CONFIRM
+                        : android.view.HapticFeedbackConstants.KEYBOARD_TAP;
+                } else if ("reject".equals(kind)) {
+                    effect = Build.VERSION.SDK_INT >= 30
+                        ? android.view.HapticFeedbackConstants.REJECT
+                        : android.view.HapticFeedbackConstants.LONG_PRESS;
+                }
+                try { web.performHapticFeedback(effect); } catch (Exception ignored) {}
+            }});
+        }
+
         @JavascriptInterface
         public void keepAwake(final boolean on) {
             mustBeOurPage();
