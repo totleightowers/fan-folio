@@ -656,10 +656,14 @@ test('the reader names the work, above the chapter', () => {
   }
 });
 
-test('the head of the chapter is a way back to the work', () => {
-  assert.match(js, /\$\('#reader-head'\)\.onclick[\s\S]{0,80}openWork\(/,
-    'tapping the work title should open the work');
-  assert.match(html, /id="rh-go"[^>]*>[^<]+</, 'and it says where it goes, rather than hoping');
+test('the head of the chapter names the work but does not navigate', () => {
+  /* It carried a "the whole work" link, which went exactly where the book
+     button in the chapter bar already goes — two routes to one place, one of
+     them a text link in the middle of the reading column where nothing else is
+     tappable. The bar has the button, on every work. */
+  assert.ok(!html.includes('id="rh-go"'), 'the duplicate link is gone');
+  assert.ok(!js.includes("$('#reader-head').onclick"), 'and the head is not a control');
+  assert.ok(html.includes('id="to-work"'), 'the bar still carries the one route');
 });
 
 /**

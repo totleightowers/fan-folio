@@ -793,7 +793,7 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here', '#reader-head', '.version-row', '#ab-current',
+  '#to-work', '#on-archive', '#kudos-here', '.version-row', '#ab-current',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -2050,6 +2050,10 @@ async function showChapterDrawer(workId, at) {
 /**
  * Up to the work, which is not the same as back.
  *
+ * The only route, deliberately. The head of the chapter used to carry a link
+ * saying the same thing, which meant two ways to one place — and a text link
+ * in the middle of the reading column, where nothing else is tappable.
+ *
  * A card on the Continue reading shelf opens the chapter directly, so the
  * work's own page was never visited and Back rightly returns to the shelf. That
  * left no route to it at all: the summary, the tags, the chapter list, the
@@ -2057,7 +2061,6 @@ async function showChapterDrawer(workId, at) {
  * happens to be behind us.
  */
 $('#to-work').onclick = () => current.workId && openWork(current.workId);
-$('#reader-head').onclick = () => current.workId && openWork(current.workId);
 $('#kudos-here').onclick = () => giveKudos(current.workId, $('#kudos-here'));
 
 $('#on-archive').onclick = () => {
