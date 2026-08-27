@@ -370,3 +370,43 @@ test('the settings screen reaches its own controls', () => {
     assert.ok(js.includes(`#${id}`), `#${id} exists in markup but nothing in app.js uses it`);
   }
 });
+
+/**
+ * An icon set only works while it is a set.
+ *
+ * A `use` pointing at a symbol that was never defined renders as nothing at
+ * all — no error, no fallback, just a gap where a control's meaning was.
+ */
+/** Icons are referenced two ways: written into markup, and by name through
+    the icon() helper, where the href is built from a variable. */
+const iconsUsed = (...sources) => {
+  const text = sources.join('');
+  return [
+    ...[...text.matchAll(/href="#(i-[a-z-]+)"/g)].map((m) => m[1]),
+    ...[...text.matchAll(/\bicon\('([a-z-]+)'/g)].map((m) => `i-${m[1]}`),
+  ];
+};
+
+test('every icon referenced is defined in the sprite', () => {
+  const defined = new Set([...html.matchAll(/<symbol id="(i-[a-z-]+)"/g)].map((m) => m[1]));
+  const used = iconsUsed(html, js);
+  const missing = [...new Set(used)].filter((id) => !defined.has(id));
+  assert.deepEqual(missing, [], `referenced but never drawn: ${missing.join(', ')}`);
+  assert.ok(used.length >= 12, 'the whole toolbar should be drawn, not part of it');
+});
+
+test('every symbol in the sprite is actually used', () => {
+  const defined = [...html.matchAll(/<symbol id="(i-[a-z-]+)"/g)].map((m) => m[1]);
+  const used = new Set(iconsUsed(html, js));
+  const orphans = defined.filter((id) => !used.has(id));
+  assert.deepEqual(orphans, [], `drawn but never referenced: ${orphans.join(', ')}`);
+});
+
+test('no control is drawn with a font glyph any more', () => {
+  // these inherit whatever metrics the system font gives them, which is what
+  // made the toolbar read as text rather than as a set of icons
+  const glyphs = [...html.matchAll(/[←-⇿⌀-⏿■-◿☀-⛿‹›]/g)]
+    .map((m) => m[0]);
+  assert.deepEqual(glyphs, [], `Unicode glyphs still used as icons: ${glyphs.join(' ')}`);
+  assert.ok(!css.includes('.glyph'), 'the glyph styles should have gone with the glyphs');
+});
