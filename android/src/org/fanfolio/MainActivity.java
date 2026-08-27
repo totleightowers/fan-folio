@@ -291,6 +291,7 @@ public class MainActivity extends Activity {
         {"in_history", "INTEGER DEFAULT 0"}, {"bookmarked_at", "TEXT"},
         {"last_visited", "TEXT"}, {"visits", "INTEGER"},
         {"kudos_given", "INTEGER DEFAULT 0"},
+        {"kudos", "INTEGER"}, {"bookmark_count", "INTEGER"}, {"hits", "INTEGER"},
     };
 
     /**
@@ -1165,8 +1166,20 @@ public class MainActivity extends Activity {
         work.put("chapter_count", w.optJSONArray("chapters") == null ? 0 : w.getJSONArray("chapters").length());
         if (w.isNull("chaptersPlanned")) work.putNull("chapters_planned");
         else work.put("chapters_planned", w.optInt("chaptersPlanned"));
+        /* What the archive says about a work's reception. Absent on an older
+           page, so each is stored only when it is there rather than as a zero
+           that would rank a work below every work we have never counted. */
+        for (String[] pair : new String[][]{
+                { "kudos", "kudos" }, { "bookmarkCount", "bookmark_count" }, { "hits", "hits" } }) {
+            if (w.isNull(pair[0])) work.putNull(pair[1]);
+            else work.put(pair[1], w.optInt(pair[0]));
+        }
         work.put("source", "ao3");
         work.put("fetched_at", nowIso());
+        /* When this copy was taken. Without it the sync planner has no idea
+           how current our copy is, and "recently added" cannot see the work
+           at all. */
+        work.put("downloaded_at", nowIso().substring(0, 10));
         db.insertWithOnConflict("works", null, work, SQLiteDatabase.CONFLICT_REPLACE);
 
         db.delete("tags", "work_id = ?", new String[]{ id });

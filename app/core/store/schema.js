@@ -44,7 +44,12 @@ CREATE TABLE IF NOT EXISTS works (
   -- kudos can be left once and only once, and the archive gives no way to ask
   -- afterwards whether they were; remembering locally is the only way the
   -- button can ever say so
-  kudos_given    INTEGER DEFAULT 0
+  kudos_given    INTEGER DEFAULT 0,
+  -- what the archive reports about a work. Parsed all along and never kept,
+  -- which left no way to ask for the best-liked thing in the library
+  kudos          INTEGER,
+  bookmark_count INTEGER,
+  hits           INTEGER
 );
 
 -- Tags are a many-to-many that gets queried by type constantly ("everything
