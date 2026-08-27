@@ -545,8 +545,24 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   display: none; flex-direction: column; padding: .9rem 1rem 1rem;
 }
 #filters[open] { display: flex; }
-.filter-head { display: flex; align-items: baseline; justify-content: space-between; }
-.filter-head h2 { margin: 0; }
+.filter-head {
+  display: grid; grid-template-columns: 2rem 1fr 2rem; align-items: center;
+  padding-bottom: .6rem; border-bottom: 1px solid var(--rule);
+}
+.filter-head h2 { margin: 0; text-align: center; }
+.close-x {
+  font: inherit; font-size: 1.3rem; line-height: 1; background: none; border: 0;
+  color: var(--muted); cursor: pointer; padding: 0; text-align: left;
+}
+
+/* Clear and Apply side by side, where a thumb reaches them */
+.filter-foot {
+  display: grid; grid-template-columns: 1fr 1.4fr; gap: .6rem;
+  padding-top: .8rem; border-top: 1px solid var(--rule);
+}
+.filter-foot button { padding: .7rem 1rem; border-radius: 999px; font: inherit; cursor: pointer; }
+.filter-foot .ghost { background: none; color: inherit; border: 1px solid var(--rule); }
+.filter-foot .primary { border: 0; }
 .linkish { font: inherit; font-size: .82rem; background: none; border: 0; color: var(--accent); cursor: pointer; }
 #filter-body { flex: 1 1 auto; overflow-y: auto; margin: .5rem -.2rem .7rem; padding: 0 .2rem; }
 /* a section is a row until you open it */
