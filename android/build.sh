@@ -15,10 +15,23 @@ OUT="${OUT:-fanfolio.apk}"
 [ -f "$SDK_JAR" ] || { echo "missing $SDK_JAR (API 34 android.jar)" >&2; exit 1; }
 
 echo "1/7  bundle the web app"
+VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
+VERSION="${VERSION#v}"
+VERSION_CODE="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+echo "stamping version $VERSION ($VERSION_CODE)"
+
 rm -rf assets/web build && mkdir -p assets/web build/compiled build/classes build/gen
 cp -r ../app/. assets/web/
 # the vendored AO3 sources are build inputs, not app assets
 rm -rf assets/web/vendor
+
+# The version, written where the page can simply read it.
+#
+# Four attempts went into getting it out of the package metadata instead —
+# manifest attribute, aapt2 --version-name, a generated manifest — and the
+# package kept reporting 0.1 whatever was done. This is one line, it is
+# generated from the tag on every build, and nothing can quietly override it.
+printf '%s' "$VERSION" > assets/web/version.txt
 
 echo "2/7  compile resources"
 aapt2 compile --dir res -o build/compiled/res.zip
@@ -27,13 +40,18 @@ echo "3/7  link resources, manifest and assets"
 # The release is named by its tag, so that is what the package is stamped with.
 # Four places used to declare a version — the page, the manifest, package.json
 # and the tag — and they had drifted to four different answers.
-VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
-VERSION="${VERSION#v}"
-VERSION_CODE="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
-echo "stamping version $VERSION ($VERSION_CODE)"
+# Written into a copy of the manifest rather than passed as a flag. aapt2's
+# --version-name is only a default: an attribute in the manifest beats it, and
+# with no attribute at all the flag still did not take — the package kept
+# saying 0.1 through three attempts at this. An attribute is the one thing that
+# demonstrably decides it, so the build generates one.
+mkdir -p build
+sed "s|package=\"org.fanfolio\">|package=\"org.fanfolio\" android:versionCode=\"$VERSION_CODE\" android:versionName=\"$VERSION\">|" \
+  AndroidManifest.xml > build/AndroidManifest.xml
+grep -q "android:versionName=\"$VERSION\"" build/AndroidManifest.xml \
+  || { echo "could not stamp the version into the manifest" >&2; exit 1; }
 
-aapt2 link -I "$SDK_JAR" --manifest AndroidManifest.xml -o build/base.apk \
-  --version-name "$VERSION" --version-code "$VERSION_CODE" \
+aapt2 link -I "$SDK_JAR" --manifest build/AndroidManifest.xml -o build/base.apk \
   --java build/gen -A assets --min-sdk-version 24 --target-sdk-version 34 \
   build/compiled/res.zip
 

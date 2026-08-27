@@ -1518,3 +1518,47 @@ button:disabled, .opt:disabled {
 .version-row .name { flex: 1 1 auto; }
 .version-row .len { color: var(--muted); font-size: .78rem; }
 #versions-list { max-height: 60dvh; overflow-y: auto; }
+
+/* ------------------------------------------- the archive's colours, in the dark
+ *
+ * app/ao3-work.css is the archive's own stylesheet, vendored as it is served,
+ * and it was written for a white page: headings at #333, links and tags at
+ * #111, tables and panels at #fff, #eee and #ddd. None of it is scoped to a
+ * colour scheme, because the archive has only one.
+ *
+ * Applied over a dark background that is dark text on dark — which is why a
+ * chapter whose only content was its heading looked like an empty screen.
+ *
+ * These correct the colours and leave everything else about the stylesheet
+ * alone. Work skins are untouched: an author who sets both a background and a
+ * colour has made something self-consistent, and overriding half of it is how
+ * you break a chat bubble.
+ */
+[data-dark] .ao3page a,
+[data-dark] .ao3page a:link,
+[data-dark] .ao3page a:visited:hover,
+[data-dark] .ao3page a.tag { color: var(--link); }
+[data-dark] .ao3page a:visited { color: color-mix(in srgb, var(--link) 78%, var(--fg)); }
+[data-dark] .ao3page a:hover { color: var(--link); }
+
+[data-dark] .ao3page .userstuff h2,
+[data-dark] .ao3page .userstuff h3,
+[data-dark] .ao3page .userstuff h4 { color: var(--fg); }
+
+[data-dark] .ao3page span.series .divider { color: var(--muted); }
+
+/* Panels the archive paints light. They carry dark text of their own, so the
+   background is what has to move rather than the words on it. */
+[data-dark] .ao3page table,
+[data-dark] .ao3page thead td,
+[data-dark] .ao3page th,
+[data-dark] .ao3page tr:hover,
+[data-dark] .ao3page col.name,
+[data-dark] .ao3page li.relationships a,
+[data-dark] .ao3page .statistics .index li:nth-of-type(even) {
+  background: var(--pane);
+  color: var(--fg);
+}
+[data-dark] .ao3page table, [data-dark] .ao3page th, [data-dark] .ao3page td {
+  border-color: var(--rule);
+}
