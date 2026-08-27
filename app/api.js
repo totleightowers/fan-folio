@@ -154,6 +154,7 @@ const LOCAL = {
       preface_html: workPrefaceHtml(work, parseAuthors(work.authors)),
       end_notes_html: work.end_notes_html ? sanitiseHtml(work.end_notes_html) : null,
       chapters: sql('SELECT number, title, words FROM chapters WHERE work_id = ? ORDER BY number', [workId]),
+      versions: one('SELECT count(*) AS n FROM chapter_versions WHERE work_id = ?', [workId])?.n ?? 0,
     };
   },
 
@@ -168,6 +169,38 @@ const LOCAL = {
     );
     return { number: row.number, title: row.title,
       ...renderChapter(row, { skinCss: work?.skin_css ?? null, images }) };
+  },
+
+  /**
+   * Earlier copies of a work's chapters.
+   *
+   * The archive is a living thing: authors revise, rewrite and sometimes
+   * delete. Every replaced chapter has been kept since versioning went in, and
+   * until now there was no way to look at one — the whole point of keeping
+   * them is being able to read what you read the first time.
+   *
+   * The text itself is left behind here; a list of what exists should not
+   * carry a megabyte of prose.
+   */
+  versions: (workId) => sql(`
+    SELECT id, number, title, words, reason, archived_at
+      FROM chapter_versions WHERE work_id = ?
+     ORDER BY archived_at DESC, number ASC`, [workId]),
+
+  version: (workId, id) => {
+    const row = one(`SELECT id, number, title, html, words, reason, archived_at
+                       FROM chapter_versions WHERE work_id = ? AND id = ?`, [workId, id]);
+    if (!row) throw new Error('no such version');
+    const work = one('SELECT title, skin_css FROM works WHERE work_id = ?', [workId]);
+    const images = new Map(
+      sql("SELECT url, sha256 FROM images WHERE work_id = ? AND status = 'stored'", [workId])
+        .map((i) => [i.url, `/img/${i.sha256}`])
+    );
+    return {
+      ...row,
+      workTitle: work?.title ?? '',
+      ...renderChapter(row, { skinCss: work?.skin_css ?? null, images }),
+    };
   },
 
   search: (query, scope, options) => {
@@ -199,6 +232,8 @@ export async function api(path) {
   let m;
   if ((m = p.match(/^\/api\/works\/(\d+)$/))) return LOCAL.work(m[1]);
   if ((m = p.match(/^\/api\/works\/(\d+)\/chapters\/(\d+)$/))) return LOCAL.chapter(m[1], Number(m[2]));
+  if ((m = p.match(/^\/api\/works\/(\d+)\/versions$/))) return { versions: LOCAL.versions(m[1]) };
+  if ((m = p.match(/^\/api\/works\/(\d+)\/versions\/(\d+)$/))) return LOCAL.version(m[1], Number(m[2]));
   if (p === '/api/search') {
     return LOCAL.search(q.q ?? '', q.scope || 'text',
       { limit: q.limit, workId: q.workId, filters: q });
