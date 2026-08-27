@@ -569,6 +569,38 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Where the reader has got to in a work.
+         *
+         * Reading position used to live in the page's localStorage while every
+         * other view — Home, Continue reading, the finished count, the
+         * progress filters — read the database. They disagreed the moment
+         * anything was read: the work knew you were on chapter eight, and Home
+         * still called it unopened. One place owns this now.
+         *
+         * Chapters before the current one count as read, which is monotonic
+         * and cannot go backwards if somebody flicks to an earlier chapter.
+         */
+        @JavascriptInterface
+        public String saveProgress(String workId, int chapter, double offset) {
+            mustBeOurPage();
+            if (db == null) return "{\"error\":\"no database\"}";
+            try {
+                db.execSQL(
+                    "INSERT INTO reading (work_id, chapter, offset, chapters_read, updated_at) "
+                  + "VALUES (?,?,?,?,datetime('now')) "
+                  + "ON CONFLICT(work_id) DO UPDATE SET "
+                  + "  chapter = excluded.chapter, "
+                  + "  offset = excluded.offset, "
+                  + "  chapters_read = max(COALESCE(reading.chapters_read, 0), excluded.chapters_read), "
+                  + "  updated_at = excluded.updated_at",
+                    new Object[]{ workId, chapter, offset, Math.max(0, chapter - 1) });
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
         /** Store one image the page fetched, addressed by its own content hash. */
         @JavascriptInterface
         public String saveImage(String workId, String url, String base64, String mime) {

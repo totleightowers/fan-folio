@@ -10,9 +10,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- allowBackup is off deliberately: a detailed record of what someone
+         reads is not something to hand to cloud backup without asking. -->
     <application
         android:label="@string/app_name"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:theme="@style/AppTheme"
         android:hardwareAccelerated="true"
         android:enableOnBackInvokedCallback="true"
