@@ -388,7 +388,8 @@ async function buildFilterPanel() {
     el.querySelector('.sec-title').textContent = title;
     const sel = el.querySelector('.sec-sel');
     if (selected.length) {
-      sel.textContent = selected.length === 1 ? selected[0] : `${selected.length} selected`;
+      // a count beside the name, the way a filter sheet usually reads
+      sel.textContent = selected.length === 1 ? selected[0] : `(${selected.length})`;
       sel.classList.add('has');
     }
     el.querySelector('.sec-head').onclick = () => {
@@ -534,7 +535,7 @@ async function refreshAfterFilterChange() {
   try {
     const { total } = await api(`/api/works?${params}`);
     $('#apply-filters').textContent = total
-      ? `Show ${fmt(total)} work${total === 1 ? '' : 's'}` : 'Nothing matches';
+      ? `Apply · ${fmt(total)}` : 'Nothing matches';
     $('#apply-filters').disabled = !total;
   } catch { /* the count is a nicety, not a requirement */ }
   await buildFilterPanelKeepingScroll();
