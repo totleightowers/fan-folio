@@ -866,7 +866,12 @@ addEventListener('resize', () => { for (const r of $$('.rail')) markOverflow(r);
  * it. Backing up had no home at all — the library is a single file assembled
  * over months and there was no way to get a copy of it off the phone.
  */
-const VERSION = 'v0.15.0';
+/* Asked of the shell rather than written down here: a constant in the page is
+   a fourth place to remember, and it drifted five releases behind. */
+const VERSION = (() => {
+  try { return nativeStatus().version ? `v${nativeStatus().version}` : 'development build'; }
+  catch { return 'development build'; }
+})();
 
 /**
  * A tick where something commits — and nowhere else.

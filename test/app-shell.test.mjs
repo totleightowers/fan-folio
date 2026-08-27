@@ -717,3 +717,40 @@ test('a browser is chosen by name, not left to a chooser to work out', () => {
   assert.match(body, /__noBrowser/, 'and it says so plainly when there is genuinely nobody');
   assert.ok(js.includes('window.__noBrowser ='), 'which the page defines');
 });
+
+/**
+ * The version shown must be the version running.
+ *
+ * Settings reported v0.15.0 on a device running v0.19.0. Four places declared
+ * a version — the page, the manifest, package.json and the git tag — and each
+ * was maintained by remembering to. They had drifted to four different
+ * answers. The build stamps the tag onto the package; the page asks the shell.
+ */
+test('the page does not carry its own idea of the version', () => {
+  const line = js.match(/const VERSION = [\s\S]{0,220}/)?.[0] ?? '';
+  assert.ok(!/v\d+\.\d+\.\d+/.test(line),
+    'a version written in the page is a fourth place to remember, and it drifted five releases');
+  assert.match(line, /nativeStatus\(\)/, 'it asks what is actually running');
+});
+
+test('the build stamps the version from the tag that names the release', () => {
+  const build = readFileSync(new URL('../android/build.sh', import.meta.url), 'utf8');
+  assert.match(build, /git describe --tags/, 'the tag is the source of truth');
+  assert.match(build, /--version-name/, 'and it reaches the package');
+});
+
+test('the shell reports the version it was stamped with', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.match(java, /getPackageInfo\(getPackageName\(\), 0\)\.versionName/,
+    'read from the package rather than a constant beside it');
+});
+
+test('the settings icon is a cog, not a sun', () => {
+  const symbol = html.slice(html.indexOf('<symbol id="i-settings"'),
+    html.indexOf('</symbol>', html.indexOf('<symbol id="i-settings"')));
+  /* It was a circle with eight strokes radiating from it — which is a sun, and
+     it sat two buttons from the actual brightness control. */
+  const rays = [...symbol.matchAll(/M[\d.]+ [\d.]+v[\d.]+/g)].length;
+  assert.ok(rays < 4, 'radiating strokes read as a sun, whatever they were meant to be');
+  assert.ok(symbol.includes('<circle'), 'a cog has a hub');
+});

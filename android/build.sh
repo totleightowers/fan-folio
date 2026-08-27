@@ -24,7 +24,16 @@ echo "2/7  compile resources"
 aapt2 compile --dir res -o build/compiled/res.zip
 
 echo "3/7  link resources, manifest and assets"
+# The release is named by its tag, so that is what the package is stamped with.
+# Four places used to declare a version — the page, the manifest, package.json
+# and the tag — and they had drifted to four different answers.
+VERSION="$(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
+VERSION="${VERSION#v}"
+VERSION_CODE="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+echo "stamping version $VERSION ($VERSION_CODE)"
+
 aapt2 link -I "$SDK_JAR" --manifest AndroidManifest.xml -o build/base.apk \
+  --version-name "$VERSION" --version-code "$VERSION_CODE" \
   --java build/gen -A assets --min-sdk-version 24 --target-sdk-version 34 \
   build/compiled/res.zip
 
