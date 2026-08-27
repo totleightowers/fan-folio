@@ -12,7 +12,8 @@ import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
 import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
-import { workPage, linkTarget, chapterUrl, seriesPage } from './core/ao3/urls.js';
+import { workPage, linkTarget, chapterUrl, seriesPage, workUrl, ORIGIN } from './core/ao3/urls.js';
+import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
 import { htmlToText, countWords } from './core/epub.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
@@ -458,4 +459,136 @@ export function signOut() {
 export function signedIn() {
   if (!isNative) return false;
   try { return Boolean(native.signedIn()); } catch { return false; }
+}
+
+/* ------------------------------------------------------ acting on the archive
+ *
+ * Kudos, bookmarks and comments are writes performed as the signed-in reader,
+ * and they go through a bridge method rather than the usual proxy: Android
+ * never hands a request body to shouldInterceptRequest, so the proxy the rest
+ * of the app uses can only ever perform a GET.
+ *
+ * None of the field names are hardcoded. Each of these reads the form the
+ * archive itself served and submits it with the reader's values substituted,
+ * so a renamed field stays working and a missing form fails loudly instead of
+ * posting something malformed.
+ */
+
+/** GET a page through the ordinary proxy and hand back its HTML. */
+async function page(url) {
+  const res = await fetch(`/__net/?url=${encodeURIComponent(url)}`);
+  const body = await res.text();
+  if (!res.ok) throw new Error(`The archive answered ${res.status}`);
+  return body;
+}
+
+/** POST a form, as the signed-in reader. */
+async function submit(url, fields, referer) {
+  const raw = native.archivePost(url, encodeForm(fields), referer);
+  const out = JSON.parse(raw);
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
+/** The first of several shapes the form might be identified by. */
+function findForm(html, matchers) {
+  for (const m of matchers) {
+    const form = parseForm(html, m);
+    if (form) return form;
+  }
+  return null;
+}
+
+/** An absolute URL for a form action, which Rails writes as a path. */
+const absolute = (action) => new URL(action, ORIGIN).toString();
+
+function requireSignedIn() {
+  if (!isNative) throw new Error('Acting on the archive needs the app');
+  if (!signedIn()) throw new Error('Sign in to the archive first');
+}
+
+/**
+ * Leave kudos.
+ *
+ * The archive accepts them once per work per person and answers a second
+ * attempt with an error rather than a success, which is why this is recorded
+ * locally: there is no way to ask afterwards whether they were left.
+ */
+export async function leaveKudos(workId) {
+  requireSignedIn();
+  const referer = workUrl(workId);
+  const html = await page(workPage(workId));
+  const form = findForm(html, ['id="new_kudo"', 'action="/kudos"', 'id="kudo_submit"']);
+  if (!form) throw new Error('The archive did not offer a kudos form on that work');
+
+  const res = await submit(absolute(form.action), form.fields, referer);
+  /* The archive says so in the page it returns rather than in the status: a
+     duplicate is an error, and an error that says "already left kudos" is the
+     one outcome worth treating as success. */
+  const already = /already left kudos/i.test(res.body ?? '');
+  if (!already && res.status >= 400) throw new Error('The archive refused the kudos');
+
+  native.markWork(String(workId), 'kudos_given', true);
+  return { workId, already };
+}
+
+/**
+ * Bookmark a work.
+ *
+ * The form lives on its own page rather than on the work, and carries the
+ * reader's pseud and their defaults — which is exactly why it is read rather
+ * than reconstructed. An unticked box is left out, because submitting one is
+ * how a private bookmark quietly becomes a public one.
+ */
+export async function bookmarkWork(workId, { notes = '', tags = '', isPrivate = false, rec = false } = {}) {
+  requireSignedIn();
+  const referer = workUrl(workId);
+  const html = await page(`${ORIGIN}/works/${Number(workId)}/bookmarks/new`);
+  const form = findForm(html, ['id="bookmark-form"', 'id="new_bookmark"', 'action="/works/']);
+  if (!form) throw new Error('The archive did not offer a bookmark form for that work');
+
+  const fields = { ...form.fields };
+  const set = (suffix, value) => {
+    const key = Object.keys(fields).find((k) => k.endsWith(suffix))
+      ?? `bookmark[${suffix.replace(/^\[|\]$/g, '')}]`;
+    if (value === false) delete fields[key];
+    else fields[key] = value === true ? '1' : value;
+  };
+  if (notes) set('[bookmarker_notes]', notes);
+  if (tags) set('[tag_string]', tags);
+  set('[private]', isPrivate);
+  set('[rec]', rec);
+
+  const res = await submit(absolute(form.action), fields, referer);
+  if (res.status >= 400) throw new Error('The archive refused the bookmark');
+
+  native.markWork(String(workId), 'in_bookmarks', true);
+  if (rec) native.markWork(String(workId), 'rec', true);
+  return { workId, rec };
+}
+
+/**
+ * Leave a comment.
+ *
+ * Refuses an empty one before anything is sent: an empty comment is a form
+ * error round-trip that tells the reader nothing they did not already know.
+ */
+export async function commentOnWork(workId, text) {
+  requireSignedIn();
+  const content = String(text ?? '').trim();
+  if (!content) throw new Error('There is nothing to say yet');
+
+  const referer = workUrl(workId);
+  const html = await page(workPage(workId));
+  const form = findForm(html, ['id="new_comment"', 'action="/works/']);
+  if (!form) throw new Error('That work does not take comments');
+
+  const fields = { ...form.fields };
+  const key = Object.keys(fields).find((k) => k.endsWith('[comment_content]'))
+    ?? 'comment[comment_content]';
+  fields[key] = content;
+
+  const res = await submit(absolute(form.action), fields, referer);
+  if (res.status >= 400) throw new Error('The archive refused the comment');
+  return { workId };
 }

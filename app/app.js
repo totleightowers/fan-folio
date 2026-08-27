@@ -10,7 +10,7 @@
 import { History } from './core/nav.js';
 import { DURATION } from './core/motion.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -771,7 +771,7 @@ const TAPPABLE = [
   '.show-more', '.opt', '.account-btn', '.chapters-open', '.shelf-head button',
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
-  '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos',
+  '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -946,6 +946,117 @@ window.__backupFailed = () => {
   const state = $('#backup-state');
   state.hidden = false;
   state.textContent = 'That did not save. There may not be room for it.';
+};
+
+/**
+ * What can be done to a work on the archive itself.
+ *
+ * These leave the phone: kudos are permanent, a comment notifies the author,
+ * and a bookmark appears on a public profile unless it is marked private. So
+ * each one says what it is about to do, and the two that take text ask before
+ * sending rather than firing on a tap.
+ */
+function archiveActions(w) {
+  const row = document.createElement('div');
+  row.className = 'actions archive-actions';
+
+  const kudos = document.createElement('button');
+  const already = Boolean(w.kudos_given);
+  kudos.className = 'archive-act';
+  kudos.disabled = already;
+  kudos.append(icon('star', 'ic ic-inline'), document.createTextNode(already ? 'Kudos left' : 'Kudos'));
+  kudos.onclick = async () => {
+    kudos.classList.add('is-busy');
+    try {
+      const out = await leaveKudos(w.work_id);
+      kudos.textContent = '';
+      kudos.append(icon('star', 'ic ic-inline'), document.createTextNode('Kudos left'));
+      kudos.disabled = true;
+      tick('commit');
+      toast(out.already ? 'You had already left kudos' : 'Kudos left');
+    } catch (e) {
+      toast(e.message);
+    } finally {
+      kudos.classList.remove('is-busy');
+    }
+  };
+
+  const bookmark = document.createElement('button');
+  bookmark.className = 'archive-act';
+  bookmark.append(icon('bookmark', 'ic ic-inline'),
+    document.createTextNode(w.in_bookmarks ? 'Bookmarked' : 'Bookmark'));
+  bookmark.onclick = () => {
+    $('#bm-notes').value = '';
+    $('#bm-tags').value = '';
+    $('#bm-private').checked = false;
+    $('#bm-rec').checked = false;
+    $('#bm-status').hidden = true;
+    bookmarkTarget = w;
+    openSheet($('#bookmark-dialog'));
+  };
+
+  const comment = document.createElement('button');
+  comment.className = 'archive-act';
+  comment.append(icon('chapters', 'ic ic-inline'), document.createTextNode('Comment'));
+  comment.onclick = () => {
+    $('#cm-text').value = '';
+    $('#cm-status').hidden = true;
+    commentTarget = w;
+    openSheet($('#comment-dialog'));
+  };
+
+  row.append(kudos, bookmark, comment);
+  return row;
+}
+
+let bookmarkTarget = null;
+let commentTarget = null;
+
+/** Report into the sheet that asked, rather than over the screen behind it. */
+function sheetStatus(id, message, ok) {
+  const el = $(id);
+  el.hidden = false;
+  el.className = `addwork-status ${ok ? 'ok' : 'bad'}`;
+  el.textContent = message;
+}
+
+$('#bm-go').onclick = async () => {
+  if (!bookmarkTarget) return;
+  const button = $('#bm-go');
+  button.disabled = true;
+  sheetStatus('#bm-status', 'Sending…', true);
+  try {
+    await bookmarkWork(bookmarkTarget.work_id, {
+      notes: $('#bm-notes').value.trim(),
+      tags: $('#bm-tags').value.trim(),
+      isPrivate: $('#bm-private').checked,
+      rec: $('#bm-rec').checked,
+    });
+    sheetStatus('#bm-status', 'Bookmarked on the archive', true);
+    tick('commit');
+    setTimeout(() => { closeSheet($('#bookmark-dialog')); openWork(bookmarkTarget.work_id); }, 800);
+  } catch (e) {
+    sheetStatus('#bm-status', e.message, false);
+  } finally {
+    button.disabled = false;
+  }
+};
+
+$('#cm-go').onclick = async () => {
+  if (!commentTarget) return;
+  const button = $('#cm-go');
+  button.disabled = true;
+  sheetStatus('#cm-status', 'Posting…', true);
+  try {
+    await commentOnWork(commentTarget.work_id, $('#cm-text').value);
+    sheetStatus('#cm-status', 'Posted', true);
+    tick('commit');
+    setTimeout(() => closeSheet($('#comment-dialog')), 800);
+  } catch (e) {
+    sheetStatus('#cm-status', e.message, false);
+  } finally {
+    button.disabled = false;
+  }
 };
 
 /* ------------------------------------------------------------------ sheets */
@@ -1489,6 +1600,7 @@ async function openWork(workId) {
     actions.append(restart);
   }
   box.append(actions);
+  box.append(archiveActions(w));
 
   const meta = document.createElement('div');
   meta.innerHTML = w.meta_html ?? '';
