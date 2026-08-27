@@ -409,6 +409,18 @@ export function haptic(kind = 'tick') {
   try { native.haptic(kind); } catch { /* a device without an actuator */ }
 }
 
+/**
+ * Open a page on the archive in a browser, deliberately not in here.
+ *
+ * The app claims archive links now, so an ordinary link would be offered
+ * straight back to it and the reader would arrive where they already were.
+ * The shell excludes this app from the chooser.
+ */
+export function openOnArchive(path) {
+  if (!isNative) { window.open(new URL(path, ORIGIN).toString(), '_blank', 'noopener'); return; }
+  native.openInBrowser(path);
+}
+
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }

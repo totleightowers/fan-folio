@@ -173,7 +173,13 @@ body {
   border-radius: 999px; padding: .45rem .9rem; cursor: pointer;
 }
 #chapnav button:disabled { opacity: .35; }
-#chappos { color: var(--muted); font-size: .85rem; }
+/* This is the way to every other chapter, and it was styled as a caption —
+   muted text reading "3 / 12" that nobody would think to press. It is the one
+   control in the reader that has to look like one. */
+#chappos {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font-size: .85rem; color: inherit;
+}
 
 /* ------------------------------------------------------------------ detail */
 
@@ -1335,3 +1341,10 @@ button:disabled, .opt:disabled {
   max-width: none;
 }
 .stacked textarea { resize: vertical; min-height: 3.5rem; }
+
+/* The chapter bar gained a fourth control, and space-between would have spread
+   the position indicator off to one side. The two arrows and the archive link
+   keep their size; the indicator takes the middle and stays centred. */
+#chapnav #chappos { flex: 1 1 auto; text-align: center; }
+#chapnav #prev, #chapnav #next, #chapnav #on-archive { flex: 0 0 auto; }
+#chapnav #on-archive { padding: .45rem .65rem; color: var(--muted); }

@@ -875,6 +875,62 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Record something the reader did on the archive.
+         *
+         * Narrow on purpose. The read bridge refuses anything that is not a
+         * SELECT, and this is the write counterpart: a fixed set of columns, a
+         * value coerced to 0 or 1, and the work id bound rather than pasted.
+         * There is no general-purpose write here and there should not be.
+         */
+        @JavascriptInterface
+        public String markWork(String workId, String field, boolean on) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            if (!"in_bookmarks".equals(field) && !"rec".equals(field)
+                    && !"kudos_given".equals(field)) {
+                return errorJson("that is not a field this can set");
+            }
+            try {
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put(field, on ? 1 : 0);
+                int rows = db.update("works", v, "work_id = ?", new String[]{ workId });
+                return "{\"updated\":" + rows + "}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /**
+         * Open a page on the archive in a real browser.
+         *
+         * The app now claims archive links, so an ordinary ACTION_VIEW would
+         * be offered straight back to this app — the reader would tap "open on
+         * the archive" and arrive exactly where they already were. The chooser
+         * is told to exclude us, so what opens is a browser.
+         *
+         * The host is a constant here for the same reason it is on the write
+         * path: nothing crossing the bridge decides where the reader is sent.
+         */
+        @JavascriptInterface
+        public void openInBrowser(String path) {
+            mustBeOurPage();
+            final URL u = archiveUrl(path);
+            if (u == null) return;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                try {
+                    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(u.toString()));
+                    view.addCategory(Intent.CATEGORY_BROWSABLE);
+                    Intent chooser = Intent.createChooser(view, "Open on the archive");
+                    chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS,
+                        new android.content.ComponentName[]{
+                            new android.content.ComponentName(MainActivity.this, MainActivity.class)
+                        });
+                    startActivity(chooser);
+                } catch (Exception ignored) {}
+            }});
+        }
+
         @JavascriptInterface
         public void keepAwake(final boolean on) {
             mustBeOurPage();
