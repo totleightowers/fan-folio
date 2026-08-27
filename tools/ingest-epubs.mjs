@@ -43,6 +43,11 @@ const insertChapter = db.prepare(`
   INSERT INTO chapters (work_id, number, title, html, text, words) VALUES (?,?,?,?,?,?)
   ON CONFLICT(work_id, number) DO UPDATE SET
     title=excluded.title, html=excluded.html, text=excluded.text, words=excluded.words`);
+/* An FTS4 table has no unique constraint to conflict on, so a plain insert
+   quietly indexes a work twice when the ingest is re-run — which it is, every
+   time the library is rebuilt. Clearing first is what makes re-ingesting a
+   work an update rather than a second copy of it. */
+const clearWorkFts = db.prepare('DELETE FROM work_fts WHERE work_id = ?');
 const insertWorkFts = db.prepare('INSERT INTO work_fts (work_id, title, authors, summary, tags) VALUES (?,?,?,?,?)');
 const insertImage = db.prepare(`
   INSERT INTO images (work_id, url, sha256, mime, bytes, status, fetched_at)
@@ -126,6 +131,7 @@ for (const name of files) {
       insertChapter.run(w.workId, i + 1, c.title, c.html, c.text, c.words);
       chapters++;
     }
+    clearWorkFts.run(w.workId);
     insertWorkFts.run(w.workId, w.title ?? '', (w.authors ?? []).join(', '),
       w.summary ?? '', allTags.join(', '));
     images += await storeEpubImages(w.workId, raw);
