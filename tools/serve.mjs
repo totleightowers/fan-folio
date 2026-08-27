@@ -212,6 +212,21 @@ createServer(async (req, res) => {
 
     if (p === '/api/facets') return json(res, facets(filtersFrom(url.searchParams)));
 
+    if (p === '/api/progress' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId');
+      const chapter = Math.max(1, Number(url.searchParams.get('chapter') || 1));
+      const offset = Number(url.searchParams.get('offset') || 0);
+      if (!workId) return json(res, { error: 'no work' }, 400);
+      db.prepare(`
+        INSERT INTO reading (work_id, chapter, offset, chapters_read, updated_at)
+        VALUES (?,?,?,?,datetime('now'))
+        ON CONFLICT(work_id) DO UPDATE SET
+          chapter = excluded.chapter, offset = excluded.offset,
+          chapters_read = max(COALESCE(reading.chapters_read, 0), excluded.chapters_read),
+          updated_at = excluded.updated_at`).run(workId, chapter, offset, Math.max(0, chapter - 1));
+      return json(res, { ok: true });
+    }
+
     if (p === '/api/add' && req.method === 'POST') {
       // the dev server does the whole job itself; the app fetches and parses in
       // the page and hands the result to its shell
@@ -233,8 +248,12 @@ createServer(async (req, res) => {
       for (const t of Q.tags.all(m[1])) (tags[t.kind] ??= []).push(t.name);
       let authors = [];
       try { authors = JSON.parse(work.authors || '[]'); } catch { authors = []; }
+      const progress = db.prepare(
+        'SELECT chapter, offset, chapters_read FROM reading WHERE work_id = ?').get(m[1]);
       return json(res, {
         ...work,
+        at_chapter: progress?.chapter ?? null,
+        chapters_read: progress?.chapters_read ?? 0,
         // AO3's own markup, generated from stored data so it works for every
         // work in the library rather than only the ones fetched from AO3
         meta_html: workMetaHtml(work, tags),

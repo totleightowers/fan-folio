@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing leaves the device.
+
+  The archive holds what someone reads, which is about as personal as a
+  library gets. Cloud backup and device-to-device transfer are both refused;
+  the archive is portable by exporting it deliberately, not by syncing it
+  somewhere without being asked.
+-->
+<data-extraction-rules>
+    <cloud-backup><exclude domain="root" /></cloud-backup>
+    <device-transfer><exclude domain="root" /></device-transfer>
+</data-extraction-rules>
