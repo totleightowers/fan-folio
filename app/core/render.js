@@ -1,3 +1,5 @@
+import { sanitiseFragment, sanitiseCss } from './sanitise.js';
+
 /**
  * Turning a stored work into something safe to display.
  *
@@ -50,28 +52,29 @@ function stripUntilStable(text, pattern) {
 }
 
 export function sanitiseHtml(html, { allowRemoteImages = false } = {}) {
-  if (!html) return '';
-  let out = String(html);
-  out = stripUntilStable(out, DROP_WHOLE);
-  out = stripUntilStable(out, EVENT_ATTR);
-  out = stripUntilStable(out, BAD_URL_ATTR);
-  out = out.replace(/\sstyle\s*=\s*"([^"]*)"/gi, (whole, css) =>
-    ESCAPING_CSS.test(css) ? ` style="${css.replace(ESCAPING_CSS, '')}"` : whole);
+  /*
+   * An allowlisting parser decides what survives; this function then does the
+   * one thing that is about *this app* rather than about safety in general.
+   *
+   * Pattern removal was replaced because it can be talked around — a nested
+   * tag reassembles once the inner one is taken out, and every fix is another
+   * pattern. Deciding what may live is a shorter argument than enumerating
+   * what may not.
+   */
+  let out = sanitiseFragment(html);
+
   if (!allowRemoteImages) {
     /*
-     * Every image source is neutralised, remote or not.
-     *
-     * A remote <img> left intact is a tracking pixel reporting when and where a
-     * fic was read. A *relative* one — "img7.jpg", pointing inside the EPUB it
-     * came from — simply 404s and renders as a broken-image icon, which is what
-     * 722 images across 192 works were doing. Both are replaced with a marked
-     * placeholder that renderChapter swaps for the stored copy when there is
-     * one, so an image is either real or visibly absent, never broken.
+     * Every image source is neutralised, remote or not. A remote img left
+     * intact is a tracking pixel reporting when and where a fic was read; a
+     * relative one points inside the EPUB it came from and simply 404s.
+     * renderChapter swaps in the stored copy where there is one, so an image
+     * is either real or visibly absent, never broken.
      */
-    out = out.replace(/<img\b([^>]*?)\ssrc\s*=\s*("|')([^"']*)\2/gi,
-      (whole, pre, q, url) => (url.startsWith('/img/')
+    out = out.replace(/<img\b([^>]*?)\ssrc="([^"]*)"/gi,
+      (whole, pre, url) => (url.startsWith('/img/') || url === ''
         ? whole
-        : `<img${pre} data-remote-src=${q}${url}${q} src="" class="ar-missing-image"`));
+        : `<img${pre} data-remote-src="${url}" src="" class="ar-missing-image"`));
   }
   return out;
 }
@@ -86,9 +89,7 @@ export function sanitiseHtml(html, { allowRemoteImages = false } = {}) {
  */
 export function scopeCss(css, root = '#workskin') {
   if (!css) return '';
-  const clean = String(css)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(ESCAPING_CSS, '');
+  const clean = sanitiseCss(css);
 
   const out = [];
   let i = 0;
