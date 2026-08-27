@@ -118,15 +118,42 @@ test('the sign-in window is never given the app bridge', () => {
 test('the session cookie goes only to the archive', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
   const open = java.slice(java.indexOf('private HttpURLConnection open('), java.indexOf('private WebResourceResponse respond('));
-  // asserted with a pattern rather than a substring test on a URL-shaped
-  // string: `url.includes(host)` is itself the shape of a broken host check,
-  // and writing one even in a test teaches the wrong thing
-  assert.match(open, /host\.endsWith\("[a-z.]*archiveofourown\.org"\)/,
-    'the host is checked by suffix before the cookie is attached');
+
+  /* This used to assert the shape of the check rather than what it guarantees,
+     and the pattern it accepted — endsWith("archiveofourown.org") with no
+     leading dot — is true of evilarchiveofourown.org, someone else's domain
+     entirely. The test would have passed while the cookie leaked. It now
+     asserts the property: a boundary-correct decision, made before the session
+     is attached. */
+  const decidesAt = open.indexOf('isArchiveHost(');
   const cookieAt = open.indexOf('setRequestProperty("Cookie"');
-  const hostCheckAt = open.indexOf('host.endsWith');
-  assert.ok(hostCheckAt > 0 && hostCheckAt < cookieAt,
-    'the host must be checked before the session is sent, not after');
+  assert.ok(decidesAt > 0, 'the host is decided by one shared, boundary-correct test');
+  assert.ok(decidesAt < cookieAt, 'the host must be decided before the session is sent, not after');
+});
+
+test('a domain merely ending in the archive name is not the archive', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('private static boolean isArchiveHost('));
+  const body = fn.slice(0, fn.indexOf('\n    }'));
+
+  // the dot is the whole security boundary: without it, evilarchiveofourown.org
+  // is accepted as the archive and handed a session cookie
+  assert.match(body, /equals\("archiveofourown\.org"\)/, 'the archive itself must match exactly');
+  assert.match(body, /endsWith\("\.archiveofourown\.org"\)/, 'a subdomain must be dot-anchored');
+});
+
+test('a redirect cannot take a signed-in write off the archive', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const post = java.slice(java.indexOf('private String postOnce('));
+  const body = post.slice(0, post.indexOf('\n    }\n'));
+
+  /* Where a redirect points is chosen by the response, not by us. Following one
+     unchecked is a request this app makes on someone else's instruction, to any
+     host they name — server-side request forgery, and CodeQL called it that. */
+  const followAt = body.indexOf('open(next)');
+  const checkAt = body.indexOf('isArchiveHost(next.getHost())');
+  assert.ok(checkAt > 0, 'the redirect target is checked');
+  assert.ok(checkAt < followAt, 'and checked before it is followed');
 });
 
 test('the read bridge refuses anything that is not a single read', () => {

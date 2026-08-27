@@ -2108,11 +2108,41 @@ async function submitAddWork() {
  */
 window.__openLink = async (link) => {
   if (!link) return;
-  $('#addwork-url').value = link;
-  $('#addwork-status').hidden = true;
-  $('#addwork-signin').hidden = true;
-  if (!addDialog.open) openSheet(addDialog);
-  await submitAddWork();
+
+  /* No dialog and nothing to confirm. Opening a work in this app *is* the
+     instruction to keep it — the reader already chose this app for the link,
+     and asking again is asking them to say the same thing twice. The sheet
+     appears only if something goes wrong, because then there is a decision to
+     make: sign in, or try a different link.
+
+     The work opens on a skeleton immediately, so the wait happens somewhere
+     that already looks like the destination rather than behind a modal. */
+  toast('Fetching from the archive…');
+  try {
+    const out = await addWork(link);
+    offset = 0;
+    await Promise.all([loadMore(true), buildHome().catch(() => {})]);
+    tick('commit');
+
+    if (out.kind === 'series') {
+      toast(`Saved ${out.added} work${out.added === 1 ? '' : 's'} from the series`);
+      go('library');
+      return;
+    }
+    toast(`Saved “${out.title}”`);
+    openWork(out.workId);
+  } catch (e) {
+    /* A failure is the one case with something to decide, so it gets the sheet
+       — with the link still in it, ready to retry. */
+    $('#addwork-url').value = link;
+    if (!addDialog.open) openSheet(addDialog);
+    const status = $('#addwork-status');
+    status.hidden = false;
+    status.className = 'addwork-status bad';
+    status.textContent = e.message;
+    $('#addwork-signin').hidden = !(isNative && !signedIn()
+      && /restricted|login|403|404|sign in/i.test(e.message));
+  }
 };
 
 $('#addwork-go').onclick = submitAddWork;

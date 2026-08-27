@@ -535,6 +535,19 @@ public class MainActivity extends Activity {
         "archiveofourown.org", "fonts.googleapis.com", "fonts.gstatic.com",
     };
 
+    /**
+     * Is this the archive itself, and not merely a name ending in it?
+     *
+     * endsWith("archiveofourown.org") is true of evilarchiveofourown.org, which
+     * is somebody else's domain entirely. Anywhere that decision gates a
+     * session cookie, the dot is the whole security boundary.
+     */
+    private static boolean isArchiveHost(String host) {
+        if (host == null) return false;
+        String h = host.toLowerCase(Locale.ROOT);
+        return h.equals("archiveofourown.org") || h.endsWith(".archiveofourown.org");
+    }
+
     private static boolean allowedHost(String host) {
         if (host == null) return false;
         String h = host.toLowerCase(Locale.ROOT);
@@ -579,7 +592,16 @@ public class MainActivity extends Activity {
            with a GET, so the page can see what was made. */
         if ((status == 302 || status == 303 || status == 301) && location != null) {
             try {
-                HttpURLConnection follow = open(new URL(u, location));
+                /* Where a redirect points is chosen by the response, not by us.
+                   Following it without asking where it goes is a request this
+                   app makes on someone else's instruction — to any host they
+                   name, carrying whatever open() would attach. It is checked
+                   exactly as the original target was. */
+                URL next = new URL(u, location);
+                if (!"https".equalsIgnoreCase(next.getProtocol()) || !isArchiveHost(next.getHost())) {
+                    throw new IOException("redirected off the archive");
+                }
+                HttpURLConnection follow = open(next);
                 status = follow.getResponseCode();
                 text = readBody(follow);
                 follow.disconnect();
@@ -616,9 +638,9 @@ public class MainActivity extends Activity {
         c.setConnectTimeout(20000);
         c.setReadTimeout(30000);
         c.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(this));
-        // the session travels only to the archive, never to the font host
-        String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
-        if (host.endsWith("archiveofourown.org")) {
+        // the session travels only to the archive, never to the font host —
+        // and never to a domain that merely ends with the archive's name
+        if (isArchiveHost(u.getHost())) {
             String cookies = archiveCookies();
             if (!cookies.isEmpty()) c.setRequestProperty("Cookie", cookies);
         }
@@ -804,13 +826,10 @@ public class MainActivity extends Activity {
             try {
                 URL u = new URL(rawUrl);
                 if (!"https".equalsIgnoreCase(u.getProtocol())) return errorJson("https only");
-                String host = u.getHost() == null ? "" : u.getHost().toLowerCase(Locale.ROOT);
                 /* Deliberately stricter than the GET proxy, which also allows
                    the font hosts. A signed-in write belongs to the archive and
                    to nothing else. */
-                if (!host.equals("archiveofourown.org") && !host.endsWith(".archiveofourown.org")) {
-                    return errorJson("that host cannot be posted to");
-                }
+                if (!isArchiveHost(u.getHost())) return errorJson("that host cannot be posted to");
                 return postOnce(u, body == null ? "" : body, referer);
             } catch (Exception e) {
                 return errorJson(String.valueOf(e.getMessage()));
