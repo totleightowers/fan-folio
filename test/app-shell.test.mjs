@@ -320,3 +320,33 @@ test('a sheet is dragged by its own furniture, not its contents', () => {
   assert.ok(body.includes(".closest('.sheet-grab, h2')"),
     'dragging a list inside a sheet is scrolling it; a sheet that closes when you scroll is unusable');
 });
+
+/**
+ * A database on a phone keeps whatever shape it was exported with. The schema
+ * is applied with CREATE TABLE IF NOT EXISTS, which does nothing at all to a
+ * table that already exists — so a column added to the schema arrives for new
+ * databases and for nobody else.
+ *
+ * That is how `rec` shipped: the library stopped loading entirely with
+ * `no such column: w.rec`, because one missing column takes out the query that
+ * lists every work. The shell migrates on open, and this keeps its list honest.
+ */
+test('the shell can migrate every column the schema declares', () => {
+  const schema = readFileSync(new URL('../app/core/store/schema.js', import.meta.url), 'utf8');
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+
+  const create = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS works'));
+  const declared = [...create.slice(0, create.indexOf('\n);')).matchAll(/^\s{2}([a-z_]+)\s+(TEXT|INTEGER)/gm)]
+    .map((m) => m[1])
+    .filter((name) => name !== 'work_id');       // the primary key always exists
+
+  const list = java.slice(java.indexOf('WORKS_COLUMNS = {'), java.indexOf('};', java.indexOf('WORKS_COLUMNS = {')));
+  const migratable = [...list.matchAll(/\{"([a-z_]+)",/g)].map((m) => m[1]);
+
+  const unmigratable = declared.filter((c) => !migratable.includes(c));
+  assert.deepEqual(unmigratable, [],
+    `the schema declares these but the shell cannot add them to an older database: ${unmigratable.join(', ')}`);
+
+  const phantom = migratable.filter((c) => !declared.includes(c));
+  assert.deepEqual(phantom, [], `the shell would add columns the schema does not declare: ${phantom.join(', ')}`);
+});

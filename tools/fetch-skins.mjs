@@ -15,10 +15,11 @@ import { parseWorkPage } from '../app/core/ao3/parse.js';
 import { workPage } from '../app/core/ao3/urls.js';
 import { htmlToText, countWords } from '../app/core/epub.js';
 import { applyWithVersioning, chapterHash } from './lib/versioning.mjs';
-import { SCHEMA } from '../app/core/store/schema.js';
+import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
 
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
 db.exec(SCHEMA);
+ensureColumns(db);   // an older library gains whatever columns it lacks
 const explicitIds = process.argv.slice(2).filter((a) => /^\d+$/.test(a));
 const limit = Number(process.env.LIMIT || 25);
 

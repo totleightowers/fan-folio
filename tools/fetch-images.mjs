@@ -11,11 +11,12 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 import { createLimiter } from '../app/core/queue.js';
-import { SCHEMA } from '../app/core/store/schema.js';
+import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
 import { imageUrls } from '../app/core/ao3/parse.js';
 
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
 db.exec(SCHEMA);
+ensureColumns(db);   // an older library gains whatever columns it lacks
 
 const ids = process.argv.slice(2).filter((a) => /^\d+$/.test(a));
 const MAX_BYTES = 8 * 1024 * 1024;

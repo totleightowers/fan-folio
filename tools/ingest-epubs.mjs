@@ -11,7 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { parseEpub } from '../app/core/epub.js';
 import { readZip } from '../app/core/zip.js';
 import { createHash } from 'node:crypto';
-import { SCHEMA } from '../app/core/store/schema.js';
+import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
 
 const dir = process.argv[2];
 const dbPath = process.argv[3] || 'data/fanfolio.db';
@@ -20,6 +20,7 @@ if (!dir) { console.error('usage: node tools/ingest-epubs.mjs <epub-dir> [db]');
 await mkdir('data', { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(SCHEMA);
+ensureColumns(db);   // an older library gains whatever columns it lacks
 
 const insertWork = db.prepare(`
   INSERT INTO works (work_id, title, authors, summary, rating, language, published, updated,
