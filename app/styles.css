@@ -1409,3 +1409,48 @@ button:disabled, .opt:disabled {
   overflow-x: auto;
   touch-action: pan-x pan-y;
 }
+
+/* -------------------------------------------------- the head of the chapter
+ *
+ * A chapter began with bare prose. Nothing said which work it belonged to, and
+ * scrolling to the top to look for its front matter found nothing — the only
+ * route back was an unlabelled book icon in a row of six.
+ *
+ * It sits in the reading column and looks like part of the page rather than a
+ * control pinned over it, but the whole of it is tappable and says where it
+ * goes.
+ */
+#reader-head {
+  display: block;
+  width: 100%;
+  max-width: 40em;
+  margin: .4rem auto 1.6rem;
+  padding: 0 var(--read-margin) 1.1rem;
+  border: 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-family: var(--read-face);
+  text-align: left;
+  cursor: pointer;
+}
+#rh-title {
+  display: block;
+  font-size: calc(var(--read-size) * 1.25);
+  line-height: 1.25;
+  font-weight: 600;
+}
+#rh-by, #rh-chapter {
+  display: block;
+  font-size: calc(var(--read-size) * .82);
+  color: var(--muted);
+  margin-top: .25rem;
+}
+#rh-go {
+  display: inline-block;
+  margin-top: .55rem;
+  font-size: calc(var(--read-size) * .78);
+  color: var(--accent);
+}
+#rh-go::after { content: ' \203a'; }
