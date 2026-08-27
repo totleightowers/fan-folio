@@ -7,7 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { History } from './core/nav.js';
+import { History, openingOffset } from './core/nav.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
@@ -1688,6 +1688,13 @@ async function openChapter(workId, number, { transient = false } = {}) {
   if (token !== pending) return;
 
   currentWork = w;
+
+  /* A scroll write is queued 400ms after the last scroll and keyed on whatever
+     `current` says when it fires. Changing `current` with one still pending
+     files the old chapter's offset under the new chapter — which is then
+     faithfully restored, landing the reader somewhere arbitrary in a chapter
+     they have never seen. The chapter being left has already been recorded. */
+  clearTimeout(posTimer);
   current = { workId, chapter: number, count: w.chapter_count };
 
   // the skin is already scoped to #workskin; this element holds one work's CSS,
@@ -1716,8 +1723,17 @@ async function openChapter(workId, number, { transient = false } = {}) {
 
   keepAwake(true);
 
-  const saved = positions[workId];
-  window.scrollTo(0, saved?.chapter === number && saved.y ? saved.y : 0);
+  /* Replacing the chapter changes the height of the document, and the browser
+     adjusts the scroll position afterwards to keep what was on screen on
+     screen — after this line, undoing it. Scroll anchoring is turned off for
+     the reader, and the position is set again on the next frame, once the new
+     chapter has actually been laid out. */
+  const offset = openingOffset(positions, workId, number, { transient });
+  window.scrollTo(0, offset);
+  requestAnimationFrame(() => {
+    if (current.workId === workId && current.chapter === number) window.scrollTo(0, offset);
+    updateProgress();
+  });
   updateProgress();
 }
 
