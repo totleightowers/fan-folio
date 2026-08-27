@@ -935,6 +935,10 @@ $('#backup').onclick = () => {
 
 /* The shell tells the page how the copy went; it cannot report from inside the
    file picker, and a backup that silently did nothing is worse than none. */
+/* The shell could find nothing able to open a web link, which on a phone with
+   a browser means it was not allowed to look. */
+window.__noBrowser = () => toast('No browser available to open the archive');
+
 window.__backupDone = () => {
   $('#backup').classList.remove('is-busy');
   const state = $('#backup-state');

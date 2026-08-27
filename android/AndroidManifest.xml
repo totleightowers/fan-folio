@@ -6,6 +6,24 @@
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
+    <!--
+        Which apps this one can see.
+
+        From Android 11 an app cannot see what else is installed unless it says
+        what it is looking for. Without this the chooser for "open on the
+        archive" resolved to nothing at all and reported that no app could
+        perform the action — not because no browser was installed, but because
+        this app was not allowed to know.
+
+        Narrow on purpose: handlers of https links, and nothing else.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <!-- syncing from AO3, and fonts for the reader -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
