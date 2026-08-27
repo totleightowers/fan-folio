@@ -300,6 +300,19 @@ let loading = false;
  * last and is clamped, because it is the slowest thing to read and the least
  * decisive.
  */
+/**
+ * One of the sprite's icons, as an element.
+ *
+ * The markup is ours and static — never author text — so innerHTML is safe
+ * here in a way it is not two lines below, where a title goes in by
+ * textContent because someone wrote it.
+ */
+function icon(name, className = 'ic') {
+  const span = document.createElement('span');
+  span.innerHTML = `<svg class="${className}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  return span.firstChild;
+}
+
 function workRow(w) {
   const node = document.createElement('div');
   node.className = 'work-card';
@@ -329,7 +342,9 @@ function workRow(w) {
     </div>`;
 
   // textContent, never innerHTML: titles, summaries and tags are author-written
-  node.querySelector('h3').textContent = (w.marked_later ? '★ ' : '') + (w.title ?? '(untitled)');
+  const heading = node.querySelector('h3');
+  heading.textContent = w.title ?? '(untitled)';
+  if (w.marked_later) heading.prepend(icon('star', 'ic ic-inline ic-later'));
   node.querySelector('.by').textContent = 'by ' + (authorsOf(w.authors).join(', ') || 'Anonymous');
   node.querySelector('.statline').textContent = stats;
   if (w.summary) node.querySelector('.sum').textContent = w.summary;
@@ -498,7 +513,7 @@ async function buildFilterPanel() {
     el.innerHTML = `<button class="sec-head">
         <span class="sec-title"></span>
         <span class="sec-sel"></span>
-        <span class="sec-chev">›</span>
+        <svg class="ic ic-chev sec-chev" aria-hidden="true"><use href="#i-chevron"/></svg>
       </button><div class="sec-body"></div>`;
     el.querySelector('.sec-title').textContent = title;
     const sel = el.querySelector('.sec-sel');
@@ -1439,8 +1454,9 @@ async function openWork(workId) {
   if (w.chapters.length > 1) {
     const open = document.createElement('button');
     open.className = 'chapters-open';
-    open.innerHTML = '<span class="glyph">☰</span><span class="label"></span>'
-      + '<span class="chev">›</span>';
+    open.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg>'
+      + '<span class="label"></span>'
+      + '<svg class="ic ic-chev chev" aria-hidden="true"><use href="#i-chevron"/></svg>';
     open.querySelector('.label').textContent =
       `${w.chapters.length} chapters` + (saved?.chapter ? ` · you are on ${saved.chapter}` : '');
     open.onclick = () => showChapterDrawer(workId, saved?.chapter ?? 1);
