@@ -107,11 +107,15 @@
 
 <dialog id="filters">
   <div class="filter-head">
+    <button class="close-x" data-close="filters" aria-label="Close">×</button>
     <h2>Filters</h2>
-    <button id="clear-filters" class="linkish">Clear all</button>
+    <span class="filter-head-spacer"></span>
   </div>
   <div id="filter-body"></div>
-  <button id="apply-filters" class="primary wide">Show works</button>
+  <div class="filter-foot">
+    <button id="clear-filters" class="ghost">Clear</button>
+    <button id="apply-filters" class="primary">Apply filters</button>
+  </div>
 </dialog>
 
 <dialog id="typography">
