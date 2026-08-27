@@ -330,7 +330,7 @@ dialog button.close {
   padding: .5rem 0 .55rem; display: flex; flex-direction: column; align-items: center; gap: .15rem;
 }
 #tabs button.on { color: var(--accent); }
-#tabs .glyph { font-size: 1.15rem; line-height: 1; }
+#tabs .ic-tab { width: 1.45rem; height: 1.45rem; }
 /* the tab bar must never sit on top of the last row of content */
 body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 
@@ -501,7 +501,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   background: var(--pane); border: 1px solid var(--rule); border-radius: 12px;
   padding: .7rem .8rem; margin: 1rem 0 .5rem;
 }
-.chapters-open .glyph { font-size: 1.05rem; color: var(--muted); }
+.chapters-open .ic { color: var(--muted); flex: 0 0 auto; }
 .chapters-open .label { flex: 1; font-size: .9rem; }
 .chapters-open .chev { color: var(--muted); font-size: 1.2rem; }
 
@@ -1194,3 +1194,72 @@ button:disabled, .opt:disabled {
 .facts dd { margin: 0; font-size: .86rem; font-variant-numeric: tabular-nums; }
 
 .version { margin-top: 2.5rem; opacity: .65; }
+
+/* ------------------------------------------------------------------ icons
+ *
+ * The toolbar was Unicode: a block for home, a hamburger for the library, a
+ * magnifier, a gear, "Aa" for type. Each inherited whatever the system font
+ * gave it, so they sat at different optical sizes and weights and read as
+ * toolbar text rather than as a set.
+ *
+ * These are one 24dp grid and one stroke weight, drawn in currentColor so
+ * every state — muted, accent, pressed, disabled — comes free from the colour
+ * already on the element.
+ */
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+.ic {
+  width: 1.35rem; height: 1.35rem;
+  display: block; flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  /* the icon is the button's meaning, not its content: never let a long press
+     select it the way it would select a text glyph */
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Inline with text — the star on a work kept for later — needs to sit on the
+   baseline rather than above it, and to be the size of the words beside it. */
+.ic-inline {
+  display: inline-block;
+  width: 1em; height: 1em;
+  vertical-align: -.12em;
+  margin-right: .3em;
+}
+.ic-later { color: var(--accent); fill: currentColor; stroke: none; }
+
+.ic-chev { width: 1.15rem; height: 1.15rem; color: var(--muted); }
+
+/* A chevron that means "this section is open" turns rather than swapping for
+   a second icon, which keeps one drawing doing one job. */
+.filter-section .sec-chev { transition: rotate 160ms cubic-bezier(.2, 0, 0, 1); }
+.filter-section.open .sec-chev { rotate: 90deg; }
+
+/*
+ * The selected tab.
+ *
+ * Rather than a second, filled set of drawings to maintain, the selected tab
+ * carries a state layer behind its icon — the same shape the platform uses —
+ * and the accent colour. One icon, two states, nothing to keep in sync.
+ */
+#tabs button { position: relative; }
+#tabs .ic-tab { transition: color 140ms ease-out; }
+#tabs button.on::before {
+  content: '';
+  position: absolute;
+  top: .28rem; left: 50%;
+  translate: -50% 0;
+  width: 3.6rem; height: 1.95rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-section .sec-chev { transition: none; }
+}
