@@ -10,7 +10,7 @@
 import { History } from './core/nav.js';
 import { DURATION } from './core/motion.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -1005,7 +1005,12 @@ function archiveActions(w) {
     openSheet($('#comment-dialog'));
   };
 
-  row.append(kudos, bookmark, comment);
+  const onArchive = document.createElement('button');
+  onArchive.className = 'archive-act';
+  onArchive.append(icon('external', 'ic ic-inline'), document.createTextNode('On the archive'));
+  onArchive.onclick = () => openOnArchive(`/works/${w.work_id}`);
+
+  row.append(kudos, bookmark, comment, onArchive);
   return row;
 }
 
@@ -1651,7 +1656,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
     go('reader');
     $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line', 'line', 'line'));
     $('#endnotes').hidden = true;
-    $('#chappos').textContent = '…';
+    $('#chappos').textContent = '…';   // replaced once the chapter count is known
   }
 
   let w; let ch;
@@ -1686,7 +1691,10 @@ async function openChapter(workId, number, { transient = false } = {}) {
     notes.textContent = '';
   }
 
-  $('#chappos').textContent = `${number} / ${w.chapter_count}`;
+  const pos = $('#chappos');
+  pos.textContent = '';
+  pos.append(icon('chapters', 'ic ic-chev'),
+    document.createTextNode(`${number} / ${w.chapter_count}`));
   $('#prev').disabled = number <= 1;
   $('#next').disabled = number >= w.chapter_count;
 
@@ -1708,9 +1716,15 @@ $('#next').onclick = () => openChapter(current.workId, current.chapter + 1);
  * to — in a fifty chapter work, opening at the top means scrolling to find
  * where you already are.
  */
-function showChapterDrawer(workId, at) {
-  const work = currentWork?.work_id === workId ? currentWork : null;
-  if (!work) return;
+async function showChapterDrawer(workId, at) {
+  /* This used to return silently when the work in hand was not the one asked
+     for, so the control did nothing at all and said nothing about why. The
+     list is what it needs; if it does not have it, it fetches it. */
+  const work = currentWork?.work_id === workId && currentWork.chapters
+    ? currentWork
+    : await api(`/api/works/${workId}`).catch(() => null);
+  if (!work?.chapters?.length) { toast('That work has no chapter list'); return; }
+  currentWork = work;
   const list = $('#chapter-list');
   list.textContent = '';
   const readTo = positions[workId]?.chapter ?? 0;
@@ -1728,6 +1742,14 @@ function showChapterDrawer(workId, at) {
   openSheet($('#chapters-dialog'));
   list.querySelector('.at')?.scrollIntoView({ block: 'center' });
 }
+
+/* The chapter, on the archive. Chapter ids are the archive's own and are not
+   stored here, so this opens the full-work view at the right anchor — which is
+   the same place, reached by a route that needs nothing we do not have. */
+$('#on-archive').onclick = () => {
+  if (!current.workId) return;
+  openOnArchive(`/works/${current.workId}?view_full_work=true#chapter-${current.chapter}`);
+};
 
 $('#chappos').onclick = () => currentWork && showChapterDrawer(current.workId, current.chapter);
 
@@ -1793,13 +1815,12 @@ function keepAwake(on) {
  * A tag row and a shelf of cards both pan horizontally, and a finger that
  * lands on one is asking for that pan, not for a page turn.
  */
-function scrollsSideways(node) {
+function scrollsSideways(node, direction) {
   for (let el = node; el && el !== document.body; el = el.parentElement) {
-    const { scrollWidth, clientWidth } = el;
+    const { scrollWidth, clientWidth, scrollLeft } = el;
     if (scrollWidth <= clientWidth + 4) continue;      // cheap test before styles
-    if (ownsHorizontal({ scrollWidth, clientWidth, overflowX: getComputedStyle(el).overflowX })) {
-      return true;
-    }
+    const style = { scrollWidth, clientWidth, scrollLeft, overflowX: getComputedStyle(el).overflowX };
+    if (ownsHorizontal(style, { direction })) return true;
   }
   return false;
 }
@@ -1823,6 +1844,7 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
   const goRight = onRight ?? (() => openChapter(current.workId, current.chapter - 1));
 
   let x0 = 0; let y0 = 0;
+  let origin = null;       // what the finger actually landed on
   let tracking = false;    // finger down, axis not yet decided
   let dragging = false;    // committed to the horizontal axis
   let pointerId = null;
@@ -1845,11 +1867,7 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
     // the screen edges belong to the system, not to us
     if (inSystemEdge(e.clientX, window.innerWidth)) return;
     if (el.classList.contains('settling')) return;
-    /* A row of tags or a shelf of cards scrolls sideways under the finger, and
-       that scroll is the gesture the reader meant. The work page is mostly
-       such rows, which is why swiping it so often appeared to do nothing:
-       whichever surface the finger landed on had already claimed the movement. */
-    if (scrollsSideways(e.target)) return;
+    origin = e.target;
     x0 = e.clientX; y0 = e.clientY;
     tracking = true; dragging = false;
     pointerId = e.pointerId;
@@ -1864,6 +1882,13 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
       const axis = axisOf(dx, dy);
       if (axis === 'vertical') { tracking = false; return; }   // the browser's
       if (axis === 'undecided') return;
+
+      /* A tag row or a shelf under the finger owns the movement — but only
+         while it still has somewhere to go that way. This cannot be decided on
+         pointerdown, because the direction is not known until the finger has
+         moved, and deciding it early is what stopped chapters turning at all. */
+      if (scrollsSideways(origin, Math.sign(dx))) { tracking = false; return; }
+
       dragging = true;
       el.classList.add('swiping');
       el.setPointerCapture?.(e.pointerId);
@@ -1939,12 +1964,16 @@ wireSwipe($('#reader'));
  */
 wireSwipe($('#detail'), {
   canLeft: () => Boolean(currentWork),
-  canRight: () => false,
   onLeft: () => {
     if (!currentWork) return;
     const at = positions[currentWork.work_id]?.chapter ?? 1;
     return openChapter(currentWork.work_id, at);
   },
+  /* And back out again the way you came in. Onward was a gesture and returning
+     was not, which left the movement meaning something in one direction and
+     nothing at all in the other. */
+  canRight: () => stack.depth > 0,
+  onRight: () => goBack(),
 });
 
 /**

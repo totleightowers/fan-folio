@@ -77,3 +77,27 @@ test('a decisive flick dismisses without travelling far', () => {
   assert.equal(dismisses(40, 700), false);
   assert.equal(dismisses(40, 700, { velocity: 1.4 }), true);
 });
+
+test('a scroller that can still move that way keeps the gesture', () => {
+  const wide = { scrollWidth: 900, clientWidth: 360, overflowX: 'auto', scrollLeft: 200 };
+  assert.equal(ownsHorizontal(wide, { direction: -1 }), true, 'room to the right');
+  assert.equal(ownsHorizontal(wide, { direction: 1 }), true, 'room to the left');
+});
+
+test('a scroller at its limit passes the gesture on', () => {
+  // the archive puts overflow-x:auto on the element holding the whole chapter,
+  // so any chapter with something wide in it swallowed every page turn
+  const atStart = { scrollWidth: 900, clientWidth: 360, overflowX: 'auto', scrollLeft: 0 };
+  assert.equal(ownsHorizontal(atStart, { direction: 1 }), false, 'nothing further left to show');
+  assert.equal(ownsHorizontal(atStart, { direction: -1 }), true);
+
+  const atEnd = { scrollWidth: 900, clientWidth: 360, overflowX: 'auto', scrollLeft: 540 };
+  assert.equal(ownsHorizontal(atEnd, { direction: -1 }), false, 'nothing further right to show');
+  assert.equal(ownsHorizontal(atEnd, { direction: 1 }), true);
+});
+
+test('a chapter that overflows but sits unscrolled still turns forward', () => {
+  // the commonest case by far, and the one that was broken
+  const chapter = { scrollWidth: 800, clientWidth: 400, overflowX: 'auto', scrollLeft: 0 };
+  assert.equal(ownsHorizontal(chapter, { direction: 1 }), false);
+});

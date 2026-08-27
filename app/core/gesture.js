@@ -73,11 +73,30 @@ export function inSystemEdge(x, width, edge = EDGE) {
  * The few pixels of slack matter — a row one pixel wider than its box through
  * rounding is not a scroller, and treating it as one would silently disable
  * the gesture across most of the page.
+ *
+ * `direction` is the way the finger is travelling: negative for a leftward
+ * drag. A scroller that has run out of room in that direction does not own the
+ * gesture, whatever else it could do.
  */
-export function ownsHorizontal({ scrollWidth = 0, clientWidth = 0, overflowX = 'visible' } = {}, slack = 4) {
+export function ownsHorizontal({ scrollWidth = 0, clientWidth = 0, overflowX = 'visible', scrollLeft = 0 } = {},
+  { slack = 4, direction = 0 } = {}) {
   if (scrollWidth <= clientWidth + slack) return false;
-  return overflowX === 'auto' || overflowX === 'scroll';
+  if (overflowX !== 'auto' && overflowX !== 'scroll') return false;
+
+  /* Whether it *can* scroll is not the question — whether it can scroll the way
+     the finger is going is. The archive's own stylesheet puts overflow-x: auto
+     on the element holding the whole chapter, so any chapter containing
+     something wide claimed every page-turn gesture in it, and only chapters
+     with something wide in them. That is why turning a page worked on some
+     chapters and silently did nothing on others.
+
+     A scroller already at its limit passes the gesture on, exactly as nested
+     scrolling does everywhere else. */
+  if (direction < 0) return scrollLeft < scrollWidth - clientWidth - slack;   // content moving left
+  if (direction > 0) return scrollLeft > slack;                               // content moving right
+  return true;
 }
+
 
 /**
  * Whether letting go here should dismiss a sheet.
