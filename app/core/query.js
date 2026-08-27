@@ -64,6 +64,11 @@ const list = (value) => {
  *   wordsMin / wordsMax, chaptersMin / chaptersMax
  *   sort       one of SORTS
  */
+/** Escape what LIKE would otherwise treat as a wildcard. */
+function likeLiteral(text) {
+  return String(text).replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export function buildWorksQuery(filters = {}) {
   const where = ['1=1'];
   const args = [];
@@ -90,6 +95,17 @@ export function buildWorksQuery(filters = {}) {
   if (ids.length) {
     where.push(`w.work_id IN (${ids.map(() => '?').join(',')})`);
     args.push(...ids);
+  }
+
+  /* Authors are stored as a JSON array on the work, so a name is matched as
+     the quoted string it appears as inside it — JSON.stringify gives exactly
+     that, escaping included, which is why the name is not spliced in raw. A
+     bare LIKE on the name alone would match "Anna" inside "Annabel", and the
+     surrounding quotes are what stop it. */
+  const authors = list(filters.author);
+  if (authors.length) {
+    where.push(`(${authors.map(() => "w.authors LIKE ? ESCAPE '\\'").join(' OR ')})`);
+    args.push(...authors.map((name) => `%${likeLiteral(JSON.stringify(String(name)))}%`));
   }
 
   const ratings = list(filters.rating);

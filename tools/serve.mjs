@@ -86,6 +86,7 @@ function filtersFrom(params) {
     include: params.get('include') || '',
     exclude: params.get('exclude') || '',
     rating: params.get('rating') || '',
+    author: params.get('author') || '',
     language: params.get('language') || '',
     wordsMin: params.get('wordsMin'), wordsMax: params.get('wordsMax'),
     chaptersMin: params.get('chaptersMin'), chaptersMax: params.get('chaptersMax'),
