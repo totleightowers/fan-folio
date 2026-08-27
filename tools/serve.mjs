@@ -13,11 +13,17 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { workMetaHtml, workPrefaceHtml } from '../app/core/ao3/markup.js';
-import { rank, CANDIDATES } from '../app/core/search.js';
+import { search } from '../app/core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
+
+/* The shape the shared query modules expect: one function, SQL and arguments
+   in, rows out. On the phone the same signature runs against Android's
+   SQLite through the bridge, which is the point — neither side gets to hold
+   its own copy of a query. */
+const runner = (query, args = []) => db.prepare(query).all(...args);
 const APP = new URL('../app/', import.meta.url).pathname;
 
 const MIME = {
@@ -298,21 +304,20 @@ createServer(async (req, res) => {
     }
 
     if (p === '/api/search') {
-      const q = url.searchParams.get('q')?.trim();
-      if (!q) return json(res, { hits: [], works: [] });
-      const limit = Math.min(Number(url.searchParams.get('limit') || 40), 100);
       const started = Date.now();
-      let hits = [];
-      let works = [];
       try {
-        hits = rank(Q.search.all(q, CANDIDATES), limit);
-        works = Q.searchMeta.all(q, 12);
+        const out = search(runner, url.searchParams.get('q'),
+          url.searchParams.get('scope') || 'text', {
+            limit: url.searchParams.get('limit'),
+            workId: url.searchParams.get('workId'),
+            filters: filtersFrom(url.searchParams),
+          });
+        return json(res, { ...out, ms: Date.now() - started });
       } catch (e) {
-        // FTS5 rejects malformed queries (a lone quote, a stray operator).
-        // That is a user typing, not a server fault, so it reports rather than 500s.
-        return json(res, { error: e.message, hits: [], works: [] }, 200);
+        /* FTS rejects a half-typed query — a lone quote, a stray operator.
+           That is somebody typing, not a fault, so it reports rather than 500s. */
+        return json(res, { error: e.message, hits: [], works: [], tags: [] });
       }
-      return json(res, { hits, works, ms: Date.now() - started });
     }
 
     return serveStatic(res, p);
