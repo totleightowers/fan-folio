@@ -325,6 +325,19 @@ function cycleTag(name) {
   save(VIEW_KEY, view);
 }
 
+/* Reading states, in the order a reader is likely to want them. A rec is a
+   starred bookmark — the strongest signal in the library of what was good. */
+const STATE_LABELS = {
+  all: 'All',
+  rec: '\u2605 Recs',
+  reading: 'Reading',
+  unread: 'Unread',
+  finished: 'Finished',
+  later: 'Marked for later',
+  bookmarked: 'Bookmarked',
+  history: 'In history',
+};
+
 const FILTER_SECTIONS = [
   ['fandom', 'Fandoms'], ['relationship', 'Relationships'], ['character', 'Characters'],
   ['freeform', 'Tags'], ['warning', 'Warnings'], ['category', 'Categories'],
@@ -402,12 +415,10 @@ async function buildFilterPanel() {
 
   /* --- the short sections: every option fits, so none of them collapse --- */
 
-  section('state', 'Reading', view.state === 'all' ? [] : [view.state], (box) => {
+  section('state', 'Reading', view.state === 'all' ? [] : [STATE_LABELS[view.state] ?? view.state], (box) => {
     const opts = document.createElement('div');
     opts.className = 'opts';
-    for (const [key, label] of Object.entries({
-      all: 'All', reading: 'Reading', unread: 'Unread', finished: 'Finished', later: 'Marked for later',
-    })) {
+    for (const [key, label] of Object.entries(STATE_LABELS)) {
       opts.append(chip(label, facets.counts?.[key], view.state === key ? 'on' : '', () => {
         view.state = key; save(VIEW_KEY, view);
       }));

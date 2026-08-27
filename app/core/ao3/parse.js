@@ -127,8 +127,13 @@ function bookmarkInfo(li, bookmarkId) {
   if (notes) out.bookmarkNotes = htmlToText(notes[1]) || null;
   const tagBlock = mine.match(/<ul class="meta tags commas">([\s\S]*?)<\/ul>/i)?.[1];
   if (tagBlock) out.bookmarkTags = tagsIn(tagBlock);
-  out.bookmarkPrivate = /class="[^"]*\bprivate\b/i.test(li);
-  out.bookmarkRec = /class="[^"]*\brec\b/i.test(li);
+  /* Read from the blurb's own class attribute, not from anywhere in its
+     markup: a tag link or a nested element mentioning "rec" would otherwise
+     mark the bookmark as a recommendation. */
+  const ownClasses = li.match(/^<li[^>]*\bclass="([^"]*)"/i)?.[1] ?? '';
+  const classSet = new Set(ownClasses.split(/\s+/));
+  out.bookmarkPrivate = classSet.has('private');
+  out.bookmarkRec = classSet.has('rec');
   return out;
 }
 
