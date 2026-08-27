@@ -175,6 +175,10 @@
 
   <section id="reader" class="view ao3page" hidden>
     <style id="workskin-css"></style>
+    <div id="archive-banner" hidden>
+      <span id="ab-text"></span>
+      <button id="ab-current">Show the current version</button>
+    </div>
     <button id="reader-head" hidden>
       <span id="rh-title"></span>
       <span id="rh-by"></span>
@@ -220,6 +224,16 @@
   <div class="addwork-actions">
     <button class="close" data-close="addwork">Cancel</button>
     <button id="addwork-go" class="primary">Add</button>
+  </div>
+</dialog>
+
+<dialog id="versions-dialog">
+  <h2>Earlier versions</h2>
+  <p class="setting-note">Copies kept when the author changed a chapter after we had it.
+    They are not on the archive any more; this is the only place they exist.</p>
+  <div id="versions-list"></div>
+  <div class="filter-foot">
+    <button data-close="versions-dialog">Close</button>
   </div>
 </dialog>
 

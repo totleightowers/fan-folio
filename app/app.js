@@ -776,7 +776,7 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here', '#reader-head',
+  '#to-work', '#on-archive', '#kudos-here', '#reader-head', '.version-row', '#ab-current',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -1038,6 +1038,18 @@ function archiveActions(w) {
   onArchive.append(icon('external', 'ic ic-inline'), document.createTextNode('On the archive'));
   onArchive.onclick = () => openOnArchive(`/works/${w.work_id}`);
 
+  /* Only when there is something to look at. A control offering nothing is a
+     control that teaches you to ignore it. */
+  if (w.versions > 0) {
+    const earlier = document.createElement('button');
+    earlier.className = 'archive-act';
+    earlier.append(icon('chapters', 'ic ic-inline'),
+      document.createTextNode(`Earlier versions (${w.versions})`));
+    earlier.onclick = () => showVersions(w.work_id);
+    row.append(kudos, bookmark, comment, onArchive, earlier);
+    return row;
+  }
+
   row.append(kudos, bookmark, comment, onArchive);
   return row;
 }
@@ -1091,6 +1103,132 @@ $('#cm-go').onclick = async () => {
     button.disabled = false;
   }
 };
+
+/* ---------------------------------------------------------------- versions */
+
+/**
+ * Earlier copies of a chapter, and a way to read one.
+ *
+ * Authors revise, rewrite and occasionally delete. Every chapter replaced
+ * since versioning went in has been kept, and none of it was reachable — which
+ * makes keeping it a gesture rather than a feature. These are not on the
+ * archive any more: this is the only place they exist.
+ */
+let viewingArchive = false;
+
+async function showVersions(workId) {
+  const list = $('#versions-list');
+  list.replaceChildren(skeleton('line', 'line', 'line'));
+  openSheet($('#versions-dialog'));
+
+  let versions;
+  try {
+    ({ versions } = await api(`/api/works/${workId}/versions`));
+  } catch (e) {
+    list.replaceChildren(failure(e.message, () => showVersions(workId)));
+    return;
+  }
+
+  list.textContent = '';
+  if (!versions.length) {
+    const none = document.createElement('p');
+    none.className = 'empty';
+    none.textContent = 'Nothing has changed since this work was first kept.';
+    list.append(none);
+    return;
+  }
+
+  /* Grouped by when they were archived: an author who rewrites a work changes
+     forty chapters in one afternoon, and forty separate rows say less about
+     what happened than one date with forty chapters under it. */
+  const byDate = new Map();
+  for (const v of versions) {
+    const day = String(v.archived_at ?? '').slice(0, 10);
+    if (!byDate.has(day)) byDate.set(day, []);
+    byDate.get(day).push(v);
+  }
+
+  for (const [day, group] of byDate) {
+    const head = document.createElement('h3');
+    head.className = 'group';
+    head.textContent = `${dateLabel(day)} · ${group.length} chapter${group.length === 1 ? '' : 's'}`;
+    list.append(head);
+
+    for (const v of group) {
+      const row = document.createElement('button');
+      row.className = 'version-row';
+      row.innerHTML = '<span class="num"></span><span class="name"></span><span class="len"></span>';
+      row.querySelector('.num').textContent = v.number;
+      row.querySelector('.name').textContent = v.title || `Chapter ${v.number}`;
+      row.querySelector('.len').textContent = v.reason === 'removed'
+        ? 'removed' : `${fmt(v.words)}w`;
+      row.onclick = () => { closeSheet($('#versions-dialog')); openVersion(workId, v.id); };
+      list.append(row);
+    }
+  }
+}
+
+const dateLabel = (day) => {
+  if (!day) return 'at some point';
+  const d = new Date(`${day}T00:00:00`);
+  return Number.isNaN(d.valueOf()) ? day
+    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
+/**
+ * Read an archived chapter.
+ *
+ * Deliberately a dead end: it does not move the reader's place, and the page
+ * turns are disabled, because the chapters either side of this one are the
+ * current text and stepping from an old copy into a new one without noticing
+ * would be worse than not offering it at all.
+ */
+async function openVersion(workId, versionId) {
+  const token = ++pending;
+  go('reader');
+  $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line'));
+  $('#reader-head').hidden = true;
+
+  let v;
+  try {
+    v = await api(`/api/works/${workId}/versions/${versionId}`);
+  } catch (e) {
+    if (token === pending) $('#workskin').replaceChildren(failure(e.message, () => {}));
+    return;
+  }
+  if (token !== pending) return;
+
+  viewingArchive = true;
+  readingIsTransient = true;          // an old copy must not move the bookmark
+  current = { workId, chapter: v.number, count: v.number };
+
+  $('#workskin-css').textContent = v.css || '';
+  $('#workskin').innerHTML = `<div class="userstuff">${v.html}</div>`;
+  $('#endnotes').hidden = true;
+
+  const banner = $('#archive-banner');
+  banner.hidden = false;
+  $('#ab-text').textContent =
+    `An earlier copy of chapter ${v.number}, kept on ${dateLabel(String(v.archived_at).slice(0, 10))}`;
+
+  $('#prev').disabled = true;
+  $('#next').disabled = true;
+  const pos = $('#chappos');
+  pos.textContent = '';
+  pos.append(icon('chapters', 'ic ic-chev'), document.createTextNode(`${v.number} · archived`));
+
+  window.scrollTo(0, 0);
+}
+
+/** Leaving the archived copy behind, back to what the work says now. */
+function leaveArchive() {
+  const workId = current.workId;
+  viewingArchive = false;
+  $('#archive-banner').hidden = true;
+  if (workId) openChapter(workId, current.chapter);
+}
+
+$('#ab-current').onclick = leaveArchive;
 
 /* ------------------------------------------------------------------ sheets */
 
@@ -1716,6 +1854,8 @@ let readingIsTransient = false;
 
 async function openChapter(workId, number, { transient = false } = {}) {
   readingIsTransient = transient;
+  viewingArchive = false;
+  $('#archive-banner').hidden = true;
   const token = ++pending;
 
   /* Entering the reader is acknowledged before the chapter is read. Turning a
@@ -1961,8 +2101,8 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
   return createSwipe(el, {
     onLeft: onLeft ?? (() => openChapter(current.workId, current.chapter + 1)),
     onRight: onRight ?? (() => openChapter(current.workId, current.chapter - 1)),
-    canLeft: canLeft ?? (() => current.chapter < current.count),
-    canRight: canRight ?? (() => current.chapter > 1),
+    canLeft: canLeft ?? (() => !viewingArchive && current.chapter < current.count),
+    canRight: canRight ?? (() => !viewingArchive && current.chapter > 1),
     viewportWidth: () => window.innerWidth,
     scrollsSideways,
     reduceMotion,
@@ -1985,7 +2125,7 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
  * a work there genuinely is nothing.
  */
 wireSwipe($('#reader'), {
-  canRight: () => Boolean(current.workId),
+  canRight: () => !viewingArchive && Boolean(current.workId),
   onRight: () => (current.chapter > 1
     ? openChapter(current.workId, current.chapter - 1)
     : openWork(current.workId)),

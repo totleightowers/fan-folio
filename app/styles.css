@@ -1489,3 +1489,32 @@ button:disabled, .opt:disabled {
 }
 .metapill:active { text-decoration: underline; text-decoration-thickness: 2px; }
 .ao3page .byline .metapill { font: inherit; color: var(--link, var(--accent)); }
+
+/* ------------------------------------------------------- earlier versions
+ *
+ * Copies kept when an author changed a chapter after we had it. They are not
+ * on the archive any more, so this is the only place they exist — which is
+ * worth saying on the screen that shows one.
+ */
+#archive-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
+  max-width: 40em; margin: .4rem auto 1.2rem;
+  padding: .7rem .9rem;
+  border: 1px dashed var(--rule); border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: .84rem; color: var(--muted);
+}
+#ab-current {
+  font: inherit; font-size: .82rem;
+  background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0;
+}
+.version-row {
+  display: flex; align-items: baseline; gap: .7rem; width: 100%;
+  font: inherit; text-align: left; cursor: pointer; color: inherit;
+  background: none; border: 0; border-bottom: 1px solid var(--rule);
+  padding: .65rem .2rem;
+}
+.version-row .num { color: var(--muted); font-size: .8rem; min-width: 1.6rem; }
+.version-row .name { flex: 1 1 auto; }
+.version-row .len { color: var(--muted); font-size: .78rem; }
+#versions-list { max-height: 60dvh; overflow-y: auto; }
