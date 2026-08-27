@@ -8,7 +8,7 @@
  */
 
 import { History } from './core/nav.js';
-import { axisOf, travel, commits, inSystemEdge, ownsHorizontal } from './core/gesture.js';
+import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -254,7 +254,7 @@ function clearBackPreview() {
 
 /* The shell asks this before it closes the app; true means we handled it. */
 window.__onBack = () => {
-  for (const d of $$('dialog[open]')) { d.close(); return true; }
+  for (const d of $$('dialog[open]')) { closeSheet(d); return true; }
   return goBack();
 };
 
@@ -692,11 +692,11 @@ function paintActiveFilters() {
 
 $('#open-filters').onclick = async () => {
   $('#filter-body').dataset.painted = '';
-  $('#filters').showModal();
+  openSheet($('#filters'));
   await refreshAfterFilterChange();
 };
 $('#apply-filters').onclick = () => {
-  $('#filters').close();
+  closeSheet($('#filters'));
   paintActiveFilters();
   loadMore(true);
 };
@@ -771,6 +771,95 @@ document.addEventListener('pointermove', (e) => {
 for (const event of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) {
   document.addEventListener(event, releasePress, { passive: true, capture: event === 'scroll' });
 }
+
+/* ------------------------------------------------------------------ sheets */
+
+/**
+ * Dialogs that behave like surfaces rather than boxes whose CSS changed.
+ *
+ * These were `<dialog>` elements opened and closed outright: no entrance, no
+ * exit, no way to push one away. A sheet that simply appears reads as a web
+ * modal, and one that vanishes gives no sense that it went back where it came
+ * from. They rise from the bottom now, can be dragged down to dismiss, and
+ * leave the way they arrived.
+ *
+ * `close()` is immediate and cannot be animated, so the exit is played first
+ * and the dialog closed at the end of it.
+ */
+const SHEET_OUT = 190;
+
+function sheetHandle(d) {
+  if (d.querySelector('.sheet-grab')) return;
+  const grab = document.createElement('div');
+  grab.className = 'sheet-grab';
+  // decoration to a screen reader: the dialog is already dismissible
+  grab.setAttribute('aria-hidden', 'true');
+  d.prepend(grab);
+}
+
+function openSheet(d) {
+  if (d.open) return;
+  sheetHandle(d);
+  d.classList.remove('sheet-out');
+  d.showModal();
+  d.classList.add('sheet-in');
+  d.addEventListener('animationend', () => d.classList.remove('sheet-in'), { once: true });
+}
+
+function closeSheet(d) {
+  if (!d.open || d.classList.contains('sheet-out')) return;
+  if (reduceMotion()) { d.close(); return; }
+  d.classList.add('sheet-out');
+  setTimeout(() => {
+    d.classList.remove('sheet-out');
+    d.style.removeProperty('--sheet-y');
+    d.close();
+  }, SHEET_OUT);
+}
+
+/**
+ * Drag a sheet down to push it away.
+ *
+ * Only from the sheet's own furniture — the handle and the heading. Starting
+ * anywhere would fight every list inside it: dragging down a chapter list is
+ * scrolling it, and a sheet that closes when you scroll is a sheet you cannot
+ * use.
+ */
+function draggableSheet(d) {
+  let y0 = 0; let t0 = 0; let dragging = false;
+
+  d.addEventListener('pointerdown', (e) => {
+    const onFurniture = e.target.closest('.sheet-grab, h2');
+    if (!onFurniture) return;
+    y0 = e.clientY; t0 = performance.now(); dragging = true;
+    d.classList.add('sheet-dragging');
+  }, { passive: true });
+
+  d.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    // upward is someone reaching for content, and the sheet stays put
+    d.style.setProperty('--sheet-y', `${Math.max(0, e.clientY - y0)}px`);
+  }, { passive: true });
+
+  const release = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    d.classList.remove('sheet-dragging');
+    const dy = e.clientY - y0;
+    const speed = dy / Math.max(1, performance.now() - t0);   // px per ms
+    if (dismisses(dy, d.getBoundingClientRect().height, { velocity: speed })) {
+      closeSheet(d);
+    } else {
+      d.classList.add('sheet-settling');
+      d.style.setProperty('--sheet-y', '0px');
+      setTimeout(() => d.classList.remove('sheet-settling'), 190);
+    }
+  };
+  d.addEventListener('pointerup', release, { passive: true });
+  d.addEventListener('pointercancel', release, { passive: true });
+}
+
+for (const d of $$('dialog')) draggableSheet(d);
 
 /* ----------------------------------------------------------------- search */
 
@@ -1341,10 +1430,10 @@ function showChapterDrawer(workId, at) {
     b.querySelector('.num').textContent = c.number;
     b.querySelector('.name').textContent = c.title ?? `Chapter ${c.number}`;
     b.querySelector('.len').textContent = `${fmt(c.words)}w`;
-    b.onclick = () => { $('#chapters-dialog').close(); openChapter(workId, c.number); };
+    b.onclick = () => { closeSheet($('#chapters-dialog')); openChapter(workId, c.number); };
     list.append(b);
   }
-  $('#chapters-dialog').showModal();
+  openSheet($('#chapters-dialog'));
   list.querySelector('.at')?.scrollIntoView({ block: 'center' });
 }
 
@@ -1585,8 +1674,8 @@ addEventListener('keydown', (e) => {
 
 /* ------------------------------------------------------------- dialogues */
 
-$('#typo').onclick = () => $('#typography').showModal();
-for (const b of $$('[data-close]')) b.onclick = () => $(`#${b.dataset.close}`).close();
+$('#typo').onclick = () => openSheet($('#typography'));
+for (const b of $$('[data-close]')) b.onclick = () => closeSheet($(`#${b.dataset.close}`));
 
 for (const [id, key, transform] of [
   ['theme', 'theme', String], ['face', 'face', String], ['align', 'align', String],
@@ -1638,7 +1727,7 @@ function paintAccount() {
   button.classList.toggle('on', on);
   button.onclick = () => {
     if (on) { signOut(); toast('Signed out'); paintAccount(); }
-    else { $('#typography').close(); signIn(); }
+    else { closeSheet($('#typography')); signIn(); }
   };
 }
 
@@ -1656,7 +1745,7 @@ const addDialog = $('#addwork');
 $('#add').onclick = async () => {
   $('#addwork-status').hidden = true;
   $('#addwork-url').value = '';
-  addDialog.showModal();
+  openSheet(addDialog);
   // most links arrive from somewhere else, so offer what is on the clipboard
   try {
     const pasted = await navigator.clipboard?.readText?.();
@@ -1684,7 +1773,7 @@ async function submitAddWork() {
     // the library and home shelves are both stale now
     offset = 0;
     await Promise.all([loadMore(true), buildHome().catch(() => {})]);
-    setTimeout(() => { addDialog.close(); openWork(out.workId); }, 700);
+    setTimeout(() => { closeSheet(addDialog); openWork(out.workId); }, 700);
   } catch (e) {
     status.className = 'addwork-status bad';
     status.textContent = e.message;
@@ -1707,12 +1796,12 @@ window.__openLink = async (link) => {
   $('#addwork-url').value = link;
   $('#addwork-status').hidden = true;
   $('#addwork-signin').hidden = true;
-  if (!addDialog.open) addDialog.showModal();
+  if (!addDialog.open) openSheet(addDialog);
   await submitAddWork();
 };
 
 $('#addwork-go').onclick = submitAddWork;
-$('#addwork-signin-go').onclick = () => { addDialog.close(); signIn(); };
+$('#addwork-signin-go').onclick = () => { closeSheet(addDialog); signIn(); };
 $('#addwork-url').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); submitAddWork(); }
 });

@@ -299,3 +299,24 @@ test('navigating clears any half-finished back preview', () => {
   assert.ok(show.includes('clearBackPreview()'),
     'a cancelled or completed gesture must not leave a screen shrunk and offset');
 });
+
+/**
+ * A dialog opened or closed directly skips the entrance, the exit and the
+ * drag — and looks like a web modal again. The helpers are the only door.
+ */
+test('every dialog opens and closes as a sheet', () => {
+  const raw = [...js.matchAll(/^(?!function openSheet).*?\.showModal\(\)/gm)]
+    .map((m) => m[0].trim())
+    .filter((line) => !line.includes('d.showModal'));
+  assert.deepEqual(raw, [], `these open a dialog without the sheet entrance: ${raw.join(' | ')}`);
+
+  const closes = [...js.matchAll(/\$\('#([a-z-]+)'\)\.close\(\)/g)].map((m) => m[1]);
+  assert.deepEqual(closes, [], `these close a dialog with no exit: ${closes.join(', ')}`);
+});
+
+test('a sheet is dragged by its own furniture, not its contents', () => {
+  const drag = js.slice(js.indexOf('function draggableSheet('));
+  const body = drag.slice(0, drag.indexOf('\n}\n'));
+  assert.ok(body.includes(".closest('.sheet-grab, h2')"),
+    'dragging a list inside a sheet is scrolling it; a sheet that closes when you scroll is unusable');
+});
