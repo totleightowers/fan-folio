@@ -298,6 +298,26 @@ export function nativeStatus() {
   try { return JSON.parse(native.status()); } catch { return { hasDatabase: false, search: false }; }
 }
 
+/**
+ * Write the library out to a file the reader chooses.
+ *
+ * Only the shell can do this: the page has no way to reach the filesystem, and
+ * the database is the app's entire contents rather than something it can
+ * reassemble. Outside the APK there is nothing to export — the dev server
+ * already reads a file sitting on disk.
+ */
+export function exportDatabase() {
+  if (!isNative) return false;
+  native.exportDatabase();
+  return true;
+}
+
+/** Bytes on disk, so the page can say what a backup will cost. */
+export function databaseSize() {
+  if (!isNative) return 0;
+  try { return Number(native.databaseSize()) || 0; } catch { return 0; }
+}
+
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }

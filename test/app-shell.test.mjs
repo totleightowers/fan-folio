@@ -350,3 +350,23 @@ test('the shell can migrate every column the schema declares', () => {
   const phantom = migratable.filter((c) => !declared.includes(c));
   assert.deepEqual(phantom, [], `the shell would add columns the schema does not declare: ${phantom.join(', ')}`);
 });
+
+/**
+ * Two elements sharing an id is silent: `$()` returns the first, and the
+ * second is simply dead. A settings screen with its own "import" button
+ * shipped exactly that — the button existed, was styled, and did nothing.
+ */
+test('no id appears twice in the markup', () => {
+  const ids = [...html.matchAll(/\bid="([a-z0-9-]+)"/g)].map((m) => m[1]);
+  const seen = new Set();
+  const twice = ids.filter((id) => (seen.has(id) ? true : (seen.add(id), false)));
+  assert.deepEqual([...new Set(twice)], [],
+    `these ids appear more than once, so the later one is unreachable: ${twice}`);
+});
+
+test('the settings screen reaches its own controls', () => {
+  for (const id of ['backup', 'import-replace', 'account', 'library-facts', 'version']) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} is missing from the settings markup`);
+    assert.ok(js.includes(`#${id}`), `#${id} exists in markup but nothing in app.js uses it`);
+  }
+});

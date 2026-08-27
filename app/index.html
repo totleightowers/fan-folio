@@ -10,6 +10,7 @@
   <input id="q" type="search" placeholder="Search your archive…" autocomplete="off" spellcheck="false">
   <button id="add" class="icon" aria-label="Add a work from a link">+</button>
   <button id="typo" class="icon" aria-label="Reading settings">Aa</button>
+  <button id="open-settings" class="icon" aria-label="Settings">⚙</button>
 </header>
 
 <main id="main">
@@ -30,6 +31,41 @@
     <div id="stats" class="stats"></div>
     <div id="shelves"></div>
     <div id="fandoms" class="fandom-block"></div>
+  </section>
+
+  <section id="settings" class="view" hidden>
+    <h2 class="settings-title">Settings</h2>
+
+    <div class="setting-group">
+      <h3 class="group">This library</h3>
+      <dl id="library-facts" class="facts"></dl>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="group">Keeping it safe</h3>
+      <p class="setting-note">Everything the app holds is a single file: the works, the
+        chapters, where you are in each of them, and the search index. A copy of it is a
+        copy of the whole library.</p>
+      <button id="backup" class="primary">Back up the library</button>
+      <p id="backup-state" class="setting-note" hidden></p>
+      <button id="import-replace" class="linkish">Replace it from a backup…</button>
+      <p class="setting-note">Importing replaces what is here now. Back up first if this
+        library has reading in it that the backup does not.</p>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="group">Archive account</h3>
+      <p class="setting-note">Signing in lets works be fetched from the archive, including
+        anything restricted to logged-in users.</p>
+      <button id="account" class="account-btn">Sign in</button>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="group">Reading</h3>
+      <button id="open-typo" class="linkish">Typeface, size and margins…</button>
+    </div>
+
+    <p id="version" class="setting-note version"></p>
   </section>
 
   <section id="library" class="view" hidden>
@@ -153,9 +189,6 @@
   <label>Line spacing <input id="lh" type="range" min="110" max="250" step="5"></label>
   <label>Side margin <input id="margin" type="range" min="0" max="48" step="2"></label>
   <label>Top margin <input id="vmargin" type="range" min="0" max="64" step="4"></label>
-  <label>Archive account
-    <button id="account" class="account-btn">Sign in</button>
-  </label>
   <label>Alignment
     <select id="align"><option value="start">Left</option><option value="justify">Justified</option></select>
   </label>
