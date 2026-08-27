@@ -162,11 +162,19 @@ body {
 }
 
 #chapnav {
-  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; display: flex; gap: .5rem; align-items: center;
-  justify-content: space-between; padding: .6rem .8rem;
-  padding-bottom: max(.6rem, env(safe-area-inset-bottom));
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
+  display: flex; gap: .35rem; align-items: center;
   background: color-mix(in srgb, var(--bg) 94%, transparent);
   backdrop-filter: blur(8px); border-top: 1px solid var(--rule);
+  padding-block: .6rem;
+  padding-bottom: max(.6rem, env(safe-area-inset-bottom));
+  /* The bar spans the window so its background does, but the controls belong
+     to the column of text above them. On a wide screen a full-width
+     space-between threw them to opposite edges with a void in the middle,
+     while the prose sat in a 40em measure up the centre. They keep to that
+     measure now, and a phone is unaffected because the window is narrower
+     than it. */
+  padding-inline: max(.8rem, calc((100% - 44rem) / 2));
 }
 #chapnav button {
   font: inherit; background: var(--pane); color: inherit; border: 1px solid var(--rule);
@@ -1368,7 +1376,6 @@ button:disabled, .opt:disabled {
   padding: .45rem .6rem; color: var(--muted);
 }
 #chapnav button { min-width: 2.4rem; }
-#chapnav { gap: .35rem; }
 
 /* ------------------------------------------------- the chapter is not a scroller
  *
