@@ -661,3 +661,25 @@ test('the head of the chapter is a way back to the work', () => {
     'tapping the work title should open the work');
   assert.match(html, /id="rh-go"[^>]*>[^<]+</, 'and it says where it goes, rather than hoping');
 });
+
+/**
+ * Backwards from the first chapter is the work itself.
+ *
+ * The right swipe walked back a chapter at a time and then stopped dead at the
+ * first one, resisting — honest about there being no chapter zero, wrong about
+ * there being nowhere to go.
+ */
+test('swiping back from the first chapter leaves for the work', () => {
+  const call = js.slice(js.indexOf("wireSwipe($('#reader')"));
+  const body = call.slice(0, call.indexOf('});') + 3);
+  assert.match(body, /current\.chapter > 1/, 'a later chapter steps back one');
+  assert.match(body, /openWork\(current\.workId\)/, 'and the first one leaves for the work');
+});
+
+test('forwards still stops at the end of the work', () => {
+  // past the last chapter there genuinely is nothing, and the resistance says so
+  const wire = js.slice(js.indexOf('function wireSwipe('));
+  const body = wire.slice(0, wire.indexOf('\n}\n'));
+  assert.match(body, /canLeft \?\? \(\(\) => current\.chapter < current\.count\)/,
+    'the forward limit is still the last chapter');
+});

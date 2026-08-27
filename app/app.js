@@ -1919,7 +1919,23 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
   });
 }
 
-wireSwipe($('#reader'));
+/**
+ * Backwards, all the way out.
+ *
+ * Swiping right walked back a chapter at a time and then stopped dead at the
+ * first one, resisting — which is honest about there being no chapter zero,
+ * but wrong about there being nowhere to go. Backwards from the first chapter
+ * is the work itself.
+ *
+ * Forwards keeps its resistance at the last chapter, because past the end of
+ * a work there genuinely is nothing.
+ */
+wireSwipe($('#reader'), {
+  canRight: () => Boolean(current.workId),
+  onRight: () => (current.chapter > 1
+    ? openChapter(current.workId, current.chapter - 1)
+    : openWork(current.workId)),
+});
 
 /**
  * Swipe left on a work to start reading it.
