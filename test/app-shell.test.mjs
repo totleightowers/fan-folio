@@ -614,3 +614,24 @@ test('the reader bar sits above anything sharing the bottom edge', () => {
   assert.ok(z(chapnav) > z(tabs),
     'both are fixed to the bottom; the reader\'s own controls must not end up underneath');
 });
+
+/**
+ * The reader's bar belongs to the column of text above it.
+ *
+ * It spans the window so its background does, but a full-width space-between
+ * threw its controls to opposite edges with a void between them, while the
+ * prose sat in a 40em measure up the centre.
+ */
+test('the chapter bar keeps to the reading measure', () => {
+  const rule = css.slice(css.indexOf('#chapnav {'), css.indexOf('}', css.indexOf('#chapnav {')));
+  assert.match(rule, /padding-inline:\s*max\([^)]*calc\(\(100% - \d+rem\)/,
+    'the controls are held to a measure rather than flung to the window edges');
+  assert.ok(!/justify-content:\s*space-between/.test(rule),
+    'space-between across a tablet is what put an ocean between the controls');
+});
+
+test('the chapter bar is defined once', () => {
+  // three separate #chapnav blocks had accumulated, each amending the last
+  const blocks = [...css.matchAll(/^#chapnav \{/gm)].length;
+  assert.equal(blocks, 1, 'one rule, not a stack of amendments to it');
+});
