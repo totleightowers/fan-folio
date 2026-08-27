@@ -517,3 +517,29 @@ test('the shell exposes every bridge method the page calls', () => {
   assert.deepEqual(missing, [],
     `the page calls these but the shell does not expose them: ${missing.join(', ')}`);
 });
+
+/**
+ * The reader must carry a way to every other chapter.
+ *
+ * The control existed and worked, but was styled as a caption — muted text
+ * reading "3 / 12" that nobody would think to press — so mid-chapter there
+ * appeared to be no chapter navigation at all.
+ */
+test('the reader offers chapter navigation, and it looks like a control', () => {
+  const reader = html.slice(html.indexOf('<section id="reader"'),
+    html.indexOf('</section>', html.indexOf('<section id="reader"')));
+  assert.ok(reader.includes('id="chappos"'), 'the way to other chapters lives in the reader');
+  assert.match(js, /\$\('#chappos'\)\.onclick/, 'and is wired to open the chapter list');
+
+  const rule = css.slice(css.indexOf('#chappos {'), css.indexOf('}', css.indexOf('#chappos {')));
+  assert.ok(!/color:\s*var\(--muted\)/.test(rule),
+    'muted text reads as a label, and a label is not something anyone presses');
+});
+
+test('the chapter list fetches what it needs rather than doing nothing', () => {
+  const fn = js.slice(js.indexOf('async function showChapterDrawer('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  // it used to return silently when the work in hand was not the one asked for
+  assert.ok(/await api\(`\/api\/works\//.test(body), 'it fetches the work it was asked about');
+  assert.ok(/toast\(/.test(body), 'and says so when there is genuinely no list');
+});

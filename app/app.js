@@ -1656,7 +1656,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
     go('reader');
     $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line', 'line', 'line'));
     $('#endnotes').hidden = true;
-    $('#chappos').textContent = '…';
+    $('#chappos').textContent = '…';   // replaced once the chapter count is known
   }
 
   let w; let ch;
@@ -1691,7 +1691,10 @@ async function openChapter(workId, number, { transient = false } = {}) {
     notes.textContent = '';
   }
 
-  $('#chappos').textContent = `${number} / ${w.chapter_count}`;
+  const pos = $('#chappos');
+  pos.textContent = '';
+  pos.append(icon('chapters', 'ic ic-chev'),
+    document.createTextNode(`${number} / ${w.chapter_count}`));
   $('#prev').disabled = number <= 1;
   $('#next').disabled = number >= w.chapter_count;
 
@@ -1713,9 +1716,15 @@ $('#next').onclick = () => openChapter(current.workId, current.chapter + 1);
  * to — in a fifty chapter work, opening at the top means scrolling to find
  * where you already are.
  */
-function showChapterDrawer(workId, at) {
-  const work = currentWork?.work_id === workId ? currentWork : null;
-  if (!work) return;
+async function showChapterDrawer(workId, at) {
+  /* This used to return silently when the work in hand was not the one asked
+     for, so the control did nothing at all and said nothing about why. The
+     list is what it needs; if it does not have it, it fetches it. */
+  const work = currentWork?.work_id === workId && currentWork.chapters
+    ? currentWork
+    : await api(`/api/works/${workId}`).catch(() => null);
+  if (!work?.chapters?.length) { toast('That work has no chapter list'); return; }
+  currentWork = work;
   const list = $('#chapter-list');
   list.textContent = '';
   const readTo = positions[workId]?.chapter ?? 0;
