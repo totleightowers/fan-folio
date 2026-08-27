@@ -930,3 +930,39 @@ button:disabled, .opt:disabled {
     transform: none;
   }
 }
+
+/* ------------------------------------------------------------ page turning
+ *
+ * The chapter travels with the finger; the chapter bar and progress line do
+ * not, because chrome that slides off with the prose reads as the whole screen
+ * falling over rather than as a page being turned. Custom properties inherit,
+ * so the gesture sets one value on the view and only the content consumes it —
+ * no wrapper element, no change to the markup.
+ */
+#reader, #detail {
+  /* the browser keeps vertical scrolling; horizontal belongs to the gesture */
+  touch-action: pan-y;
+}
+#workskin, #endnotes { translate: var(--page-x, 0px) 0; }
+#detail { translate: var(--page-x, 0px) 0; }
+
+/* While a finger is down there is no transition — the page must sit exactly
+   where the finger is, not chase it. The transition appears only for the
+   settle or the completion, once the finger has gone. */
+#reader.settling #workskin, #reader.settling #endnotes, #detail.settling {
+  transition: translate var(--page-ms, 180ms) cubic-bezier(.2, 0, 0, 1);
+}
+
+/* Text selection during a page turn produces a highlighted smear across the
+   prose; while swiping, the gesture owns the surface. */
+#reader.swiping, #reader.swiping *, #detail.swiping, #detail.swiping * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #workskin, #endnotes, #detail { translate: none; }
+  #reader.settling #workskin, #reader.settling #endnotes, #detail.settling {
+    transition: none;
+  }
+}
