@@ -773,7 +773,7 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here',
+  '#to-work', '#on-archive', '#kudos-here', '#reader-head',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -1671,6 +1671,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
   if (arriving) {
     go('reader');
     $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line', 'line', 'line'));
+    $('#reader-head').hidden = true;
     $('#endnotes').hidden = true;
     $('#chappos').textContent = '…';   // replaced once the chapter count is known
   }
@@ -1713,6 +1714,17 @@ async function openChapter(workId, number, { transient = false } = {}) {
     notes.hidden = true;
     notes.textContent = '';
   }
+
+  /* The top of a chapter used to be bare prose: nothing said which work this
+     was, and scrolling up to look for its front matter found nothing at all.
+     The way back to the work was a book icon in a row of six, which is not
+     something anyone reads as "the whole work". */
+  const head = $('#reader-head');
+  head.hidden = false;
+  $('#rh-title').textContent = w.title ?? '(untitled)';
+  $('#rh-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
+  const chapterTitle = ch.title && ch.title !== `Chapter ${number}` ? `: ${ch.title}` : '';
+  $('#rh-chapter').textContent = `Chapter ${number} of ${w.chapter_count}${chapterTitle}`;
 
   const pos = $('#chappos');
   pos.textContent = '';
@@ -1788,6 +1800,7 @@ async function showChapterDrawer(workId, at) {
  * happens to be behind us.
  */
 $('#to-work').onclick = () => current.workId && openWork(current.workId);
+$('#reader-head').onclick = () => current.workId && openWork(current.workId);
 $('#kudos-here').onclick = () => giveKudos(current.workId, $('#kudos-here'));
 
 $('#on-archive').onclick = () => {
