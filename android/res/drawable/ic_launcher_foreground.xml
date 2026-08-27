@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Three pages fanning from a common corner: fan + folio, without borrowing
+  anyone's branding.
+
+  Drawn as a vector so it needs no image tooling and stays crisp at every
+  density. The adaptive icon crops to a circle on many launchers, so the mark
+  sits well inside the 72dp safe zone of the 108dp canvas — a shape that fills
+  the square loses its corners the moment a launcher rounds it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- back page, furthest from the reader -->
+    <group android:pivotX="42" android:pivotY="76" android:rotation="-26">
+        <path
+            android:pathData="M32,30 h30 a3,3 0 0 1 3,3 v46 a3,3 0 0 1 -3,3 h-30 a3,3 0 0 1 -3,-3 v-46 a3,3 0 0 1 3,-3 z"
+            android:fillAlpha="0.45"
+            android:fillColor="#FFFFFF" />
+    </group>
+
+    <!-- middle page -->
+    <group android:pivotX="42" android:pivotY="76" android:rotation="-13">
+        <path
+            android:pathData="M32,30 h30 a3,3 0 0 1 3,3 v46 a3,3 0 0 1 -3,3 h-30 a3,3 0 0 1 -3,-3 v-46 a3,3 0 0 1 3,-3 z"
+            android:fillAlpha="0.7"
+            android:fillColor="#FFFFFF" />
+    </group>
+
+    <!-- front page, carrying the lines of text and the bookmark notch -->
+    <path
+        android:pathData="M32,30 h30 a3,3 0 0 1 3,3 v46 a3,3 0 0 1 -3,3 h-30 a3,3 0 0 1 -3,-3 v-46 a3,3 0 0 1 3,-3 z"
+        android:fillColor="#FFFFFF" />
+    <path android:pathData="M37,42 h20 v3 h-20 z" android:fillColor="#8C3B2E" />
+    <path android:pathData="M37,51 h20 v3 h-20 z" android:fillColor="#8C3B2E" />
+    <path android:pathData="M37,60 h13 v3 h-13 z" android:fillColor="#8C3B2E" />
+
+    <!-- the bookmark: the one detail that survives at 48px -->
+    <path
+        android:pathData="M68,26 h10 v26 l-5,-5 l-5,5 z"
+        android:fillColor="#D98A72" />
+</vector>

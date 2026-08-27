@@ -898,6 +898,11 @@ async function openWork(workId) {
     open.onclick = () => showChapterDrawer(workId, saved?.chapter ?? 1);
     box.append(open);
   }
+
+  const hint = document.createElement('p');
+  hint.className = 'swipe-hint';
+  hint.textContent = 'Swipe left to start reading';
+  box.append(hint);
   go('detail');
 }
 
@@ -1022,7 +1027,7 @@ function keepAwake(on) {
  * Requires a mostly-horizontal movement so it cannot fire while someone is
  * scrolling the page, which is what they are doing almost all of the time.
  */
-function wireSwipe(el) {
+function wireSwipe(el, { onLeft = null, onRight = null } = {}) {
   const EDGE = 24;
   const MIN_X = 70;
   const MAX_DRIFT = 0.6;   // vertical travel relative to horizontal
@@ -1042,12 +1047,31 @@ function wireSwipe(el) {
     const dx = t.clientX - x0;
     const dy = t.clientY - y0;
     if (Math.abs(dx) < MIN_X || Math.abs(dy) > Math.abs(dx) * MAX_DRIFT) return;
-    if (dx < 0 && current.chapter < current.count) openChapter(current.workId, current.chapter + 1);
-    else if (dx > 0 && current.chapter > 1) openChapter(current.workId, current.chapter - 1);
+    if (dx < 0) {
+      if (onLeft) onLeft();
+      else if (current.chapter < current.count) openChapter(current.workId, current.chapter + 1);
+    } else if (dx > 0) {
+      if (onRight) onRight();
+      else if (current.chapter > 1) openChapter(current.workId, current.chapter - 1);
+    }
   }, { passive: true });
 }
 
 wireSwipe($('#reader'));
+
+/**
+ * Swipe left on a work to start reading it.
+ *
+ * The same gesture that turns a page in the reader opens the work from its
+ * detail page, so the motion means the same thing throughout: onward.
+ */
+wireSwipe($('#detail'), {
+  onLeft: () => {
+    if (!currentWork) return;
+    const at = positions[currentWork.work_id]?.chapter ?? 1;
+    openChapter(currentWork.work_id, at);
+  },
+});
 
 /**
  * Keys that do what they do everywhere else.

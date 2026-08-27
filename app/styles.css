@@ -737,3 +737,53 @@ dialog h2 {
   font: inherit; font-size: .85rem; background: var(--accent); color: #fff;
   border: 0; border-radius: 999px; padding: .4rem 1rem; cursor: pointer;
 }
+
+
+/* -------------------------------------------------- selection and layout */
+
+/*
+ * Chrome is not text to be selected.
+ *
+ * Long-pressing anywhere on the work page raised a selection handle over the
+ * tags and stats, which is never what somebody wants there. Prose keeps
+ * selection, because quoting a line out of a fic is a real thing to do.
+ */
+#bar, #tabs, #toolbar, #chapnav, #filters, #typography, #chapters-dialog,
+.ao3page dl.work.meta.group, .work-card .rowactions, .stats, .shelf-head {
+  -webkit-user-select: none;
+  user-select: none;
+}
+#workskin, #endnotes, .ao3page .summary, .ao3page blockquote, .work-card .sum {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * The meta block as two aligned columns.
+ *
+ * AO3 lays this out with a fixed left indent, which on a phone left the
+ * labels and their values drifting apart — Language and Stats worst of all,
+ * since their values are plain text rather than tag pills. A grid puts every
+ * label in one column and every value in the other, whatever the value is.
+ */
+.ao3page dl.work.meta.group {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, max-content) 1fr;
+  gap: .45rem .9rem;
+  align-items: baseline;
+}
+.ao3page dl.work.meta.group > dt { margin: 0; font-weight: 600; }
+.ao3page dl.work.meta.group > dd { margin: 0; }
+
+/* the stats are a run of label-and-value pairs, and should read as one line */
+.ao3page dl.stats {
+  display: flex; flex-wrap: wrap; gap: .2rem .9rem; align-items: baseline;
+}
+.ao3page dl.stats dt { margin: 0; font-weight: 600; }
+.ao3page dl.stats dd { margin: 0 .5rem 0 0; }
+
+/* the work page invites a swipe, so say so once */
+.swipe-hint {
+  text-align: center; color: var(--muted); font-size: .76rem;
+  margin: 1.2rem 0 .4rem; opacity: .8;
+}
