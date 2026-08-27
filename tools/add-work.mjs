@@ -15,7 +15,7 @@ import { applyWithVersioning, chapterHash } from './lib/versioning.mjs';
 import { parseWorkPage } from '../app/core/ao3/parse.js';
 import { workPage, workIdFrom } from '../app/core/ao3/urls.js';
 import { htmlToText, countWords } from '../app/core/epub.js';
-import { SCHEMA } from '../app/core/store/schema.js';
+import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
 
 const inputs = process.argv.slice(2);
 if (!inputs.length) {
@@ -33,6 +33,7 @@ if (!ids.length) process.exit(1);
 
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
 db.exec(SCHEMA);
+ensureColumns(db);   // an older library gains whatever columns it lacks
 
 const upsertWork = db.prepare(`
   INSERT INTO works (work_id, title, authors, summary, rating, language, published, updated,

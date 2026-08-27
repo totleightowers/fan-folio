@@ -10,13 +10,11 @@
  */
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { SCHEMA } from '../app/core/store/schema.js';
+import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
 
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
 db.exec(SCHEMA);
-for (const column of ['rec INTEGER DEFAULT 0']) {
-  try { db.exec(`ALTER TABLE works ADD COLUMN ${column}`); } catch { /* already there */ }
-}
+ensureColumns(db);   // an older library gains whatever columns it lacks
 
 const load = async (path) => {
   try { return JSON.parse(await readFile(path, 'utf8')).works ?? {}; } catch { return {}; }

@@ -144,3 +144,31 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 export const REBUILD_FTS = `
 INSERT INTO chapter_fts(chapter_fts) VALUES('rebuild');
 `;
+
+/**
+ * Bring an older database up to the shape the app queries.
+ *
+ * SCHEMA is applied with CREATE TABLE IF NOT EXISTS, which does nothing at all
+ * to a table that already exists — so a column added here arrives for new
+ * databases and for nobody else. Every tool that opens a library runs this
+ * after applying the schema, and the Android shell does the same on open.
+ *
+ * Adding a column is the only migration attempted, and the only one needed so
+ * far: SQLite records it in the table definition without touching a row, so it
+ * is quick on a large library and safe to run every time.
+ */
+export function ensureColumns(db) {
+  const declared = [...SCHEMA.slice(SCHEMA.indexOf('CREATE TABLE IF NOT EXISTS works'))
+    .split('\n);')[0]
+    .matchAll(/^ {2}([a-z_]+)\s+(TEXT|INTEGER)([^,\n]*)/gm)]
+    .map(([, name, type, rest]) => ({ name, ddl: `${type}${/DEFAULT/.test(rest) ? rest : ''}`.trim() }));
+
+  const have = new Set(db.prepare('PRAGMA table_info(works)').all().map((r) => r.name));
+  const added = [];
+  for (const { name, ddl } of declared) {
+    if (have.has(name)) continue;
+    db.exec(`ALTER TABLE works ADD COLUMN ${name} ${ddl}`);
+    added.push(name);
+  }
+  return added;
+}

@@ -258,8 +258,69 @@ public class MainActivity extends Activity {
         try {
             db = SQLiteDatabase.openDatabase(f.getPath(), null,
                     SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.NO_LOCALIZED_COLLATORS);
+            migrate();
         } catch (Exception e) {
             db = null;
+        }
+    }
+
+    /**
+     * Every column the app queries, and the type it is created with.
+     *
+     * A database on a phone was written by whichever version exported it, and
+     * it stays that shape forever: the schema is applied with CREATE TABLE IF
+     * NOT EXISTS, which does nothing at all to a table that already exists. So
+     * adding `rec` to the schema added it for new databases and for nobody
+     * else, and the library stopped loading entirely with `no such column:
+     * w.rec` — one missing column takes out the query that lists every work.
+     *
+     * This must list every column in the works table of app/core/store/schema.js.
+     * A test fails if the two ever disagree, because the failure mode here is
+     * not a missing feature, it is a blank screen with SQL on it.
+     */
+    private static final String[][] WORKS_COLUMNS = {
+        {"title", "TEXT"}, {"authors", "TEXT"}, {"summary", "TEXT"},
+        {"rating", "TEXT"}, {"language", "TEXT"}, {"published", "TEXT"},
+        {"updated", "TEXT"}, {"downloaded_at", "TEXT"}, {"complete", "INTEGER"},
+        {"words", "INTEGER"}, {"chapter_count", "INTEGER"},
+        {"chapters_planned", "INTEGER"}, {"updated_at", "INTEGER"},
+        {"skin_css", "TEXT"}, {"skin_hash", "TEXT"}, {"end_notes_html", "TEXT"},
+        {"source", "TEXT"}, {"source_file", "TEXT"}, {"fetched_at", "TEXT"},
+        {"in_bookmarks", "INTEGER DEFAULT 0"}, {"rec", "INTEGER DEFAULT 0"},
+        {"in_history", "INTEGER DEFAULT 0"}, {"bookmarked_at", "TEXT"},
+        {"last_visited", "TEXT"}, {"visits", "INTEGER"},
+    };
+
+    /**
+     * Bring an older database up to the shape the app queries.
+     *
+     * Adding a column is the only migration attempted, and it is the only one
+     * needed so far: SQLite writes it into the table definition without
+     * touching a row, so it is quick even on a large library and safe to run
+     * on every open. Anything that ever needs more than this should be a
+     * versioned migration rather than an addition here.
+     */
+    private void migrate() {
+        java.util.Set<String> have = new java.util.HashSet<>();
+        android.database.Cursor c = null;
+        try {
+            c = db.rawQuery("PRAGMA table_info(works)", null);
+            int name = c.getColumnIndex("name");
+            while (c.moveToNext()) have.add(c.getString(name));
+        } catch (Exception e) {
+            return;                              // not our shape; leave it alone
+        } finally {
+            if (c != null) c.close();
+        }
+        if (have.isEmpty()) return;              // no works table: an import will make one
+
+        for (String[] col : WORKS_COLUMNS) {
+            if (have.contains(col[0])) continue;
+            try {
+                db.execSQL("ALTER TABLE works ADD COLUMN " + col[0] + " " + col[1]);
+            } catch (Exception e) {
+                // a column that cannot be added must not stop the ones that can
+            }
         }
     }
 
