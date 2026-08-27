@@ -83,6 +83,15 @@ export function buildWorksQuery(filters = {}) {
     args.push(tag);
   }
 
+  /* A restriction to a known set of works, used when a search supplies the
+     candidates: the filters still apply on top, so searching inside the
+     library never escapes the narrowing the reader has already done. */
+  const ids = list(filters.ids);
+  if (ids.length) {
+    where.push(`w.work_id IN (${ids.map(() => '?').join(',')})`);
+    args.push(...ids);
+  }
+
   const ratings = list(filters.rating);
   if (ratings.length) {
     where.push(`w.rating IN (${ratings.map(() => '?').join(',')})`);

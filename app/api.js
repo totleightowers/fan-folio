@@ -9,7 +9,7 @@
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
-import { rank, CANDIDATES } from './core/search.js';
+import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage } from './core/ao3/parse.js';
 import { workPage, workIdFrom } from './core/ao3/urls.js';
@@ -168,22 +168,13 @@ const LOCAL = {
       ...renderChapter(row, { skinCss: work?.skin_css ?? null, images }) };
   },
 
-  search: (query, limit = 40) => {
+  search: (query, scope, options) => {
     const started = Date.now();
     try {
-      return {
-        hits: rank(sql(`SELECT c.work_id, c.number, w.title, w.authors,
-                          snippet(chapter_fts, '<mark>', '</mark>', '…', -1, 18) AS snippet,
-                          matchinfo(chapter_fts, 'pcnalx') AS matchinfo
-                   FROM chapter_fts JOIN chapters c ON c.id = chapter_fts.docid
-                   JOIN works w ON w.work_id = c.work_id
-                   WHERE chapter_fts MATCH ? LIMIT ${CANDIDATES}`, [query]), lim(limit, 40, 100)),
-        works: [],
-        ms: Date.now() - started,
-      };
+      return { ...search(sql, query, scope, options), ms: Date.now() - started };
     } catch (e) {
       // a half-typed query is the reader typing, not a fault
-      return { error: e.message, hits: [], works: [] };
+      return { error: e.message, hits: [], works: [], tags: [] };
     }
   },
 };
@@ -206,7 +197,10 @@ export async function api(path) {
   let m;
   if ((m = p.match(/^\/api\/works\/(\d+)$/))) return LOCAL.work(m[1]);
   if ((m = p.match(/^\/api\/works\/(\d+)\/chapters\/(\d+)$/))) return LOCAL.chapter(m[1], Number(m[2]));
-  if (p === '/api/search') return LOCAL.search((q.q ?? '').trim(), Number(q.limit || 40));
+  if (p === '/api/search') {
+    return LOCAL.search(q.q ?? '', q.scope || 'text',
+      { limit: q.limit, workId: q.workId, filters: q });
+  }
 
   // the imported Archive Reader theme is a development convenience only
   if (p === '/api/prefs') return { prefs: null };

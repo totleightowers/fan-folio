@@ -84,6 +84,15 @@ body {
 
 /* ------------------------------------------------------------ search hits */
 
+/* Results arrive in groups now — works, tags, passages — and a group needs a
+   heading small enough not to compete with the results under it. */
+.group {
+  margin: 1.1rem 0 .5rem; font-size: .74rem; font-weight: 650; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+}
+.group:first-of-type { margin-top: .7rem; }
+#results .chips { flex-wrap: wrap; overflow: visible; }
+
 .hit { padding: .8rem .2rem; border-bottom: 1px solid var(--rule); cursor: pointer; }
 .hit .where { font-size: .82rem; color: var(--muted); margin-bottom: .25rem; }
 .hit .snip { font-size: .92rem; line-height: 1.55; }

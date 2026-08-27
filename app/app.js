@@ -132,6 +132,7 @@ function show(name) {
   for (const b of $$('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === (name === 'results' ? 'search' : name));
   }
+  paintSearchPlaceholder();
   window.scrollTo(0, 0);
 }
 
@@ -619,6 +620,38 @@ $('#q').addEventListener('input', (e) => {
 });
 
 /**
+ * What this search box means, where it is standing.
+ *
+ * The same box used to run the same query everywhere: every word of every
+ * chapter, always. Typing an author into the library returned the fourteen
+ * chapters that mention them instead of their works, and typing a phrase you
+ * remembered while reading searched the other nine hundred works too. Where
+ * the reader is says what they are looking for, so the box asks accordingly.
+ */
+function searchScope() {
+  const here = VIEWS.find((v) => !$(`#${v}`).hidden) ?? searchOrigin;
+  if (here === 'reader' || here === 'detail') return currentWork ? 'work' : 'text';
+  if (here === 'library') return 'meta';
+  if (here === 'home' || here === 'browse') return 'everything';
+  return searchInScope;
+}
+
+const SCOPE_PLACEHOLDER = {
+  everything: 'Search works, tags and text…',
+  meta: 'Search this library…',
+  text: 'Search every word held…',
+  work: 'Search within this work…',
+};
+
+/** The scope the current results were fetched in, so leaving one view for the
+    results does not silently re-scope the search the reader already ran. */
+let searchInScope = 'text';
+
+function paintSearchPlaceholder() {
+  $('#q').placeholder = SCOPE_PLACEHOLDER[searchScope()] ?? SCOPE_PLACEHOLDER.text;
+}
+
+/**
  * Leave the results, back to wherever searching began.
  *
  * This used to clear the navigation stack and go Home, which threw away the
@@ -813,12 +846,22 @@ async function runSearch(q) {
   // remember where searching started, so clearing the box can return there
   const showing = VIEWS.find((v) => !$(`#${v}`).hidden);
   if (showing && showing !== 'results') searchOrigin = showing;
+  const scope = searchScope();
+  searchInScope = scope;
   const box = $('#results');
   box.innerHTML = '<div class="count">Searching…</div>';
   show('results');
+
+  const params = new URLSearchParams({ q, scope });
+  // searching the library searches *this* library: whatever is already
+  // filtered out stays out, which is what makes the box feel like it belongs
+  // to the shelf rather than to the whole archive
+  if (scope === 'meta') for (const [k, v] of filterParams()) params.set(k, v);
+  if (scope === 'work') params.set('workId', currentWork.work_id);
+
   let data;
   try {
-    data = await api(`/api/search?q=${encodeURIComponent(q)}`);
+    data = await api(`/api/search?${params}`);
   } catch (e) {
     box.innerHTML = '<p class="empty"></p>';
     box.querySelector('.empty').textContent = e.message;
@@ -829,26 +872,97 @@ async function runSearch(q) {
     box.innerHTML = '<p class="empty">Keep typing — that isn\'t a complete search yet.</p>';
     return;
   }
+
+  const works = data.works ?? [];
+  const tags = data.tags ?? [];
+  const hits = data.hits ?? [];
+  const found = works.length + tags.length + hits.length;
+
   const count = document.createElement('div');
   count.className = 'count';
-  count.textContent = data.hits.length
-    ? `${data.hits.length} passages · ${data.ms}ms`
-    : `Nothing found for “${q}”`;
+  count.textContent = found
+    ? `${SCOPE_SUMMARY[scope](works.length, tags.length, hits.length)} · ${data.ms}ms`
+    : `Nothing found for \u201c${q}\u201d`;
   box.append(count);
 
-  for (const h of data.hits) {
-    const node = document.createElement('div');
-    node.className = 'hit';
-    node.innerHTML = '<div class="where"></div><div class="snip"></div>';
-    node.querySelector('.where').textContent =
-      `${h.title} — ${authorsOf(h.authors)[0] ?? 'Anonymous'} · chapter ${h.number}`;
-    // the snippet is the one place server HTML is trusted: SQLite built it from
-    // <mark> delimiters we chose, over text we stored
-    node.querySelector('.snip').innerHTML = h.snippet;
-    node.onclick = () => openChapter(h.work_id, h.number, { transient: true });
-    box.append(node);
+  if (!found) {
+    const hint = document.createElement('p');
+    hint.className = 'empty';
+    hint.textContent = scope === 'meta'
+      ? 'No work here matches. Filters are still applied — clearing them widens the search.'
+      : 'Try fewer words, or a phrase in "quotes" to match it exactly.';
+    box.append(hint);
+    if (scope === 'meta' && activeCount()) {
+      const wider = document.createElement('button');
+      wider.className = 'primary';
+      wider.textContent = 'Search everything held instead';
+      wider.onclick = () => { searchOrigin = 'results'; searchInScope = 'text'; runSearch(q); };
+      box.append(wider);
+    }
   }
+
+  if (works.length) {
+    box.append(heading(scope === 'meta' ? 'Works' : 'Works held'));
+    // library results are rows, as they are on the shelf itself; a discovery
+    // search shows cards, because it is offering rather than listing
+    if (scope === 'meta') for (const w of works) box.append(workRow(w));
+    else {
+      const rail = document.createElement('div');
+      rail.className = 'rail';
+      for (const w of works) rail.append(workCard(w));
+      box.append(rail);
+    }
+  }
+
+  if (tags.length) {
+    box.append(heading('Tags'));
+    const row = document.createElement('div');
+    row.className = 'chips';
+    for (const t of tags) {
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = `${t.name} (${fmt(t.n)})`;
+      // a tag is not a result, it is a narrowing: taking it goes to the library
+      chip.onclick = () => { $('#q').value = ''; openTag(t.name); };
+      row.append(chip);
+    }
+    box.append(row);
+  }
+
+  if (hits.length) {
+    box.append(heading(scope === 'work' ? 'In this work' : 'Passages'));
+    for (const h of hits) box.append(passage(h));
+  }
+
   if (stack.at(-1)?.name !== 'results') stack.push({ name: 'results', scroll: 0 });
+}
+
+const SCOPE_SUMMARY = {
+  everything: (w, t, h) => [w && `${w} works`, t && `${t} tags`, h && `${h} passages`]
+    .filter(Boolean).join(' \u00b7 '),
+  meta: (w) => `${w} work${w === 1 ? '' : 's'}`,
+  text: (w, t, h) => `${h} passage${h === 1 ? '' : 's'}`,
+  work: (w, t, h) => `${h} match${h === 1 ? '' : 'es'} in this work`,
+};
+
+function heading(text) {
+  const h = document.createElement('h3');
+  h.className = 'group';
+  h.textContent = text;
+  return h;
+}
+
+function passage(h) {
+  const node = document.createElement('div');
+  node.className = 'hit';
+  node.innerHTML = '<div class="where"></div><div class="snip"></div>';
+  node.querySelector('.where').textContent =
+    `${h.title} \u2014 ${authorsOf(h.authors)[0] ?? 'Anonymous'} \u00b7 chapter ${h.number}`;
+  // the snippet is the one place server HTML is trusted: SQLite built it from
+  // <mark> delimiters we chose, over text we stored
+  node.querySelector('.snip').innerHTML = h.snippet;
+  node.onclick = () => openChapter(h.work_id, h.number, { transient: true });
+  return node;
 }
 
 /* ----------------------------------------------------------------- detail */
