@@ -1077,9 +1077,17 @@ function archiveActions(w) {
     refetch.classList.add('is-busy');
     toast('Fetching from the archive…');
     try {
+      const before = w.chapters?.length ?? 0;
       const out = await addWork(String(w.work_id));
       tick('commit');
-      toast(`Updated “${out.title}” — ${out.chapters} chapters`);
+      /* An author who consolidates forty-four chapters into one has not
+         deleted anything, but the shape of the work changes under the reader
+         and the place they had kept stops meaning what it did. Said plainly,
+         with where the old copy went. */
+      toast(before && out.chapters !== before
+        ? `Now ${out.chapters} chapter${out.chapters === 1 ? '' : 's'}, was ${before}. `
+          + 'The earlier copy is under Earlier versions.'
+        : `Updated “${out.title}” — ${out.chapters} chapters`);
       openWork(w.work_id);
     } catch (e) {
       toast(e.message);

@@ -820,3 +820,30 @@ test('a work offers to fetch itself again', () => {
   assert.match(body, /Fetch again/, 'the control exists');
   assert.match(body, /addWork\(String\(w\.work_id\)\)/, 'and it asks the archive for this work');
 });
+
+/**
+ * The app must keep what it replaces.
+ *
+ * Versioning was implemented once, in the development server, and the shell
+ * never had it: it deleted a work's chapters outright and inserted the new
+ * ones. So a work fetched again on the phone lost whatever the author had
+ * changed — while the app said the opposite, because the claim had been
+ * checked against the other path.
+ */
+test('the shell archives chapters before it replaces them', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const archiveAt = java.indexOf('archiveChapters(id, chapters)');
+  const deleteAt = java.indexOf('db.delete("chapters", "work_id = ?"');
+  assert.ok(archiveAt > 0, 'the shell archives at all');
+  assert.ok(archiveAt < deleteAt, 'and does it before the rows are gone');
+  assert.match(java, /insert\("chapter_versions"/, 'into the same table the other path uses');
+});
+
+test('an unchanged refetch archives nothing', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('private int archiveChapters('));
+  const body = fn.slice(0, fn.indexOf('\n    }\n'));
+  // otherwise every refetch buries the real changes under untouched chapters
+  assert.match(body, /continue;\s*\/\/ unchanged/, 'chapters that did not change are left alone');
+  assert.match(body, /"removed"/, 'and a chapter with no replacement is recorded as gone');
+});
