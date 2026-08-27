@@ -683,3 +683,28 @@ test('forwards still stops at the end of the work', () => {
   assert.match(body, /canLeft \?\? \(\(\) => current\.chapter < current\.count\)/,
     'the forward limit is still the last chapter');
 });
+
+/**
+ * The app must be allowed to see what can open a web link.
+ *
+ * From Android 11 an app cannot see what else is installed unless it declares
+ * what it is looking for. Without that, the chooser for "open on the archive"
+ * resolved to nothing and reported that no app could perform the action — not
+ * because no browser was installed, but because this app was not allowed to
+ * know.
+ */
+test('the manifest declares what it needs to see', () => {
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  const queries = manifest.slice(manifest.indexOf('<queries>'), manifest.indexOf('</queries>'));
+  assert.ok(queries.includes('android.intent.action.VIEW'), 'it looks for handlers of web links');
+  assert.match(queries, /android:scheme="https"/, 'and says which scheme, rather than asking for everything');
+});
+
+test('nothing to open with is said plainly, not shown as an empty chooser', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public void openInBrowser('));
+  const body = fn.slice(0, fn.indexOf('\n        }'));
+  assert.match(body, /queryIntentActivities/, 'it checks whether anyone else can take the link');
+  assert.match(body, /__noBrowser/, 'and tells the page when nobody can');
+  assert.ok(js.includes('window.__noBrowser ='), 'which the page defines');
+});

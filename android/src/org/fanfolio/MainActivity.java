@@ -918,16 +918,38 @@ public class MainActivity extends Activity {
             final URL u = archiveUrl(path);
             if (u == null) return;
             runOnUiThread(new Runnable() { @Override public void run() {
+                Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(u.toString()));
+                view.addCategory(Intent.CATEGORY_BROWSABLE);
+
+                /* Everything that could open this, minus ourselves. If that
+                   leaves nothing, an empty chooser saying no app can perform
+                   the action is worse than saying so plainly — so the page is
+                   told instead. */
+                java.util.List<android.content.pm.ResolveInfo> handlers =
+                    getPackageManager().queryIntentActivities(view, 0);
+                boolean somebodyElse = false;
+                for (android.content.pm.ResolveInfo r : handlers) {
+                    if (r.activityInfo != null
+                            && !getPackageName().equals(r.activityInfo.packageName)) {
+                        somebodyElse = true;
+                        break;
+                    }
+                }
+                if (!somebodyElse) {
+                    toPage("window.__noBrowser && window.__noBrowser()");
+                    return;
+                }
+
                 try {
-                    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(u.toString()));
-                    view.addCategory(Intent.CATEGORY_BROWSABLE);
                     Intent chooser = Intent.createChooser(view, "Open on the archive");
                     chooser.putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS,
                         new android.content.ComponentName[]{
                             new android.content.ComponentName(MainActivity.this, MainActivity.class)
                         });
                     startActivity(chooser);
-                } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    toPage("window.__noBrowser && window.__noBrowser()");
+                }
             }});
         }
 
