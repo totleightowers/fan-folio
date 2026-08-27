@@ -14,7 +14,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { readZip } from '../app/core/zip.js';
 import { readHive } from './hive.mjs';
-import { SCHEMA } from '../app/core/store/schema.js';
+import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
 
 const src = process.argv[2];
 const dbPath = process.argv[3] || 'data/fanfolio.db';
@@ -23,6 +23,7 @@ if (!src) { console.error('usage: node tools/import-reading-state.mjs <backup.ao
 await mkdir('data', { recursive: true });
 const db = new DatabaseSync(dbPath);
 db.exec(SCHEMA);
+ensureColumns(db);   // an older library gains whatever columns it lacks
 
 const zip = await readZip(new Uint8Array(await readFile(src)));
 const box = (name) => {
