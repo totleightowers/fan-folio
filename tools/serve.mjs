@@ -110,6 +110,7 @@ function filtersFrom(params) {
 function home() {
   const shelf = (where, order, limit = 12) => db.prepare(`
     SELECT w.work_id, w.title, w.authors, w.words, w.chapter_count, w.complete, w.rating,
+           w.rec,
            r.chapter AS at_chapter, r.chapters_read, r.marked_later,
            (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
     FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
