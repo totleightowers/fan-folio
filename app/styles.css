@@ -1426,14 +1426,8 @@ button:disabled, .opt:disabled {
   max-width: 40em;
   margin: .4rem auto 1.6rem;
   padding: 0 var(--read-margin) 1.1rem;
-  border: 0;
   border-bottom: 1px solid var(--rule);
-  background: none;
-  color: inherit;
-  font: inherit;
   font-family: var(--read-face);
-  text-align: left;
-  cursor: pointer;
 }
 #rh-title {
   display: block;
@@ -1447,13 +1441,7 @@ button:disabled, .opt:disabled {
   color: var(--muted);
   margin-top: .25rem;
 }
-#rh-go {
-  display: inline-block;
-  margin-top: .55rem;
-  font-size: calc(var(--read-size) * .78);
-  color: var(--accent);
-}
-#rh-go::after { content: ' \203a'; }
+
 
 /* ------------------------------------------------ metadata worth tapping
  *
