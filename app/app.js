@@ -8,6 +8,7 @@
  */
 
 import { History } from './core/nav.js';
+import { axisOf, travel, commits, inSystemEdge } from './core/gesture.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -1240,34 +1241,124 @@ function keepAwake(on) {
  * Requires a mostly-horizontal movement so it cannot fire while someone is
  * scrolling the page, which is what they are doing almost all of the time.
  */
-function wireSwipe(el, { onLeft = null, onRight = null } = {}) {
-  const EDGE = 24;
-  const MIN_X = 70;
-  const MAX_DRIFT = 0.6;   // vertical travel relative to horizontal
-  let x0 = 0; let y0 = 0; let live = false;
+/**
+ * Turning a page, felt rather than guessed at.
+ *
+ * The gesture used to be a secret command: touchstart remembered where a
+ * finger landed, touchend measured how far it had gone, and nothing moved in
+ * between. A swipe that was going to succeed looked exactly like one that was
+ * going to be cancelled, and the chapter changed only once the finger had
+ * already lifted.
+ *
+ * Now the page travels with the finger, resists where there is nothing to turn
+ * to, and either completes or visibly settles back. The requirement is not the
+ * animation — it is that the surface answers the finger continuously.
+ */
+const SWIPE = {
+  OUT: 180,          // ms to carry a committed page off screen
+  IN: 200,           // ms to bring the next one on
+};
 
-  el.addEventListener('touchstart', (e) => {
-    if (e.touches.length !== 1) { live = false; return; }
-    const t = e.touches[0];
-    live = t.clientX > EDGE && t.clientX < window.innerWidth - EDGE;
-    x0 = t.clientX; y0 = t.clientY;
+const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * @param el        the view that receives the gesture
+ * @param surface   the element whose --page-x is animated (the content, not
+ *                  the chrome: the chapter bar must not slide off with the prose)
+ */
+function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight = null } = {}) {
+  const allowLeft = canLeft ?? (() => current.chapter < current.count);
+  const allowRight = canRight ?? (() => current.chapter > 1);
+  const goLeft = onLeft ?? (() => openChapter(current.workId, current.chapter + 1));
+  const goRight = onRight ?? (() => openChapter(current.workId, current.chapter - 1));
+
+  let x0 = 0; let y0 = 0;
+  let tracking = false;    // finger down, axis not yet decided
+  let dragging = false;    // committed to the horizontal axis
+  let pointerId = null;
+
+  const setX = (px) => el.style.setProperty('--page-x', `${px}px`);
+  const settle = (ms) => {
+    el.style.setProperty('--page-ms', `${ms}ms`);
+    el.classList.add('settling');
+  };
+  const done = () => {
+    el.classList.remove('settling', 'swiping');
+    el.style.removeProperty('--page-x');
+    el.style.removeProperty('--page-ms');
+    tracking = dragging = false;
+    pointerId = null;
+  };
+
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    // the screen edges belong to the system, not to us
+    if (inSystemEdge(e.clientX, window.innerWidth)) return;
+    if (el.classList.contains('settling')) return;
+    x0 = e.clientX; y0 = e.clientY;
+    tracking = true; dragging = false;
+    pointerId = e.pointerId;
   }, { passive: true });
 
-  el.addEventListener('touchend', (e) => {
-    if (!live) return;
-    live = false;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - x0;
-    const dy = t.clientY - y0;
-    if (Math.abs(dx) < MIN_X || Math.abs(dy) > Math.abs(dx) * MAX_DRIFT) return;
-    if (dx < 0) {
-      if (onLeft) onLeft();
-      else if (current.chapter < current.count) openChapter(current.workId, current.chapter + 1);
-    } else if (dx > 0) {
-      if (onRight) onRight();
-      else if (current.chapter > 1) openChapter(current.workId, current.chapter - 1);
+  el.addEventListener('pointermove', (e) => {
+    if (!tracking || e.pointerId !== pointerId) return;
+    const dx = e.clientX - x0;
+    const dy = e.clientY - y0;
+
+    if (!dragging) {
+      const axis = axisOf(dx, dy);
+      if (axis === 'vertical') { tracking = false; return; }   // the browser's
+      if (axis === 'undecided') return;
+      dragging = true;
+      el.classList.add('swiping');
+      el.setPointerCapture?.(e.pointerId);
     }
+
+    const blocked = (dx < 0 && !allowLeft()) || (dx > 0 && !allowRight());
+    setX(travel(dx, { blocked }));
   }, { passive: true });
+
+  const release = async (e) => {
+    if (!tracking || (pointerId != null && e.pointerId !== pointerId)) return;
+    if (!dragging) { done(); return; }
+
+    const dx = e.clientX - x0;
+    const forward = dx < 0;
+    const allowed = forward ? allowLeft() : allowRight();
+    const committed = commits(dx, window.innerWidth, { allowed });
+
+    if (!committed) {
+      settle(160);                     // visibly back where it started
+      setX(0);
+      setTimeout(done, 170);
+      return;
+    }
+
+    if (reduceMotion()) {
+      done();
+      await (forward ? goLeft() : goRight());
+      return;
+    }
+
+    // carry the page off, swap the content, bring the next one in from the
+    // side the finger was heading towards
+    settle(SWIPE.OUT);
+    setX(forward ? -window.innerWidth : window.innerWidth);
+    await new Promise((r) => setTimeout(r, SWIPE.OUT));
+
+    el.classList.remove('settling');
+    setX(forward ? window.innerWidth : -window.innerWidth);
+    await (forward ? goLeft() : goRight());
+
+    requestAnimationFrame(() => {
+      settle(SWIPE.IN);
+      setX(0);
+      setTimeout(done, SWIPE.IN + 10);
+    });
+  };
+
+  el.addEventListener('pointerup', release, { passive: true });
+  el.addEventListener('pointercancel', () => { if (dragging) { settle(160); setX(0); setTimeout(done, 170); } else done(); }, { passive: true });
 }
 
 wireSwipe($('#reader'));
@@ -1279,10 +1370,12 @@ wireSwipe($('#reader'));
  * detail page, so the motion means the same thing throughout: onward.
  */
 wireSwipe($('#detail'), {
+  canLeft: () => Boolean(currentWork),
+  canRight: () => false,
   onLeft: () => {
     if (!currentWork) return;
     const at = positions[currentWork.work_id]?.chapter ?? 1;
-    openChapter(currentWork.work_id, at);
+    return openChapter(currentWork.work_id, at);
   },
 });
 
