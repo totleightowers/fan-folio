@@ -654,6 +654,59 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Whitespace is not a change. Compared the way the other path compares. */
+    private static String settled(String html) {
+        return html == null ? "" : html.replaceAll("\\s+", " ").trim();
+    }
+
+    /**
+     * Copy any chapter about to be replaced into chapter_versions.
+     *
+     * Only what actually differs: refetching an unchanged work should leave no
+     * trace, or every refetch would bury the real changes under copies of
+     * chapters nobody touched.
+     */
+    private int archiveChapters(String workId, org.json.JSONArray incoming) {
+        java.util.Map<Integer, String> replacement = new java.util.HashMap<>();
+        for (int i = 0; incoming != null && i < incoming.length(); i++) {
+            replacement.put(i + 1, settled(incoming.optJSONObject(i) == null
+                ? "" : incoming.optJSONObject(i).optString("html")));
+        }
+
+        java.util.List<android.content.ContentValues> keep = new java.util.ArrayList<>();
+        String now = nowIso();
+        try (Cursor c = db.rawQuery(
+                "SELECT number, title, html, text, words FROM chapters WHERE work_id = ?",
+                new String[]{ workId })) {
+            while (c.moveToNext()) {
+                int number = c.getInt(0);
+                String html = c.getString(2);
+                String now_ = replacement.get(number);
+                boolean gone = !replacement.containsKey(number);
+                if (!gone && settled(html).equals(now_)) continue;   // unchanged
+
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put("work_id", workId);
+                v.put("number", number);
+                v.put("title", c.getString(1));
+                v.put("html", html);
+                v.put("text", c.getString(3));
+                v.put("words", c.getInt(4));
+                v.put("reason", gone ? "removed" : "content");
+                v.put("archived_at", now);
+                keep.add(v);
+            }
+        } catch (Exception e) {
+            return 0;   // a library without the table is not worth failing over
+        }
+
+        int archived = 0;
+        for (android.content.ContentValues v : keep) {
+            try { db.insert("chapter_versions", null, v); archived++; } catch (Exception ignored) {}
+        }
+        return archived;
+    }
+
     private static String errorJson(String message) {
         return "{\"error\":" + org.json.JSONObject.quote(String.valueOf(message)) + "}";
     }
@@ -1202,6 +1255,21 @@ public class MainActivity extends Activity {
             }
         }
 
+        org.json.JSONArray chapters = w.optJSONArray("chapters");
+
+        /* Keep what is about to be replaced.
+         *
+         * The development server has archived replaced chapters since
+         * versioning went in; this path never did, and deleted them outright.
+         * A work fetched again on the phone therefore lost whatever the author
+         * had changed — silently, and with the app claiming the opposite.
+         *
+         * An author who consolidates forty-four chapters into one is not
+         * deleting the work, but the chaptering is gone either way, and the
+         * copy that is on the device is the only record of what it used to be.
+         */
+        archiveChapters(id, chapters);
+
         /* Index entries are keyed on the chapter's rowid, so the old ones have
            to go before the rows they point at do. */
         try (Cursor c = db.rawQuery("SELECT id FROM chapters WHERE work_id = ?", new String[]{ id })) {
@@ -1211,7 +1279,6 @@ public class MainActivity extends Activity {
         }
         db.delete("chapters", "work_id = ?", new String[]{ id });
 
-        org.json.JSONArray chapters = w.optJSONArray("chapters");
         for (int i = 0; chapters != null && i < chapters.length(); i++) {
             org.json.JSONObject ch = chapters.getJSONObject(i);
             android.content.ContentValues row = new android.content.ContentValues();
