@@ -48,7 +48,7 @@ const prefs = load(PREFS_KEY, {
 /* The full filter set, kept together so it can be sent, saved and shown as one. */
 const view = load(VIEW_KEY, {
   sort: 'title', state: 'all',
-  include: [], exclude: [], rating: [],
+  include: [], exclude: [], rating: [], author: [],
   complete: '', language: '', wordsMin: '', wordsMax: '',
 });
 let positions = load(POS_KEY, {});
@@ -441,7 +441,7 @@ $('#sort').onchange = () => {
 /** Lists travel tab-separated: a tab cannot appear in an AO3 tag. */
 function filterParams(extra = {}) {
   const p = new URLSearchParams({ sort: view.sort, state: view.state, ...extra });
-  for (const key of ['include', 'exclude', 'rating']) {
+  for (const key of ['include', 'exclude', 'rating', 'author']) {
     if (view[key]?.length) p.set(key, view[key].join('\t'));
   }
   for (const key of ['complete', 'language', 'wordsMin', 'wordsMax']) {
@@ -451,7 +451,7 @@ function filterParams(extra = {}) {
 }
 
 const activeCount = () =>
-  view.include.length + view.exclude.length + view.rating.length
+  view.include.length + view.exclude.length + view.rating.length + (view.author?.length ?? 0)
   + (view.complete ? 1 : 0) + (view.language ? 1 : 0)
   + (view.wordsMin ? 1 : 0) + (view.wordsMax ? 1 : 0)
   + (view.state !== 'all' ? 1 : 0);
@@ -725,6 +725,9 @@ function paintActiveFilters() {
   for (const t of view.include) pill(t, 'in', () => { view.include = view.include.filter((x) => x !== t); });
   for (const t of view.exclude) pill(`not ${t}`, 'out', () => { view.exclude = view.exclude.filter((x) => x !== t); });
   for (const r of view.rating) pill(r, 'in', () => { view.rating = view.rating.filter((x) => x !== r); });
+  for (const a of view.author ?? []) {
+    pill(`by ${a}`, 'in', () => { view.author = view.author.filter((x) => x !== a); });
+  }
   if (view.complete) pill(view.complete === '1' ? 'complete' : 'WIP', 'in', () => { view.complete = ''; });
   if (view.wordsMin || view.wordsMax) {
     const label = view.wordsMin && view.wordsMax ? `${fmt(view.wordsMin)}–${fmt(view.wordsMax)} words`
@@ -746,7 +749,7 @@ $('#apply-filters').onclick = () => {
 $('#clear-filters').onclick = async () => {
   Object.assign(view, {
     state: 'all', include: [], exclude: [], rating: [],
-    complete: '', language: '', wordsMin: '', wordsMax: '',
+    complete: '', language: '', wordsMin: '', wordsMax: '', author: [],
   });
   save(VIEW_KEY, view);
   await refreshAfterFilterChange();
@@ -1369,6 +1372,48 @@ function buildBrowse(browse) {
 }
 
 /** Land in the library, already narrowed to one tag. */
+/**
+ * Show everything that shares this value.
+ *
+ * A fresh view rather than one more condition on the last one. "All of this
+ * author's works" means all of them — narrowing what was already on screen
+ * would answer a question nobody asked, and the reader has no way to see what
+ * they are still filtered by from a work page.
+ *
+ * The remembered sort survives, because that is a preference rather than a
+ * question.
+ */
+const FILTERS = {
+  tag: (value) => { view.include = [value]; },
+  author: (value) => { view.author = [value]; },
+  rating: (value) => { view.rating = [value]; },
+  language: (value) => { view.language = value; },
+};
+
+function filterBy(kind, value) {
+  const apply = FILTERS[kind];
+  if (!apply || !value) return;
+  Object.assign(view, {
+    state: 'all', include: [], exclude: [], rating: [], author: [],
+    complete: '', language: '', wordsMin: '', wordsMax: '',
+  });
+  apply(value);
+  save(VIEW_KEY, view);
+  paintActiveFilters();
+  offset = 0;
+  loadMore(true);
+  go('library');
+}
+
+/* Every value on a work page carries what it filters by, so one listener
+   serves the tags, the author, the rating and the language alike. */
+$('#detail').addEventListener('click', (e) => {
+  const pill = e.target.closest?.('[data-filter]');
+  if (!pill) return;
+  e.preventDefault();
+  filterBy(pill.dataset.filter, pill.dataset.value);
+});
+
 function openTag(tag, rating) {
   if (tag && !view.include.includes(tag)) view.include = [...view.include, tag];
   if (rating && !view.rating.includes(rating)) view.rating = [...view.rating, rating];

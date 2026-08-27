@@ -27,11 +27,28 @@ const languageName = (code) => {
 };
 
 /** AO3 renders each tag as a link; offline they are the same shape, inert. */
-function tagList(kind, names) {
+/**
+ * A row of values, each one a way into the library.
+ *
+ * These were spans: the work page told you it was Fluff and left you to go and
+ * type that somewhere else. They carry what they filter by rather than relying
+ * on their own text, because the label shown and the value filtered on are not
+ * always the same thing — a language reads "English" and filters on "en".
+ *
+ * `filter` says which kind of narrowing the value is: most are tags, but a
+ * rating is a column on the work and not a tag at all.
+ */
+function tagList(kind, names, filter = 'tag') {
   if (!names?.length) return '';
   const items = names.map((n) =>
-    `<li class="${kind}"><span class="tag">${esc(n)}</span></li>`).join('');
+    `<li class="${kind}">${pill(filter, n, n)}</li>`).join('');
   return `<ul class="commas">${items}</ul>`;
+}
+
+/** One tappable value. The classes are AO3's, so its stylesheet still applies. */
+function pill(filter, value, label) {
+  return `<button type="button" class="tag metapill"`
+    + ` data-filter="${esc(filter)}" data-value="${esc(value)}">${esc(label)}</button>`;
 }
 
 function row(cssClass, label, valueHtml) {
@@ -62,14 +79,15 @@ function statsRow(work) {
 
 export function workMetaHtml(work, tags = {}) {
   const rows = [
-    row('rating tags', 'Rating', tagList('rating', work.rating ? [work.rating] : [])),
+    row('rating tags', 'Rating', tagList('rating', work.rating ? [work.rating] : [], 'rating')),
     row('warning tags', 'Archive Warning', tagList('warnings', tags.warning)),
     row('category tags', 'Category', tagList('category', tags.category)),
     row('fandom tags', 'Fandom', tagList('fandoms', tags.fandom)),
     row('relationship tags', 'Relationship', tagList('relationships', tags.relationship)),
     row('character tags', 'Character', tagList('characters', tags.character)),
     row('freeform tags', 'Additional Tags', tagList('freeforms', tags.freeform)),
-    row('language', 'Language', work.language ? esc(languageName(work.language)) : ''),
+    row('language', 'Language',
+      work.language ? pill('language', work.language, languageName(work.language)) : ''),
     row('collections', 'Collections', tagList('collections', tags.collection)),
     statsRow(work),
   ].filter(Boolean).join('');
@@ -82,7 +100,9 @@ export function workMetaHtml(work, tags = {}) {
  */
 export function workPrefaceHtml(work, authors = []) {
   const byline = authors.length
-    ? authors.map((a) => `<span class="author">${esc(a)}</span>`).join(', ')
+    ? authors.map((a) =>
+        `<button type="button" class="author metapill" data-filter="author"`
+        + ` data-value="${esc(a)}">${esc(a)}</button>`).join(', ')
     : '<span class="author">Anonymous</span>';
   const summary = work.summary
     ? `<div class="summary module"><h3 class="heading">Summary:</h3>

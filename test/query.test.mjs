@@ -132,3 +132,48 @@ test('a starred bookmark is filterable as a rec', () => {
   assert.deepEqual(run(db, { state: 'bookmarked' }), ['2']);
   assert.deepEqual(run(db, { state: 'history' }), ['3']);
 });
+
+test('a work can be filtered to one author', () => {
+  const db = library();
+  assert.deepEqual(run(db, { author: 'bee' }), ['2']);
+  assert.deepEqual(run(db, { author: 'ann' }), ['1']);
+});
+
+test('an author name does not match a longer one containing it', () => {
+  const db = library();
+  db.prepare('INSERT INTO works (work_id, title, authors) VALUES (?,?,?)')
+    .run('4', 'Delta', '["annabel"]');
+  // the quotes around the name in the stored JSON are what stop this
+  assert.deepEqual(run(db, { author: 'ann' }), ['1']);
+  assert.deepEqual(run(db, { author: 'annabel' }), ['4']);
+});
+
+test('a co-authored work is found under either name', () => {
+  const db = library();
+  db.prepare('INSERT INTO works (work_id, title, authors) VALUES (?,?,?)')
+    .run('5', 'Echo', '["pineconepickers","tragicamente"]');
+  assert.deepEqual(run(db, { author: 'pineconepickers' }), ['5']);
+  assert.deepEqual(run(db, { author: 'tragicamente' }), ['5']);
+});
+
+test('a name carrying LIKE wildcards is matched literally', () => {
+  const db = library();
+  db.prepare('INSERT INTO works (work_id, title, authors) VALUES (?,?,?)')
+    .run('6', 'Foxtrot', '["100%_real"]');
+  assert.deepEqual(run(db, { author: '100%_real' }), ['6']);
+  // unescaped, % and _ would make this match anything at all
+  assert.deepEqual(run(db, { author: '1%' }), []);
+});
+
+test('a name with a quote in it is matched as stored', () => {
+  const db = library();
+  db.prepare('INSERT INTO works (work_id, title, authors) VALUES (?,?,?)')
+    .run('7', 'Golf', JSON.stringify(['say "hi"']));
+  assert.deepEqual(run(db, { author: 'say "hi"' }), ['7']);
+});
+
+test('authors combine with the other filters rather than replacing them', () => {
+  const db = library();
+  assert.deepEqual(run(db, { author: 'ann', rating: 'Explicit' }), ['1']);
+  assert.deepEqual(run(db, { author: 'ann', rating: 'Teen And Up Audiences' }), []);
+});
