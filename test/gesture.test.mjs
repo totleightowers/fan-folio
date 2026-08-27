@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { axisOf, travel, commits, commitDistance, inSystemEdge, ownsHorizontal, RESIST } from '../app/core/gesture.js';
+import { axisOf, travel, commits, commitDistance, inSystemEdge, ownsHorizontal, dismisses, RESIST } from '../app/core/gesture.js';
 
 test('a gesture is undecided until it has travelled', () => {
   assert.equal(axisOf(0, 0), 'undecided');
@@ -61,4 +61,19 @@ test('a row that merely overflows without scrolling does not', () => {
 test('a rounding pixel does not disable the page turn', () => {
   // treating this as a scroller would kill the gesture across most of the page
   assert.equal(ownsHorizontal({ scrollWidth: 361, clientWidth: 360, overflowX: 'auto' }), false);
+});
+
+test('a sheet dismisses on a downward drag, never an upward one', () => {
+  assert.equal(dismisses(-200, 500), false, 'dragging up is reaching for content');
+  assert.equal(dismisses(200, 500), true);
+});
+
+test('a tall sheet is not dismissed by a short drag', () => {
+  assert.equal(dismisses(80, 700), false);   // 11% of it
+  assert.equal(dismisses(80, 200), true);    // most of it
+});
+
+test('a decisive flick dismisses without travelling far', () => {
+  assert.equal(dismisses(40, 700), false);
+  assert.equal(dismisses(40, 700, { velocity: 1.4 }), true);
 });
