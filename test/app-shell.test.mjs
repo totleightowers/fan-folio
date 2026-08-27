@@ -208,3 +208,49 @@ test('a shared link is found by scanning, not by a backtracking pattern', () => 
   assert.ok(!/Pattern\s*\n?\s*\.compile/.test(send), 'no regex over shared text');
   assert.ok(send.includes('text.split'), 'each word looked at once');
 });
+
+/**
+ * The interaction layer must keep up with the components.
+ *
+ * The app read as inert because three dozen surfaces were styled as tappable
+ * and three of them acknowledged a press. That gap reopens every time a
+ * component is added and its pressed state is not, so it is checked rather
+ * than remembered.
+ */
+test('every tappable surface has a pressed state', () => {
+  // the block appended under "interaction layer" is where presses are defined
+  const layer = css.slice(css.indexOf('interaction layer'));
+
+  const selectorsOf = (rule) => rule.split(',').map((s) => s.trim());
+  const tappable = new Set();
+  for (const m of css.matchAll(/([^{}]+)\{([^}]*cursor:\s*pointer[^}]*)\}/g)) {
+    for (const sel of selectorsOf(m[1])) {
+      // the last class or id in the selector is what the finger lands on
+      const leaf = sel.match(/[.#][a-z0-9_-]+(?![^{]*\()/gi)?.at(-1);
+      if (leaf && !sel.includes(':')) tappable.add(leaf);
+    }
+  }
+
+  // form controls draw their own pressed state; a range thumb is not a button
+  const drawsItsOwn = new Set(['#theme', '.swatch', '.slider']);
+  const missing = [...tappable]
+    .filter((sel) => !drawsItsOwn.has(sel))
+    .filter((sel) => !layer.includes(sel));
+
+  assert.deepEqual(missing, [],
+    `styled as tappable but never acknowledges a press: ${missing.join(', ')}`);
+});
+
+test('the pointer layer and the stylesheet agree on what is tappable', () => {
+  const listed = js.slice(js.indexOf('const TAPPABLE'), js.indexOf("].join(',')"));
+  const selectors = [...listed.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.ok(selectors.length > 20, 'the pointer layer should cover the whole app');
+  const layer = css.slice(css.indexOf('interaction layer'));
+  const orphans = selectors.filter((sel) => !layer.includes(sel.split(' ').at(-1)));
+  assert.deepEqual(orphans, [], `JS presses these but the CSS never styles them: ${orphans}`);
+});
+
+test('the default tap flash is replaced rather than joined', () => {
+  assert.ok(css.includes('-webkit-tap-highlight-color: transparent'),
+    "the WebView's own blue flash is the wrong shape, colour and timing");
+});
