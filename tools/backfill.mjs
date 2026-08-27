@@ -132,7 +132,16 @@ for (const stage of running) {
   for (const workId of queue) {
     n += 1;
     try {
+      const before = client.limiter.stats.requests;
       const out = await addWorkByLink(db, workId, { client });
+      /* If the shared client is not the one doing the fetching, nothing paces
+         these and several thousand works go out back to back. That happened:
+         the parameter was lost in a merge and the caller kept passing it to a
+         function that ignored it, so the counter sat at zero while sixty works
+         went out in forty-five seconds. Silence is not acceptable here. */
+      if (client.limiter.stats.requests === before) {
+        throw new Error('the shared client made no request — pacing is not in effect');
+      }
       done.add(workId);
       ok += 1;
       if (n % 10 === 0 || n === 1) {

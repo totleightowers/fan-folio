@@ -17,12 +17,20 @@ const TAG_KINDS = [
   ['collections', 'collection'],
 ];
 
-export async function addWorkByLink(db, input) {
+/**
+ * @param client  an existing client, so a caller fetching many works paces them
+ *                together. Creating one per work gives each its own limiter,
+ *                and several thousand works are then requested back to back —
+ *                which is the one thing the limiter exists to prevent. This
+ *                parameter was lost once while resolving a merge, and the
+ *                caller went on passing it to a function that ignored it.
+ */
+export async function addWorkByLink(db, input, { client: shared = null } = {}) {
   const workId = workIdFrom(input);
   if (!workId) throw new Error('That link does not name a work');
 
   const existing = db.prepare('SELECT title FROM works WHERE work_id = ?').get(workId);
-  const client = await createClient();
+  const client = shared ?? await createClient();
   const { status, body } = await client.get(workPage(workId), { label: `work ${workId}` });
   if (status !== 200) throw new Error(`The archive answered ${status}`);
 
