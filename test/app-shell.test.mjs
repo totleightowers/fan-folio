@@ -492,3 +492,28 @@ test('nothing crossing the bridge can name a host for a write', () => {
   assert.match(guard, /startsWith\("\/\/"\)/, 'a protocol-relative //host must be refused');
   assert.match(guard, /contains\("::\/\/"|contains\(":\/\/"\)/, 'a scheme must be refused');
 });
+
+/**
+ * Every bridge method the page calls must exist in the shell.
+ *
+ * `markWork` was deleted by an edit that replaced the span of code it happened
+ * to sit inside. Java compiled perfectly — a missing method is only missing —
+ * and the failure appeared on a real phone, on a real tap, as
+ * "native.markWork is not a function". Nothing in the build could have caught
+ * it, so this does.
+ */
+test('the shell exposes every bridge method the page calls', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+
+  const exposed = new Set(
+    [...java.matchAll(/@JavascriptInterface\s+public\s+(?:final\s+)?[\w.<>[\]]+\s+(\w+)\s*\(/g)]
+      .map((m) => m[1])
+  );
+  const called = [...new Set([...api.matchAll(/\bnative\.(\w+)\s*\(/g)].map((m) => m[1]))];
+
+  assert.ok(called.length > 5, 'the page should be calling the bridge at all');
+  const missing = called.filter((name) => !exposed.has(name));
+  assert.deepEqual(missing, [],
+    `the page calls these but the shell does not expose them: ${missing.join(', ')}`);
+});

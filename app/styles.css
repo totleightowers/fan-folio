@@ -1335,3 +1335,10 @@ button:disabled, .opt:disabled {
   max-width: none;
 }
 .stacked textarea { resize: vertical; min-height: 3.5rem; }
+
+/* The chapter bar gained a fourth control, and space-between would have spread
+   the position indicator off to one side. The two arrows and the archive link
+   keep their size; the indicator takes the middle and stays centred. */
+#chapnav #chappos { flex: 1 1 auto; text-align: center; }
+#chapnav #prev, #chapnav #next, #chapnav #on-archive { flex: 0 0 auto; }
+#chapnav #on-archive { padding: .45rem .65rem; color: var(--muted); }
