@@ -199,3 +199,12 @@ test('a link that arrives before the page is ready is not lost', () => {
   assert.ok(java.includes('takePendingLink'), 'and the page collects it when ready');
   assert.ok(java.includes('onNewIntent'), 'a link arriving while running is handled too');
 });
+
+test('a shared link is found by scanning, not by a backtracking pattern', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const send = java.slice(java.indexOf('ACTION_SEND.equals(action)'), java.indexOf('@Override protected void onNewIntent'));
+  // shared text is chosen by somebody else; `https?://\S*/works/\d+\S*` reads
+  // naturally and backtracks polynomially on "http://http://http://…"
+  assert.ok(!/Pattern\s*\n?\s*\.compile/.test(send), 'no regex over shared text');
+  assert.ok(send.includes('text.split'), 'each word looked at once');
+});

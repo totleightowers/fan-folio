@@ -171,12 +171,28 @@ public class MainActivity extends Activity {
             return data == null ? null : data.toString();
         }
         if (Intent.ACTION_SEND.equals(action)) {
-            // shared text is often "Title https://…" rather than a bare link
+            /*
+             * Shared text is usually "Title https://…" rather than a bare link,
+             * so the link has to be picked out of it.
+             *
+             * Done by splitting on whitespace rather than with a pattern.
+             * A pattern of the obvious shape — scheme, then any run of
+             * non-space, then the works path, then more non-space — reads
+             * naturally and backtracks polynomially on text made of repeated
+             * scheme prefixes. Shared text is precisely the kind of input
+             * somebody else chooses, so this looks at each word once instead.
+             */
             String text = intent.getStringExtra(Intent.EXTRA_TEXT);
             if (text == null) return null;
-            java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("https?://\\S*/works/\\d+\\S*").matcher(text);
-            return m.find() ? m.group() : text.trim();
+            for (String word : text.split("\\s+")) {
+                if (word.length() > 2000) continue;
+                String lower = word.toLowerCase(Locale.ROOT);
+                if ((lower.startsWith("http://") || lower.startsWith("https://"))
+                        && lower.contains("/works/")) {
+                    return word;
+                }
+            }
+            return text.trim();
         }
         return null;
     }
