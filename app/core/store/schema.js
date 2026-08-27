@@ -40,7 +40,11 @@ CREATE TABLE IF NOT EXISTS works (
   in_history     INTEGER DEFAULT 0,
   bookmarked_at  TEXT,
   last_visited   TEXT,
-  visits         INTEGER
+  visits         INTEGER,
+  -- kudos can be left once and only once, and the archive gives no way to ask
+  -- afterwards whether they were; remembering locally is the only way the
+  -- button can ever say so
+  kudos_given    INTEGER DEFAULT 0
 );
 
 -- Tags are a many-to-many that gets queried by type constantly ("everything
