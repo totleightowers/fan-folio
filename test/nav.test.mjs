@@ -54,3 +54,34 @@ test('switching tabs starts a fresh branch', () => {
 test('back from the first screen reports that it handled nothing', () => {
   assert.equal(new History().back(), null);
 });
+
+/* ----------------------------------------------- where a chapter opens */
+const { openingOffset } = await import('../app/core/nav.js');
+
+test('a chapter opens where it was left off', () => {
+  const at = { '7': { chapter: 3, y: 4200 } };
+  assert.equal(openingOffset(at, '7', 3), 4200);
+});
+
+test('a different chapter opens at its beginning, not the last one\'s offset', () => {
+  // this is the bug: swiping to chapter 4 landed at chapter 3's offset
+  const at = { '7': { chapter: 3, y: 4200 } };
+  assert.equal(openingOffset(at, '7', 4), 0);
+  assert.equal(openingOffset(at, '7', 2), 0);
+});
+
+test('a work never opened starts at the beginning', () => {
+  assert.equal(openingOffset({}, '7', 1), 0);
+  assert.equal(openingOffset(undefined, '7', 1), 0);
+});
+
+test('a reading excursion from a search result leaves no bookmark to return to', () => {
+  const at = { '7': { chapter: 3, y: 4200 } };
+  assert.equal(openingOffset(at, '7', 3, { transient: true }), 0);
+});
+
+test('a nonsensical remembered offset opens at the beginning', () => {
+  for (const y of [null, undefined, NaN, -50, 'somewhere']) {
+    assert.equal(openingOffset({ '7': { chapter: 3, y } }, '7', 3), 0, `y=${y}`);
+  }
+});

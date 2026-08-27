@@ -41,3 +41,23 @@ export class History {
    */
   reset() { this.entries = []; }
 }
+
+/**
+ * Where a chapter should open.
+ *
+ * Only ever two answers: where this chapter was left off, or its beginning.
+ * Anything else is a bug, and the bug that prompted this returned a third —
+ * the offset from the chapter before it, still on screen when the new one was
+ * announced.
+ *
+ * A remembered offset belongs to a chapter, so it counts only when the chapter
+ * matches. A reading excursion from a search result leaves no bookmark, so it
+ * opens at the beginning like anything else unvisited.
+ */
+export function openingOffset(positions, workId, chapter, { transient = false } = {}) {
+  if (transient) return 0;
+  const saved = positions?.[workId];
+  if (!saved || saved.chapter !== chapter) return 0;
+  const y = Number(saved.y);
+  return Number.isFinite(y) && y > 0 ? Math.round(y) : 0;
+}

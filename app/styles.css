@@ -1388,6 +1388,12 @@ button:disabled, .opt:disabled {
   overflow-x: clip;
   touch-action: pan-y;
 }
+
+/* Turning a page replaces the whole document body. The browser's scroll
+   anchoring then tries to keep what was on screen on screen — which for a
+   chapter that no longer exists means landing at an offset belonging to
+   nothing, after we have already asked for the top. */
+#reader, #workskin, #endnotes { overflow-anchor: none; }
 #workskin table,
 #workskin pre,
 #workskin .userstuff > div[style*="width"] {
