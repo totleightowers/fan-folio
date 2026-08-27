@@ -644,6 +644,15 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** The version stamped into this package at build time. */
+    private String versionName() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
     private static String errorJson(String message) {
         return "{\"error\":" + org.json.JSONObject.quote(String.valueOf(message)) + "}";
     }
@@ -781,6 +790,11 @@ public class MainActivity extends Activity {
             b.append(",\"search\":").append(hasSearch());
             b.append(",\"signedIn\":").append(isSignedIn());
             b.append(",\"path\":").append(quote(databaseFile().getPath()));
+            /* What this APK actually is, rather than what some constant in the
+               page last remembered. The page displayed v0.15.0 while running
+               v0.19.0, because the number was written down in a third place
+               and only sometimes updated. */
+            b.append(",\"version\":").append(quote(versionName()));
             b.append("}");
             return b.toString();
         }
