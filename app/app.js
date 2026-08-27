@@ -7,7 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1187,6 +1187,22 @@ async function submitAddWork() {
   }
 }
 
+/**
+ * A link opened or shared into the app.
+ *
+ * The work is added straight away rather than waiting for a second tap: the
+ * reader has already expressed the intent by choosing this app for the link.
+ * The dialog opens to show what is happening and what came of it.
+ */
+window.__openLink = async (link) => {
+  if (!link) return;
+  $('#addwork-url').value = link;
+  $('#addwork-status').hidden = true;
+  $('#addwork-signin').hidden = true;
+  if (!addDialog.open) addDialog.showModal();
+  await submitAddWork();
+};
+
 $('#addwork-go').onclick = submitAddWork;
 $('#addwork-signin-go').onclick = () => { addDialog.close(); signIn(); };
 $('#addwork-url').addEventListener('keydown', (e) => {
@@ -1224,6 +1240,10 @@ async function start() {
   if (!status.search) toast('This device\'s SQLite cannot do full-text search');
   show('home');
   paintAccount();
+
+  // an intent can arrive before this page exists, so the shell holds it
+  const opened = pendingLink();
+  if (opened) setTimeout(() => window.__openLink(opened), 0);
   await adoptImportedTheme();
   paintActiveFilters();
   await Promise.all([buildHome(), buildStartHere()]);
