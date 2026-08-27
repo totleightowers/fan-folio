@@ -162,7 +162,7 @@ body {
 }
 
 #chapnav {
-  position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: .5rem; align-items: center;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 31; display: flex; gap: .5rem; align-items: center;
   justify-content: space-between; padding: .6rem .8rem;
   padding-bottom: max(.6rem, env(safe-area-inset-bottom));
   background: color-mix(in srgb, var(--bg) 94%, transparent);
@@ -323,6 +323,22 @@ dialog button.close {
 }
 
 /* ------------------------------------------------------------ bottom tabs */
+
+/*
+ * hidden must mean hidden.
+ *
+ * The attribute works by a user-agent rule of display: none, and any author
+ * rule setting display beats it. #tabs declared display: flex, so setting
+ * .hidden on it did nothing at all: the tab bar stayed on screen in the
+ * reader, at z-index 30, directly over the chapter navigation — which was
+ * present and correct underneath it the whole time. Chapter list, previous,
+ * next, the link to the archive, the way back to the work: all built, all
+ * reported missing, all covered by a bar that should not have been there.
+ *
+ * Declared once, globally, because the next element to grow a display rule
+ * will not remember this either.
+ */
+[hidden] { display: none !important; }
 
 #tabs {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
@@ -1346,8 +1362,12 @@ button:disabled, .opt:disabled {
    the position indicator off to one side. The two arrows and the archive link
    keep their size; the indicator takes the middle and stays centred. */
 #chapnav #chappos { flex: 1 1 auto; text-align: center; }
-#chapnav #prev, #chapnav #next, #chapnav #on-archive, #chapnav #to-work { flex: 0 0 auto; }
-#chapnav #on-archive, #chapnav #to-work { padding: .45rem .65rem; color: var(--muted); }
+#chapnav #prev, #chapnav #next, #chapnav #on-archive,
+#chapnav #to-work, #chapnav #kudos-here { flex: 0 0 auto; }
+#chapnav #on-archive, #chapnav #to-work, #chapnav #kudos-here {
+  padding: .45rem .6rem; color: var(--muted);
+}
+#chapnav button { min-width: 2.4rem; }
 #chapnav { gap: .35rem; }
 
 /* ------------------------------------------------- the chapter is not a scroller

@@ -773,7 +773,7 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
-  '#to-work', '#on-archive',
+  '#to-work', '#on-archive', '#kudos-here',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -958,6 +958,28 @@ window.__backupFailed = () => {
  * each one says what it is about to do, and the two that take text ask before
  * sending rather than firing on a tap.
  */
+/**
+ * Leave kudos, and say what happened.
+ *
+ * Shared, because kudos belong wherever the reader is when they decide a work
+ * deserves them — which is usually somewhere in the middle of it, not back on
+ * a page they left an hour ago.
+ */
+async function giveKudos(workId, button) {
+  if (!workId) return;
+  button?.classList.add('is-busy');
+  try {
+    const out = await leaveKudos(workId);
+    if (button) button.disabled = true;
+    tick('commit');
+    toast(out.already ? 'You had already left kudos' : 'Kudos left');
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    button?.classList.remove('is-busy');
+  }
+}
+
 function archiveActions(w) {
   const row = document.createElement('div');
   row.className = 'actions archive-actions';
@@ -968,18 +990,10 @@ function archiveActions(w) {
   kudos.disabled = already;
   kudos.append(icon('star', 'ic ic-inline'), document.createTextNode(already ? 'Kudos left' : 'Kudos'));
   kudos.onclick = async () => {
-    kudos.classList.add('is-busy');
-    try {
-      const out = await leaveKudos(w.work_id);
+    await giveKudos(w.work_id, kudos);
+    if (kudos.disabled) {
       kudos.textContent = '';
       kudos.append(icon('star', 'ic ic-inline'), document.createTextNode('Kudos left'));
-      kudos.disabled = true;
-      tick('commit');
-      toast(out.already ? 'You had already left kudos' : 'Kudos left');
-    } catch (e) {
-      toast(e.message);
-    } finally {
-      kudos.classList.remove('is-busy');
     }
   };
 
@@ -1758,6 +1772,7 @@ async function showChapterDrawer(workId, at) {
  * happens to be behind us.
  */
 $('#to-work').onclick = () => current.workId && openWork(current.workId);
+$('#kudos-here').onclick = () => giveKudos(current.workId, $('#kudos-here'));
 
 $('#on-archive').onclick = () => {
   if (!current.workId) return;
