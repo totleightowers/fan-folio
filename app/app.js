@@ -1058,15 +1058,71 @@ function passage(h) {
 
 let currentWork = null;
 
+/**
+ * A tap is answered before the data is.
+ *
+ * openWork used to fetch the work, build the whole page, and only then
+ * navigate — so the interaction read as tap, nothing, and eventually a new
+ * screen. Even when the query is quick, nothing on screen had acknowledged
+ * the tap, which on a slower one is long enough to press again.
+ *
+ * The destination now opens immediately with its shape in place, and the
+ * content replaces that shape when it arrives. A failure appears in the
+ * destination with a way to try again, rather than leaving the reader on the
+ * previous screen wondering whether they missed.
+ */
+let pending = 0;
+
+function skeleton(...shapes) {
+  const box = document.createElement('div');
+  box.className = 'skeleton';
+  box.setAttribute('aria-hidden', 'true');   // it is scaffolding, not content
+  for (const shape of shapes) {
+    const bar = document.createElement('div');
+    bar.className = `sk sk-${shape}`;
+    box.append(bar);
+  }
+  return box;
+}
+
+/** An error where the reader was going, with the way onwards. */
+function failure(message, retry) {
+  const box = document.createElement('div');
+  box.className = 'failure';
+  const text = document.createElement('p');
+  text.className = 'empty';
+  text.textContent = message;
+  const again = document.createElement('button');
+  again.className = 'primary';
+  again.textContent = 'Try again';
+  again.onclick = retry;
+  box.append(text, again);
+  return box;
+}
+
 async function openWork(workId) {
-  const w = await api(`/api/works/${workId}`);
+  /* Opening a second work before the first has answered must not let the
+     first overwrite the second when it lands. */
+  const token = ++pending;
+  go('detail');
+  const box = $('#detail');
+  box.replaceChildren(skeleton('title', 'line', 'line', 'meta', 'button'));
+
+  let w;
+  try {
+    w = await api(`/api/works/${workId}`);
+  } catch (e) {
+    if (token === pending) box.replaceChildren(failure(e.message, () => openWork(workId)));
+    return;
+  }
+  if (token !== pending) return;    // the reader has already gone elsewhere
+
   currentWork = w;
   // the database is authoritative; the local cache only remembers the exact
   // scroll offset, which is not worth a column of its own
   if (w.at_chapter && (!positions[workId] || positions[workId].chapter !== w.at_chapter)) {
     positions[workId] = { ...(positions[workId] ?? {}), chapter: w.at_chapter, y: 0 };
   }
-  const box = $('#detail');
   box.textContent = '';
 
   /* AO3's own preface and meta block, generated server-side from stored fields
@@ -1117,7 +1173,6 @@ async function openWork(workId) {
   hint.className = 'swipe-hint';
   hint.textContent = 'Swipe left to start reading';
   box.append(hint);
-  go('detail');
 }
 
 /* ----------------------------------------------------------------- reader */
@@ -1130,9 +1185,32 @@ let readingIsTransient = false;
 
 async function openChapter(workId, number, { transient = false } = {}) {
   readingIsTransient = transient;
-  const w = currentWork?.work_id === workId ? currentWork : await api(`/api/works/${workId}`);
+  const token = ++pending;
+
+  /* Entering the reader is acknowledged before the chapter is read. Turning a
+     page is not: the swipe is already carrying the old page off, and a
+     skeleton flashing behind it would be noise rather than feedback. */
+  const arriving = showing() !== 'reader';
+  if (arriving) {
+    go('reader');
+    $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line', 'line', 'line'));
+    $('#endnotes').hidden = true;
+    $('#chappos').textContent = '…';
+  }
+
+  let w; let ch;
+  try {
+    w = currentWork?.work_id === workId ? currentWork : await api(`/api/works/${workId}`);
+    ch = await api(`/api/works/${workId}/chapters/${number}`);
+  } catch (e) {
+    if (token !== pending) return;
+    $('#workskin').replaceChildren(
+      failure(e.message, () => openChapter(workId, number, { transient })));
+    return;
+  }
+  if (token !== pending) return;
+
   currentWork = w;
-  const ch = await api(`/api/works/${workId}/chapters/${number}`);
   current = { workId, chapter: number, count: w.chapter_count };
 
   // the skin is already scoped to #workskin; this element holds one work's CSS,
@@ -1156,7 +1234,6 @@ async function openChapter(workId, number, { transient = false } = {}) {
   $('#prev').disabled = number <= 1;
   $('#next').disabled = number >= w.chapter_count;
 
-  go('reader');   // a no-op when already reading, e.g. turning a page
   keepAwake(true);
 
   const saved = positions[workId];

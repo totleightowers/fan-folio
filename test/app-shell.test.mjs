@@ -254,3 +254,30 @@ test('the default tap flash is replaced rather than joined', () => {
   assert.ok(css.includes('-webkit-tap-highlight-color: transparent'),
     "the WebView's own blue flash is the wrong shape, colour and timing");
 });
+
+/**
+ * Navigation must be acknowledged before the data is fetched, not after.
+ *
+ * The regression this guards is easy to reintroduce: an await creeps above the
+ * navigation, and the app goes back to tap, nothing, eventually a new screen.
+ */
+test('a destination opens before its data is awaited', () => {
+  for (const [fn, nav] of [['openWork', "go('detail')"], ['openChapter', "go('reader')"]]) {
+    const body = js.slice(js.indexOf(`async function ${fn}(`));
+    const end = body.indexOf('\n}\n');
+    const source = body.slice(0, end);
+    assert.ok(source.includes(nav), `${fn} should navigate to its destination`);
+    assert.ok(source.indexOf(nav) < source.indexOf('await api('),
+      `${fn} awaits data before opening the destination, so the tap looks ignored`);
+  }
+});
+
+test('a late response cannot overwrite a newer navigation', () => {
+  // tap one work, go back, tap another: the first must not win when it lands
+  for (const fn of ['openWork', 'openChapter']) {
+    const body = js.slice(js.indexOf(`async function ${fn}(`));
+    const source = body.slice(0, body.indexOf('\n}\n'));
+    assert.ok(/const token = \+\+pending/.test(source), `${fn} should claim a token`);
+    assert.ok(/token !== pending/.test(source), `${fn} should stand down if superseded`);
+  }
+});

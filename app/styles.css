@@ -966,3 +966,44 @@ button:disabled, .opt:disabled {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------------- arriving
+ *
+ * The shape of the page, standing in for it until it arrives. This is not
+ * decoration: it is what makes a tap feel answered. The alternative — a blank
+ * screen, or worse the previous screen — is what made the app feel as though
+ * it had ignored the tap.
+ */
+.skeleton { padding: .2rem 0; }
+.sk {
+  background: var(--rule);
+  border-radius: 6px;
+  opacity: .55;
+  margin: .55rem 0;
+}
+.sk-title { height: 1.5rem; width: 72%; margin-top: .3rem; }
+.sk-line { height: .82rem; width: 100%; }
+.sk-line:nth-of-type(even) { width: 88%; }
+.sk-line:last-of-type { width: 64%; }
+.sk-meta { height: 4.5rem; width: 100%; border-radius: 10px; margin-top: 1rem; }
+.sk-button { height: 2.6rem; width: 9rem; border-radius: 999px; margin-top: 1rem; }
+
+/* A slow sweep, so the placeholder reads as pending rather than as broken
+   layout. Anyone who has asked for less motion simply gets the shapes. */
+@media (prefers-reduced-motion: no-preference) {
+  .sk {
+    background: linear-gradient(90deg, var(--rule) 25%,
+      color-mix(in srgb, var(--rule) 45%, var(--pane)) 50%, var(--rule) 75%);
+    background-size: 300% 100%;
+    animation: sk-sweep 1.4s ease-in-out infinite;
+  }
+  @keyframes sk-sweep {
+    from { background-position: 150% 0; }
+    to { background-position: -150% 0; }
+  }
+}
+
+/* An error belongs where the reader was going, with the way onwards, rather
+   than as a toast over the screen they were trying to leave. */
+.failure { padding: 2rem .2rem; text-align: center; }
+.failure .empty { margin-bottom: 1rem; }
