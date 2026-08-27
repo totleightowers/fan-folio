@@ -50,12 +50,40 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="archiveofourown.org"
-                      android:pathPrefix="/works" />
-                <data android:scheme="https" android:host="www.archiveofourown.org"
-                      android:pathPrefix="/works" />
-                <data android:scheme="http" android:host="archiveofourown.org"
-                      android:pathPrefix="/works" />
+
+                <!--
+                    Every host the archive answers on. Each was checked and
+                    every one redirects to archiveofourown.org, but Android
+                    matches the link that was tapped rather than the one it
+                    ends up at, so all of them have to be named. ao3.org is
+                    the one people type by hand and paste into messages;
+                    download.* is what the archive's own download links use.
+                -->
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="archiveofourown.org" />
+                <data android:host="www.archiveofourown.org" />
+                <data android:host="ao3.org" />
+                <data android:host="www.ao3.org" />
+                <data android:host="archiveofourown.com" />
+                <data android:host="www.archiveofourown.com" />
+                <data android:host="download.archiveofourown.org" />
+
+                <!--
+                    Only the paths that name a work. Claiming /collections or
+                    /users wholesale would take links to listings the app
+                    cannot show, and an app that opens and then says it cannot
+                    help is worse than one that never offered.
+
+                    A work inside a collection needs a pattern rather than a
+                    prefix for exactly that reason: the work is claimed, the
+                    collection's own pages are left alone.
+                -->
+                <data android:pathPrefix="/works" />
+                <data android:pathPrefix="/chapters" />
+                <data android:pathPrefix="/series" />
+                <data android:pathPrefix="/downloads" />
+                <data android:pathPattern="/collections/.*/works/.*" />
             </intent-filter>
 
             <!--

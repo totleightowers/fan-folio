@@ -1958,12 +1958,25 @@ async function submitAddWork() {
   try {
     const out = await addWork(input);
     status.className = 'addwork-status ok';
-    status.textContent = `${out.added === false ? 'Updated' : 'Added'} “${out.title}” — `
-      + `${out.chapters} chapter${out.chapters === 1 ? '' : 's'}`;
+
+    /* A series link brings back many works rather than one, so it reports a
+       count and opens nothing — there is no single work to open, and one that
+       partly failed should say so rather than look like a clean success. */
+    if (out.kind === 'series') {
+      status.textContent = `Added ${out.added} work${out.added === 1 ? '' : 's'}`
+        + (out.failed.length ? `, ${out.failed.length} could not be fetched` : '');
+    } else {
+      status.textContent = `${out.added === false ? 'Updated' : 'Added'} “${out.title}” — `
+        + `${out.chapters} chapter${out.chapters === 1 ? '' : 's'}`;
+    }
+
     // the library and home shelves are both stale now
     offset = 0;
     await Promise.all([loadMore(true), buildHome().catch(() => {})]);
-    setTimeout(() => { closeSheet(addDialog); openWork(out.workId); }, 700);
+    setTimeout(() => {
+      closeSheet(addDialog);
+      if (out.workId) openWork(out.workId);
+    }, out.kind === 'series' ? 1400 : 700);
   } catch (e) {
     status.className = 'addwork-status bad';
     status.textContent = e.message;
