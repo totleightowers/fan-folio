@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { axisOf, travel, commits, commitDistance, inSystemEdge, RESIST } from '../app/core/gesture.js';
+import { axisOf, travel, commits, commitDistance, inSystemEdge, ownsHorizontal, RESIST } from '../app/core/gesture.js';
 
 test('a gesture is undecided until it has travelled', () => {
   assert.equal(axisOf(0, 0), 'undecided');
@@ -47,4 +47,18 @@ test('the system back gesture keeps the edges', () => {
   assert.equal(inSystemEdge(4, 360), true);
   assert.equal(inSystemEdge(356, 360), true);
   assert.equal(inSystemEdge(180, 360), false);
+});
+
+test('a sideways-scrolling row owns the gesture that lands on it', () => {
+  // a tag row wider than its box, which is what the work page is mostly made of
+  assert.equal(ownsHorizontal({ scrollWidth: 900, clientWidth: 360, overflowX: 'auto' }), true);
+});
+
+test('a row that merely overflows without scrolling does not', () => {
+  assert.equal(ownsHorizontal({ scrollWidth: 900, clientWidth: 360, overflowX: 'visible' }), false);
+});
+
+test('a rounding pixel does not disable the page turn', () => {
+  // treating this as a scroller would kill the gesture across most of the page
+  assert.equal(ownsHorizontal({ scrollWidth: 361, clientWidth: 360, overflowX: 'auto' }), false);
 });
