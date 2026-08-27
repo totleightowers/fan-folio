@@ -17,11 +17,19 @@ export const SORTS = {
   author: 'w.authors COLLATE NOCASE ASC',
   updated: 'COALESCE(w.updated, w.published) DESC',
   published: 'w.published DESC',
-  added: 'w.downloaded_at DESC',
+  /* When we got it. A fetched work sets fetched_at, and only the EPUB import
+     ever set downloaded_at — so ordering by that alone put everything newly
+     added at the very bottom of "recently added". */
+  added: 'COALESCE(w.downloaded_at, w.fetched_at) DESC',
   words: 'w.words DESC',
   shortest: 'w.words ASC',
   chapters: 'w.chapter_count DESC',
   recent: 'r.updated_at DESC',
+  /* NULLS LAST, spelled out: a work whose counts we have never seen should
+     not outrank one with none, and in SQLite a NULL sorts first descending. */
+  kudos: 'w.kudos IS NULL, w.kudos DESC',
+  bookmarks: 'w.bookmark_count IS NULL, w.bookmark_count DESC',
+  hits: 'w.hits IS NULL, w.hits DESC',
   random: 'RANDOM()',
 };
 
@@ -143,6 +151,7 @@ export function buildWorksQuery(filters = {}) {
                  w.downloaded_at, w.language,
                  w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
                  w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
+                 w.kudos, w.bookmark_count, w.hits,
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship

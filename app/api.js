@@ -98,7 +98,7 @@ const LOCAL = {
             + 'AND COALESCE(r.chapters_read,0) < w.chapter_count', 'r.updated_at DESC') },
         { key: 'later', title: 'Marked for later',
           works: shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
-        { key: 'added', title: 'Recently added', works: shelf('1=1', 'w.downloaded_at DESC') },
+        { key: 'added', title: 'Recently added', works: shelf('1=1', 'COALESCE(w.downloaded_at, w.fetched_at) DESC') },
         { key: 'long', title: 'Settle in',
           works: shelf('w.complete = 1 AND COALESCE(r.chapters_read,0) = 0', 'w.words DESC') },
         { key: 'short', title: 'One sitting',
@@ -276,6 +276,10 @@ function payloadFor(workId, w) {
     words: meta.words ?? 0,
     chaptersPlanned: meta.chaptersPlanned ?? null,
     skin_css: w.skinCss ?? null,
+    // parsed all along and, until now, dropped on the floor
+    kudos: meta.kudos ?? null,
+    bookmarkCount: meta.bookmarkCount ?? null,
+    hits: meta.hits ?? null,
     tags,
     chapters: w.chapters.map((c) => {
       const display = c.block ?? c.html ?? '';

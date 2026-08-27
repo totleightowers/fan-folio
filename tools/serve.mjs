@@ -141,7 +141,7 @@ function home() {
       { key: 'later', title: 'Marked for later',
         works: shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
       { key: 'added', title: 'Recently added',
-        works: shelf('1=1', 'w.downloaded_at DESC') },
+        works: shelf('1=1', 'COALESCE(w.downloaded_at, w.fetched_at) DESC') },
       { key: 'long', title: 'Settle in',
         works: shelf('w.complete = 1 AND COALESCE(r.chapters_read,0) = 0', 'w.words DESC') },
       { key: 'short', title: 'One sitting',

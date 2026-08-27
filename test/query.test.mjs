@@ -177,3 +177,31 @@ test('authors combine with the other filters rather than replacing them', () => 
   assert.deepEqual(run(db, { author: 'ann', rating: 'Explicit' }), ['1']);
   assert.deepEqual(run(db, { author: 'ann', rating: 'Teen And Up Audiences' }), []);
 });
+
+test('recently added sees a work fetched from the archive', () => {
+  const db = library();
+  /* Only the EPUB import ever set downloaded_at. A work fetched from the
+     archive sets fetched_at, so ordering by downloaded_at alone put everything
+     newly added at the very bottom of the shelf meant to show it. */
+  db.prepare("UPDATE works SET downloaded_at = '2020-01-01' WHERE work_id = '1'").run();
+  db.prepare("UPDATE works SET downloaded_at = NULL, fetched_at = '2026-08-28' WHERE work_id = '2'").run();
+  assert.equal(run(db, { sort: 'added' })[0], '2', 'the one just fetched comes first');
+});
+
+test('works can be ranked by how the archive received them', () => {
+  const db = library();
+  const set = db.prepare('UPDATE works SET kudos = ?, bookmark_count = ?, hits = ? WHERE work_id = ?');
+  set.run(100, 90, 1000, '1');
+  set.run(500, 10, 9000, '2');
+  set.run(300, 200, 500, '3');
+  assert.deepEqual(run(db, { sort: 'kudos' }), ['2', '3', '1']);
+  assert.deepEqual(run(db, { sort: 'bookmarks' }), ['3', '1', '2']);
+  assert.deepEqual(run(db, { sort: 'hits' }), ['2', '1', '3']);
+});
+
+test('a work whose counts we have never seen ranks last, not first', () => {
+  const db = library();
+  db.prepare('UPDATE works SET kudos = 5 WHERE work_id = ?').run('1');
+  // descending in SQLite puts NULL first, which would rank the uncounted top
+  assert.equal(run(db, { sort: 'kudos' })[0], '1');
+});
