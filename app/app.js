@@ -315,6 +315,30 @@ function icon(name, className = 'ic') {
   return span.firstChild;
 }
 
+/**
+ * What a work is, at a glance, on any card that shows it.
+ *
+ * A rec is a bookmark the reader starred on the archive — 726 of them here,
+ * and the strongest signal in the library of what was actually thought good.
+ * It was filterable but invisible: nothing on a card said so.
+ *
+ * "Marked for later" used to wear the same star, which made one symbol mean
+ * two unrelated things — something they said good, and something they meant to
+ * get to. They are now a star and a bookmark.
+ */
+function marks(w) {
+  const mark = (name, className, label) => {
+    const el = icon(name, `ic ic-inline ${className}`);
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', label);   // the only thing that says so aloud
+    return el;
+  };
+  const out = [];
+  if (w.rec) out.push(mark('star', 'ic-rec', 'Recommended'));
+  if (w.marked_later) out.push(mark('bookmark', 'ic-later', 'Marked for later'));
+  return out;
+}
+
 function workRow(w) {
   const node = document.createElement('div');
   node.className = 'work-card';
@@ -346,7 +370,7 @@ function workRow(w) {
   // textContent, never innerHTML: titles, summaries and tags are author-written
   const heading = node.querySelector('h3');
   heading.textContent = w.title ?? '(untitled)';
-  if (w.marked_later) heading.prepend(icon('star', 'ic ic-inline ic-later'));
+  heading.prepend(...marks(w));
   node.querySelector('.by').textContent = 'by ' + (authorsOf(w.authors).join(', ') || 'Anonymous');
   node.querySelector('.statline').textContent = stats;
   if (w.summary) node.querySelector('.sum').textContent = w.summary;
@@ -1093,7 +1117,9 @@ function workCard(w) {
     <div class="card-fandom"></div>
     <div class="card-foot">${fmt(w.words)} words${w.complete ? '' : ' · WIP'}</div>
     ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>` : ''}`;
-  card.querySelector('.card-title').textContent = w.title ?? '(untitled)';
+  const cardTitle = card.querySelector('.card-title');
+  cardTitle.textContent = w.title ?? '(untitled)';
+  cardTitle.prepend(...marks(w));
   card.querySelector('.card-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
   card.querySelector('.card-fandom').textContent = w.fandom ?? '';
   card.onclick = () => (p ? openChapter(w.work_id, w.at_chapter ?? 1) : openWork(w.work_id));

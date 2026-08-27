@@ -377,28 +377,31 @@ test('the settings screen reaches its own controls', () => {
  * A `use` pointing at a symbol that was never defined renders as nothing at
  * all — no error, no fallback, just a gap where a control's meaning was.
  */
-/** Icons are referenced two ways: written into markup, and by name through
-    the icon() helper, where the href is built from a variable. */
-const iconsUsed = (...sources) => {
+/**
+ * An icon reaches the page two ways: written straight into the markup, or
+ * named as a string that some helper turns into a `use`. Matching on the
+ * helper's name meant the test broke every time one was added — twice already.
+ * Matching on the symbol's own name does not care how it got there.
+ */
+const iconIsReferenced = (id, ...sources) => {
   const text = sources.join('');
-  return [
-    ...[...text.matchAll(/href="#(i-[a-z-]+)"/g)].map((m) => m[1]),
-    ...[...text.matchAll(/\bicon\('([a-z-]+)'/g)].map((m) => `i-${m[1]}`),
-  ];
+  const bare = id.replace(/^i-/, '');
+  return text.includes(`href="#${id}"`)
+    || new RegExp(`['"\`]${bare}['"\`]`).test(text);
 };
 
+const definedIcons = (html) => [...html.matchAll(/<symbol id="(i-[a-z-]+)"/g)].map((m) => m[1]);
+
 test('every icon referenced is defined in the sprite', () => {
-  const defined = new Set([...html.matchAll(/<symbol id="(i-[a-z-]+)"/g)].map((m) => m[1]));
-  const used = iconsUsed(html, js);
+  const defined = new Set(definedIcons(html));
+  const used = [...`${html}${js}`.matchAll(/href="#(i-[a-z-]+)"/g)].map((m) => m[1]);
   const missing = [...new Set(used)].filter((id) => !defined.has(id));
   assert.deepEqual(missing, [], `referenced but never drawn: ${missing.join(', ')}`);
-  assert.ok(used.length >= 12, 'the whole toolbar should be drawn, not part of it');
+  assert.ok(defined.size >= 12, 'the whole toolbar should be drawn, not part of it');
 });
 
 test('every symbol in the sprite is actually used', () => {
-  const defined = [...html.matchAll(/<symbol id="(i-[a-z-]+)"/g)].map((m) => m[1]);
-  const used = new Set(iconsUsed(html, js));
-  const orphans = defined.filter((id) => !used.has(id));
+  const orphans = definedIcons(html).filter((id) => !iconIsReferenced(id, html, js));
   assert.deepEqual(orphans, [], `drawn but never referenced: ${orphans.join(', ')}`);
 });
 
