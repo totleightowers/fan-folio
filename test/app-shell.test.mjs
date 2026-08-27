@@ -151,9 +151,12 @@ test('a redirect cannot take a signed-in write off the archive', () => {
      unchecked is a request this app makes on someone else's instruction, to any
      host they name — server-side request forgery, and CodeQL called it that. */
   const followAt = body.indexOf('open(next)');
-  const checkAt = body.indexOf('isArchiveHost(next.getHost())');
+  const checkAt = body.indexOf('isArchiveHost(resolved.getHost())');
+  const rebuildAt = body.indexOf('archiveUrl(resolved.getFile())');
   assert.ok(checkAt > 0, 'the redirect target is checked');
   assert.ok(checkAt < followAt, 'and checked before it is followed');
+  assert.ok(rebuildAt > checkAt && rebuildAt < followAt,
+    'and rebuilt onto the constant host, so no response can choose where a write goes');
 });
 
 test('the read bridge refuses anything that is not a single read', () => {
@@ -465,4 +468,22 @@ test('no motion value is written as a bare literal', () => {
   const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');            // comments may mention ms
   const literals = [...rules.matchAll(/(?:transition|animation)[^;{]*?(\d+m?s)/g)].map((m) => m[1]);
   assert.deepEqual(literals, [], `durations outside the scale: ${literals.join(', ')}`);
+});
+
+test('nothing crossing the bridge can name a host for a write', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public String archivePost('));
+  const body = fn.slice(0, fn.indexOf('\n        }'));
+
+  /* Checking a caller-supplied URL and hoping the check is airtight is the
+     weaker arrangement — and the one CodeQL objected to. The host is a
+     constant; the page supplies only a path. */
+  assert.ok(!/new URL\(\s*(rawUrl|path)\s*\)/.test(body),
+    'a write must not be sent to a URL the caller supplied');
+  assert.match(body, /archiveUrl\(path\)/, 'the path is joined onto a constant host');
+
+  const safe = java.slice(java.indexOf('private static String safePath('));
+  const guard = safe.slice(0, safe.indexOf('\n    }'));
+  assert.match(guard, /startsWith\("\/\/"\)/, 'a protocol-relative //host must be refused');
+  assert.match(guard, /contains\("::\/\/"|contains\(":\/\/"\)/, 'a scheme must be refused');
 });

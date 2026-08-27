@@ -12,7 +12,7 @@ import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
 import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
-import { workPage, linkTarget, chapterUrl, seriesPage, workUrl, ORIGIN } from './core/ao3/urls.js';
+import { workPage, linkTarget, chapterUrl, seriesPage, ORIGIN } from './core/ao3/urls.js';
 import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
 import { htmlToText, countWords } from './core/epub.js';
 
@@ -482,12 +482,26 @@ async function page(url) {
   return body;
 }
 
-/** POST a form, as the signed-in reader. */
-async function submit(url, fields, referer) {
-  const raw = native.archivePost(url, encodeForm(fields), referer);
+/**
+ * POST a form, as the signed-in reader.
+ *
+ * A path, never a URL: the shell holds the host as a constant, so nothing
+ * crossing the bridge can decide where a signed-in write is sent. A form
+ * action is usually a path already; one written absolutely is reduced to its
+ * path here, and anything pointing off the archive has nowhere to go.
+ */
+async function submit(action, fields, refererPath) {
+  const raw = native.archivePost(pathOnArchive(action), encodeForm(fields), refererPath);
   const out = JSON.parse(raw);
   if (out.error) throw new Error(out.error);
   return out;
+}
+
+/** The path a form action names, refusing anything that leaves the archive. */
+function pathOnArchive(action) {
+  const url = new URL(action, ORIGIN);
+  if (url.origin !== ORIGIN) throw new Error('That form points somewhere other than the archive');
+  return `${url.pathname}${url.search}`;
 }
 
 /** The first of several shapes the form might be identified by. */
@@ -498,9 +512,6 @@ function findForm(html, matchers) {
   }
   return null;
 }
-
-/** An absolute URL for a form action, which Rails writes as a path. */
-const absolute = (action) => new URL(action, ORIGIN).toString();
 
 function requireSignedIn() {
   if (!isNative) throw new Error('Acting on the archive needs the app');
@@ -516,12 +527,12 @@ function requireSignedIn() {
  */
 export async function leaveKudos(workId) {
   requireSignedIn();
-  const referer = workUrl(workId);
+  const referer = `/works/${Number(workId)}`;
   const html = await page(workPage(workId));
   const form = findForm(html, ['id="new_kudo"', 'action="/kudos"', 'id="kudo_submit"']);
   if (!form) throw new Error('The archive did not offer a kudos form on that work');
 
-  const res = await submit(absolute(form.action), form.fields, referer);
+  const res = await submit(form.action, form.fields, referer);
   /* The archive says so in the page it returns rather than in the status: a
      duplicate is an error, and an error that says "already left kudos" is the
      one outcome worth treating as success. */
@@ -542,7 +553,7 @@ export async function leaveKudos(workId) {
  */
 export async function bookmarkWork(workId, { notes = '', tags = '', isPrivate = false, rec = false } = {}) {
   requireSignedIn();
-  const referer = workUrl(workId);
+  const referer = `/works/${Number(workId)}`;
   const html = await page(`${ORIGIN}/works/${Number(workId)}/bookmarks/new`);
   const form = findForm(html, ['id="bookmark-form"', 'id="new_bookmark"', 'action="/works/']);
   if (!form) throw new Error('The archive did not offer a bookmark form for that work');
@@ -559,7 +570,7 @@ export async function bookmarkWork(workId, { notes = '', tags = '', isPrivate = 
   set('[private]', isPrivate);
   set('[rec]', rec);
 
-  const res = await submit(absolute(form.action), fields, referer);
+  const res = await submit(form.action, fields, referer);
   if (res.status >= 400) throw new Error('The archive refused the bookmark');
 
   native.markWork(String(workId), 'in_bookmarks', true);
@@ -578,7 +589,7 @@ export async function commentOnWork(workId, text) {
   const content = String(text ?? '').trim();
   if (!content) throw new Error('There is nothing to say yet');
 
-  const referer = workUrl(workId);
+  const referer = `/works/${Number(workId)}`;
   const html = await page(workPage(workId));
   const form = findForm(html, ['id="new_comment"', 'action="/works/']);
   if (!form) throw new Error('That work does not take comments');
@@ -588,7 +599,7 @@ export async function commentOnWork(workId, text) {
     ?? 'comment[comment_content]';
   fields[key] = content;
 
-  const res = await submit(absolute(form.action), fields, referer);
+  const res = await submit(form.action, fields, referer);
   if (res.status >= 400) throw new Error('The archive refused the comment');
   return { workId };
 }

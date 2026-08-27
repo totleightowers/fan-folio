@@ -542,6 +542,33 @@ public class MainActivity extends Activity {
      * is somebody else's domain entirely. Anywhere that decision gates a
      * session cookie, the dot is the whole security boundary.
      */
+    private static final String ARCHIVE = "https://archiveofourown.org";
+
+    /**
+     * A path on the archive, and nothing else.
+     *
+     * Anything that could name somewhere else is refused rather than repaired:
+     * a scheme, a protocol-relative //host, or a path that does not begin at
+     * the root. What survives is concatenated onto a constant host, so the
+     * destination of a write is not something any caller can influence.
+     */
+    private static String safePath(String path) {
+        if (path == null || path.isEmpty()) return null;
+        if (!path.startsWith("/") || path.startsWith("//")) return null;
+        if (path.contains("://") || path.contains("\\")) return null;
+        return path;
+    }
+
+    private static URL archiveUrl(String path) {
+        String p = safePath(path);
+        if (p == null) return null;
+        try {
+            return new URL(ARCHIVE + p);
+        } catch (java.net.MalformedURLException e) {
+            return null;
+        }
+    }
+
     private static boolean isArchiveHost(String host) {
         if (host == null) return false;
         String h = host.toLowerCase(Locale.ROOT);
@@ -592,15 +619,14 @@ public class MainActivity extends Activity {
            with a GET, so the page can see what was made. */
         if ((status == 302 || status == 303 || status == 301) && location != null) {
             try {
-                /* Where a redirect points is chosen by the response, not by us.
-                   Following it without asking where it goes is a request this
-                   app makes on someone else's instruction — to any host they
-                   name, carrying whatever open() would attach. It is checked
-                   exactly as the original target was. */
-                URL next = new URL(u, location);
-                if (!"https".equalsIgnoreCase(next.getProtocol()) || !isArchiveHost(next.getHost())) {
-                    throw new IOException("redirected off the archive");
-                }
+                /* Where a redirect points is chosen by the response, not by
+                   us. It is resolved, checked, and then rebuilt from its path
+                   onto the constant host — so even a redirect cannot move a
+                   signed-in request to another server. */
+                URL resolved = new URL(u, location);
+                if (!isArchiveHost(resolved.getHost())) throw new IOException("redirected off the archive");
+                URL next = archiveUrl(resolved.getFile());
+                if (next == null) throw new IOException("redirected somewhere unusable");
                 HttpURLConnection follow = open(next);
                 status = follow.getResponseCode();
                 text = readBody(follow);
@@ -821,42 +847,19 @@ public class MainActivity extends Activity {
          * but the archive may receive it.
          */
         @JavascriptInterface
-        public String archivePost(String rawUrl, String body, String referer) {
+        public String archivePost(String path, String body, String refererPath) {
             mustBeOurPage();
             try {
-                URL u = new URL(rawUrl);
-                if (!"https".equalsIgnoreCase(u.getProtocol())) return errorJson("https only");
-                /* Deliberately stricter than the GET proxy, which also allows
-                   the font hosts. A signed-in write belongs to the archive and
-                   to nothing else. */
-                if (!isArchiveHost(u.getHost())) return errorJson("that host cannot be posted to");
+                /* The page supplies a path, never a URL. There is deliberately
+                   no way for it to name a host: the host is a constant here, so
+                   no value crossing the bridge can decide where a signed-in
+                   write is sent. Checking a caller-supplied URL and hoping the
+                   check is airtight is the weaker arrangement, and it is the
+                   one CodeQL objected to. */
+                URL u = archiveUrl(path);
+                if (u == null) return errorJson("that is not a path on the archive");
+                String referer = ARCHIVE + (refererPath == null ? "/" : safePath(refererPath));
                 return postOnce(u, body == null ? "" : body, referer);
-            } catch (Exception e) {
-                return errorJson(String.valueOf(e.getMessage()));
-            }
-        }
-
-        /**
-         * Record something the reader did on the archive.
-         *
-         * Narrow on purpose. The read bridge refuses anything that is not a
-         * SELECT, and this is the write counterpart: a fixed set of columns, a
-         * value coerced to 0 or 1, and the work id bound rather than pasted.
-         * There is no general-purpose write here and there should not be.
-         */
-        @JavascriptInterface
-        public String markWork(String workId, String field, boolean on) {
-            mustBeOurPage();
-            if (db == null) return errorJson("no library open");
-            if (!"in_bookmarks".equals(field) && !"rec".equals(field)
-                    && !"kudos_given".equals(field)) {
-                return errorJson("that is not a field this can set");
-            }
-            try {
-                android.content.ContentValues v = new android.content.ContentValues();
-                v.put(field, on ? 1 : 0);
-                int rows = db.update("works", v, "work_id = ?", new String[]{ workId });
-                return "{\"updated\":" + rows + "}";
             } catch (Exception e) {
                 return errorJson(String.valueOf(e.getMessage()));
             }
