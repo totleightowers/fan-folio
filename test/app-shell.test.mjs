@@ -543,3 +543,32 @@ test('the chapter list fetches what it needs rather than doing nothing', () => {
   assert.ok(/await api\(`\/api\/works\//.test(body), 'it fetches the work it was asked about');
   assert.ok(/toast\(/.test(body), 'and says so when there is genuinely no list');
 });
+
+/**
+ * The reader must carry its own way out.
+ *
+ * A card on the Continue reading shelf opens the chapter directly, so the
+ * work's page is never visited and Back rightly returns to the shelf. Without
+ * a control of its own there was no route to the work at all — no summary, no
+ * tags, no chapter list, no kudos.
+ */
+test('the reader can reach the work it belongs to', () => {
+  const reader = html.slice(html.indexOf('<section id="reader"'),
+    html.indexOf('</section>', html.indexOf('<section id="reader"')));
+  assert.ok(reader.includes('id="to-work"'), 'the way up to the work lives in the reader');
+  assert.match(js, /\$\('#to-work'\)\.onclick[\s\S]{0,120}openWork\(/,
+    'and it opens the work, rather than relying on history that may not hold it');
+});
+
+test('the chapter body is not a horizontal scroll container', () => {
+  /* The archive's stylesheet makes #workskin one, and a touch beginning inside
+     a scroll container is claimed by the browser before the page sees a
+     pointermove — so the page-turn gesture never reached the code that
+     implements it. Wide content gets its own scroller instead. */
+  const rule = css.slice(css.indexOf('.ao3page #workskin {'));
+  const body = rule.slice(0, rule.indexOf('}'));
+  assert.match(body, /overflow-x:\s*clip/, 'the chapter itself must not scroll sideways');
+  assert.match(body, /touch-action:\s*pan-y/, 'and must not claim horizontal touches');
+  assert.match(css, /#workskin table[\s\S]{0,200}overflow-x:\s*auto/,
+    'anything genuinely wider than the column keeps a scroller of its own');
+});

@@ -298,7 +298,7 @@ button.primary:active { opacity: .85; }
 
 /* ------------------------------------------------------- chapter picker */
 
-#chapnav button { min-width: 3rem; }
+#chapnav button { min-width: 2.6rem; }
 #chappos {
   font: inherit; font-size: .85rem; color: var(--muted); background: none;
   border: 1px solid var(--rule); border-radius: 999px; padding: .45rem 1rem; cursor: pointer;
@@ -1346,5 +1346,33 @@ button:disabled, .opt:disabled {
    the position indicator off to one side. The two arrows and the archive link
    keep their size; the indicator takes the middle and stays centred. */
 #chapnav #chappos { flex: 1 1 auto; text-align: center; }
-#chapnav #prev, #chapnav #next, #chapnav #on-archive { flex: 0 0 auto; }
-#chapnav #on-archive { padding: .45rem .65rem; color: var(--muted); }
+#chapnav #prev, #chapnav #next, #chapnav #on-archive, #chapnav #to-work { flex: 0 0 auto; }
+#chapnav #on-archive, #chapnav #to-work { padding: .45rem .65rem; color: var(--muted); }
+#chapnav { gap: .35rem; }
+
+/* ------------------------------------------------- the chapter is not a scroller
+ *
+ * The archive's own stylesheet sets overflow-x: auto on #workskin, the element
+ * that holds the whole chapter. That makes it a horizontal scroll container,
+ * and a touch that begins inside a scroll container is claimed by the browser
+ * before the page ever sees a pointermove — so the page-turn gesture was never
+ * reaching the code that implements it. The logic was right both times; the
+ * events were not arriving.
+ *
+ * The chapter body stops being a scroller. Anything genuinely wider than the
+ * column — a table, a block of preformatted text, an oversized skin element —
+ * gets a scroller of its own instead, which is where the sideways gesture
+ * belongs anyway and where the page turn correctly defers to it.
+ */
+.ao3page #workskin {
+  overflow-x: clip;
+  touch-action: pan-y;
+}
+#workskin table,
+#workskin pre,
+#workskin .userstuff > div[style*="width"] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  touch-action: pan-x pan-y;
+}
