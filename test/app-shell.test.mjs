@@ -700,11 +700,20 @@ test('the manifest declares what it needs to see', () => {
   assert.match(queries, /android:scheme="https"/, 'and says which scheme, rather than asking for everything');
 });
 
-test('nothing to open with is said plainly, not shown as an empty chooser', () => {
+test('a browser is chosen by name, not left to a chooser to work out', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const fn = java.slice(java.indexOf('public void openInBrowser('));
-  const body = fn.slice(0, fn.indexOf('\n        }'));
-  assert.match(body, /queryIntentActivities/, 'it checks whether anyone else can take the link');
-  assert.match(body, /__noBrowser/, 'and tells the page when nobody can');
+  const fn = java.slice(java.indexOf('private void toBrowser('));
+  const body = fn.slice(0, fn.indexOf('\n    }\n'));
+
+  /* Asking a chooser to exclude this app produced an empty chooser saying no
+     app could perform the action, on a phone with browsers on it. Browsers are
+     found by asking who handles an ordinary web address — an app that merely
+     registered an archive link does not answer that — and the link is handed
+     to one of them explicitly. */
+  assert.match(body, /queryIntentActivities/, 'it asks who handles a web address');
+  assert.match(body, /setPackage\(pkg\)/, 'and names the browser on the intent it launches');
+  assert.ok(!body.includes('EXTRA_EXCLUDE_COMPONENTS'),
+    'excluding ourselves from a chooser is what did not work');
+  assert.match(body, /__noBrowser/, 'and it says so plainly when there is genuinely nobody');
   assert.ok(js.includes('window.__noBrowser ='), 'which the page defines');
 });
