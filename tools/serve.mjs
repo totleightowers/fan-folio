@@ -12,7 +12,6 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
-import { workMetaHtml, workPrefaceHtml } from '../app/core/ao3/markup.js';
 import { search } from '../app/core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from '../app/core/query.js';
 
@@ -264,9 +263,7 @@ createServer(async (req, res) => {
         chapters_read: progress?.chapters_read ?? 0,
         // AO3's own markup, generated from stored data so it works for every
         // work in the library rather than only the ones fetched from AO3
-        meta_html: workMetaHtml(work, tags),
-        preface_html: workPrefaceHtml(work, authors),
-        // author-written HTML reaching innerHTML gets the same treatment as a
+          // author-written HTML reaching innerHTML gets the same treatment as a
         // chapter body — there is no safer class of author markup
         end_notes_html: work.end_notes_html ? sanitiseHtml(work.end_notes_html) : null,
         tags,
