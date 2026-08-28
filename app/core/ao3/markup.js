@@ -20,7 +20,16 @@ const LANGUAGES = {
   pt: 'Português', ru: 'Русский', zh: '中文', ja: '日本語', ko: '한국어',
   nl: 'Nederlands', pl: 'Polski', sv: 'Svenska', tr: 'Türkçe', id: 'Bahasa Indonesia',
 };
-const languageName = (code) => {
+/**
+ * The language a code stands for. "en" is not a word.
+ *
+ * What remains of this file. It used to build the work page's markup in the
+ * archive's shape — labels floated in a left-hand column, values beside them —
+ * which the app now lays out itself. Building the page as elements with
+ * textContent rather than as a string of HTML also retires a class of bug:
+ * there is no escaping left to get wrong.
+ */
+export const languageName = (code) => {
   if (!code) return null;
   const key = String(code).toLowerCase().split(/[-_]/)[0];
   return LANGUAGES[key] ?? code;
@@ -75,43 +84,4 @@ function statsRow(work) {
   parts.push(`<dt class="chapters">Chapters:</dt><dd class="chapters">${esc(work.chapter_count)}/${esc(planned)}</dd>`);
   if (!parts.length) return '';
   return `<dt class="stats">Stats:</dt><dd class="stats"><dl class="stats">${parts.join('')}</dl></dd>`;
-}
-
-export function workMetaHtml(work, tags = {}) {
-  const rows = [
-    row('rating tags', 'Rating', tagList('rating', work.rating ? [work.rating] : [], 'rating')),
-    row('warning tags', 'Archive Warning', tagList('warnings', tags.warning)),
-    row('category tags', 'Category', tagList('category', tags.category)),
-    row('fandom tags', 'Fandom', tagList('fandoms', tags.fandom)),
-    row('relationship tags', 'Relationship', tagList('relationships', tags.relationship)),
-    row('character tags', 'Character', tagList('characters', tags.character)),
-    row('freeform tags', 'Additional Tags', tagList('freeforms', tags.freeform)),
-    row('language', 'Language',
-      work.language ? pill('language', work.language, languageName(work.language)) : ''),
-    row('collections', 'Collections', tagList('collections', tags.collection)),
-    statsRow(work),
-  ].filter(Boolean).join('');
-  return `<dl class="work meta group">${rows}</dl>`;
-}
-
-/**
- * The preface AO3 shows above chapter one: title, byline, summary.
- * Same classes AO3 uses, so its stylesheet and any work skin both apply.
- */
-export function workPrefaceHtml(work, authors = []) {
-  const byline = authors.length
-    ? authors.map((a) =>
-        `<button type="button" class="author metapill" data-filter="author"`
-        + ` data-value="${esc(a)}">${esc(a)}</button>`).join(', ')
-    : '<span class="author">Anonymous</span>';
-  const summary = work.summary
-    ? `<div class="summary module"><h3 class="heading">Summary:</h3>
-         <blockquote class="userstuff"><p>${esc(work.summary).replace(/\n+/g, '</p><p>')}</p></blockquote>
-       </div>`
-    : '';
-  return `<div class="preface group">
-    <h2 class="title heading">${esc(work.title ?? 'Untitled')}</h2>
-    <h3 class="byline heading">${byline}</h3>
-    ${summary}
-  </div>`;
 }

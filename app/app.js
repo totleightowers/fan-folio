@@ -11,6 +11,7 @@ import { History, openingOffset } from './core/nav.js';
 import { findNewBookmarks, fetchWorks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts } from './core/ao3/parse.js';
+import { languageName } from './core/ao3/markup.js';
 import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, userProfile as userProfileUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
@@ -2230,6 +2231,58 @@ function failure(message, retry) {
   return box;
 }
 
+/* ------------------------------------------------------- the work page
+ *
+ * Built here rather than borrowed from the archive.
+ *
+ * The archive's own markup lays a work out for a wide page: labels in a
+ * left-hand column a quarter of the width, values floated beside them. On a
+ * phone that column is most of the screen and the values pile into it. Its
+ * stylesheet is vendored to render an author's skin faithfully, which is a
+ * different job from laying out our furniture.
+ *
+ * The rules this page sets, and the rest should follow:
+ *   one primary action, filled; everything else outlined or plain text
+ *   labels above their content, never beside it
+ *   prose in the reading face, chrome in the interface face
+ *   tags are chips with the whole width to wrap into
+ */
+
+/** A label and the things under it. Nothing is drawn for an empty group. */
+function tagGroup(label, names, filter = 'tag') {
+  if (!names?.length) return null;
+  const section = document.createElement('section');
+  section.className = 'tag-group';
+  const head = document.createElement('h3');
+  head.className = 'group';
+  head.textContent = label;
+  const chips = document.createElement('div');
+  chips.className = 'chip-wrap';
+  for (const name of names) {
+    const chip = document.createElement('button');
+    chip.className = 'chip';
+    chip.dataset.filter = filter;
+    chip.dataset.value = name;
+    chip.textContent = name;
+    chips.append(chip);
+  }
+  section.append(head, chips);
+  return section;
+}
+
+/** The line that decides whether somebody reads a work at all. */
+function factsOf(w) {
+  const chapters = w.chapters_planned && w.chapters_planned === w.chapter_count
+    ? `${w.chapter_count} chapters`
+    : `${w.chapter_count}/${w.chapters_planned ?? '?'} chapters`;
+  return [
+    w.rating,
+    `${fmt(w.words)} words`,
+    w.chapter_count === 1 ? 'one chapter' : chapters,
+    w.complete ? 'Complete' : 'In progress',
+  ].filter(Boolean).join(' · ');
+}
+
 async function openWork(workId) {
   /* Opening a second work before the first has answered must not let the
      first overwrite the second when it lands. */
@@ -2255,11 +2308,39 @@ async function openWork(workId) {
   }
   box.textContent = '';
 
-  /* AO3's own preface and meta block, generated server-side from stored fields
-     with every value escaped on the way out — none of it is author markup. */
-  const preface = document.createElement('div');
-  preface.innerHTML = w.preface_html ?? '';
-  box.append(preface);
+  /* The head: what it is, who wrote it, and the line somebody decides on. */
+  const head = document.createElement('header');
+  head.className = 'work-head';
+
+  const title = document.createElement('h1');
+  title.className = 'work-title';
+  title.textContent = w.title ?? '(untitled)';
+  title.prepend(...marks(w));
+
+  const by = document.createElement('p');
+  by.className = 'work-by';
+  const authors = authorsOf(w.authors);
+  if (authors.length) {
+    by.append('by ');
+    authors.forEach((name, i) => {
+      if (i) by.append(', ');
+      const link = document.createElement('button');
+      link.className = 'metapill';
+      link.dataset.filter = 'author';
+      link.dataset.value = name;
+      link.textContent = name;
+      by.append(link);
+    });
+  } else {
+    by.textContent = 'by Anonymous';
+  }
+
+  const facts = document.createElement('p');
+  facts.className = 'work-facts';
+  facts.textContent = factsOf(w);
+
+  head.append(title, by, facts);
+  box.append(head);
 
   const saved = positions[workId];
   const actions = document.createElement('div');
@@ -2269,25 +2350,66 @@ async function openWork(workId) {
   read.textContent = saved?.chapter ? `Continue chapter ${saved.chapter}` : 'Read';
   read.onclick = () => openChapter(workId, saved?.chapter ?? 1);
   if (!w.has_text) {
-    /* Opening a work is the instruction to have it. There was a button here
-       asking again, which did exactly what Fetch again does two rows below —
-       the same call, a different label, for a work in a different state. */
     read.disabled = true;
     read.textContent = 'Fetching…';
   }
   actions.append(read);
   if (saved?.chapter && w.has_text) {
     const restart = document.createElement('button');
+    restart.className = 'linkish';
     restart.textContent = 'Start again';
     restart.onclick = () => openChapter(workId, 1);
     actions.append(restart);
   }
   box.append(actions);
+
+  if (w.summary) {
+    const summary = document.createElement('div');
+    summary.className = 'work-summary';
+    for (const para of String(w.summary).split(/\n+/)) {
+      if (!para.trim()) continue;
+      const p = document.createElement('p');
+      p.textContent = para;      // author's words: text, never markup
+      summary.append(p);
+    }
+    box.append(summary);
+  }
+
   box.append(archiveActions(w));
 
-  const meta = document.createElement('div');
-  meta.innerHTML = w.meta_html ?? '';
-  box.append(meta);
+  /* Tags, each group labelled above its own chips rather than beside them.
+     A relationship tag can be longer than the screen; given the whole width it
+     wraps, and given a quarter of it it does not. */
+  const tags = document.createElement('div');
+  tags.className = 'work-tags';
+  for (const [kind, label] of [
+    ['fandom', 'Fandom'], ['relationship', 'Relationships'], ['character', 'Characters'],
+    ['category', 'Category'], ['warning', 'Warnings'], ['freeform', 'Tags'],
+    ['collection', 'Collections'],
+  ]) {
+    const group = tagGroup(label, w.tags?.[kind]);
+    if (group) tags.append(group);
+  }
+  if (tags.children.length) box.append(tags);
+
+  /* What the archive says about it, and where it came from. */
+  const details = document.createElement('dl');
+  details.className = 'work-details';
+  const detail = (label, value) => {
+    if (value == null || value === '') return;
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    details.append(dt, dd);
+  };
+  detail('Kudos', w.kudos == null ? null : fmt(w.kudos));
+  detail('Bookmarks', w.bookmark_count == null ? null : fmt(w.bookmark_count));
+  detail('Hits', w.hits == null ? null : fmt(w.hits));
+  detail('Language', w.language ? languageName(w.language) : null);
+  detail('Published', w.published);
+  detail('Updated', w.updated && w.updated !== w.published ? w.updated : null);
+  if (details.children.length) box.append(details);
 
   /*
    * One control, not a chapter per row.
