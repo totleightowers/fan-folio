@@ -12,7 +12,9 @@ import { findNewBookmarks, fetchWorks, nextGap, isTransient, retryDelay } from '
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts } from './core/ao3/parse.js';
 import { languageName } from './core/ao3/markup.js';
-import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, userProfile as userProfileUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
+import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
+  authorBookmarks as authorBookmarksUrl, authorProfile as authorProfileUrl,
+  isOrphan, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
@@ -1518,9 +1520,17 @@ function openAuthor(name) {
 }
 
 async function catchUpOn(name) {
+  /* Orphaning keeps the work and loses the author on purpose: the pseud page
+     404s even though the byline still links to it. Queueing a walk here would
+     spend a request to be told no, every time one of these is opened. */
+  if (isOrphan(name)) {
+    jobError = `${name}: this work was orphaned, so there is no author page to read`;
+    paintJobs();
+    return;
+  }
   let counts;
   try {
-    counts = parseUserCounts(await archivePage(userProfileUrl(name)));
+    counts = parseUserCounts(await archivePage(authorProfileUrl(name)));
   } catch (e) {
     jobError = `${name}: ${e.message}`;
     return;
@@ -1552,7 +1562,7 @@ async function catchUpOn(name) {
  * of an app that looks like it has done nothing.
  */
 async function walkAuthor(name, { listing = 'works' } = {}) {
-  const url = listing === 'works' ? userWorksUrl : bookmarksUrl;
+  const url = listing === 'works' ? authorWorksUrl : authorBookmarksUrl;
   let jobId = null;
 
   const keep = (works) => {
