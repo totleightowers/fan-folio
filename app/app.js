@@ -32,9 +32,25 @@ const PREFS_KEY = 'archive.prefs';
 const POS_KEY = 'archive.positions';
 const VIEW_KEY = 'archive.view';
 
+/*
+ * Read something back out of the store, in the shape it was asked for.
+ *
+ * This used to spread whatever it found into an object literal, which is
+ * right for the settings — a stored theme laid over the defaults, so a key
+ * added in a later version still has a value. Applied to a list it is
+ * quietly wrong: spreading an array into an object gives {0:…, 1:…}, which
+ * is not an array and not iterable, so the queue threw on the `for…of` that
+ * restored it and every job saved when the app closed was lost on the way
+ * back in. The fallback says which of the two was meant.
+ */
 const load = (key, fallback) => {
-  try { return { ...fallback, ...JSON.parse(localStorage.getItem(key) || '{}') }; }
-  catch { return { ...fallback }; }      // a corrupt or blocked store must not break reading
+  const empty = () => (Array.isArray(fallback) ? [...fallback] : { ...fallback });
+  try {
+    const stored = JSON.parse(localStorage.getItem(key) ?? 'null');
+    if (stored == null) return empty();
+    if (Array.isArray(fallback)) return Array.isArray(stored) ? stored : empty();
+    return { ...fallback, ...stored };
+  } catch { return empty(); }            // a corrupt or blocked store must not break reading
 };
 const save = (key, value) => {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ }
@@ -1400,7 +1416,7 @@ function paintJobs() {
        stayed broken — and the last reason is shown when the job ends. */
     how.textContent = `${job.added} of ${job.total}`
       + (job.retrying ? ' · archive busy, trying again'
-        : job.failed ? ` · ${job.failed} skipped (deleted or locked)` : '')
+        : job.failed ? ` · ${job.failed} skipped` : '')
       + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
         : job.state === 'paused' ? ' · paused'
         : job.state === 'cancelled' ? ' · stopped' : ' · waiting');
@@ -1606,11 +1622,22 @@ async function walkAuthor(name, { listing = 'works' } = {}) {
     offset = 0;
     await loadMore(true);
 
+    /* A page that will not come after several tries is one page. Carrying on
+       collects the rest, and the author's totals are deliberately not recorded
+       unless every page was read, so opening them again finishes the job
+       rather than believing it is already done. */
+    let missed = 0;
     for (let page = 2; page <= pages; page++) {
       if (currentAuthor !== name) break;      // they have gone somewhere else
       await wait(nextGap());
-      keep(parseListing(await archivePage(url(name, page))).works);
+      try {
+        keep(parseListing(await archivePage(url(name, page))).works);
+      } catch (e) {
+        missed++;
+        jobError = `${name} · ${listing}: page ${page} of ${pages} — ${e.message}`;
+      }
     }
+    if (missed) throw new Error(`${missed} of ${pages} pages could not be read`);
   } catch (e) {
     /* Kept for settings. "The archive answered 500" over a shelf is a sentence
        the reader cannot act on while doing something else. */
@@ -1668,11 +1695,34 @@ const syncSay = (text) => {
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function archivePage(url) {
-  const res = await fetch(`/__net/?url=${encodeURIComponent(url)}`);
-  const body = await res.text();
-  if (!res.ok) throw new Error(`the archive answered ${res.status}`);
-  return body;
+/*
+ * One page from the archive, asked for again if the archive was the problem.
+ *
+ * A 5xx here is Cloudflare reporting that the archive's own origin did not
+ * answer it, and it is common enough to see on a first request and gone on
+ * the next — checked directly: the same address, seconds apart, answered 200
+ * and then 525. Treating that as a refusal was costing whole walks. An
+ * author with 44 works is three pages, and a listing page that threw took the
+ * pages after it with it, so the queue was quietly short by twenty works and
+ * nothing said so.
+ *
+ * A 4xx is the archive answering, and is not asked again.
+ */
+async function archivePage(url, { attempts = 4 } = {}) {
+  let failure;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    if (attempt) await wait(retryDelay(attempt));
+    try {
+      const res = await fetch(`/__net/?url=${encodeURIComponent(url)}`);
+      const body = await res.text();
+      if (res.ok) return body;
+      failure = new Error(`the archive answered ${res.status}`);
+    } catch (e) {
+      failure = e;
+    }
+    if (!isTransient(failure.message)) throw failure;
+  }
+  throw failure;
 }
 
 /** Whose bookmarks. Read from the archive rather than asked for. */
@@ -1737,7 +1787,7 @@ async function syncBookmarks() {
     await Promise.all([loadMore(true), buildHome().catch(() => {})]);
     tick('commit');
     syncSay(`Added ${added.length}`
-      + (failed.length ? `, ${failed.length} could not be fetched — deleted or locked.` : '.')
+      + (failed.length ? `, ${failed.length} could not be fetched.` : '.')
       + (stopRequested ? ' Stopped early.' : ''));
   } catch (e) {
     syncSay(e.message);
