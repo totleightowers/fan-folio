@@ -966,6 +966,61 @@ test('progress is reported as it happens', () => {
   assert.match(body, /save\(JOBS_KEY/, 'and what is left survives the app closing');
 });
 
+/*
+ * The queue was saved on every event and then thrown away on the way back in.
+ * `load` spread whatever it found into an object literal, which is right for
+ * the settings and quietly wrong for a list: spreading an array gives
+ * {0:…, 1:…}, which is not iterable, so restoring the queue threw. Run the
+ * real function here rather than reading it, because the shape is the bug.
+ */
+test('a list comes back a list', () => {
+  const start = js.indexOf('const load = (key, fallback) =>');
+  const body = js.slice(start, js.indexOf('\n};\n', start) + 3);
+  const stored = { 'fanfolio.jobs': '[{"author":"a"},{"author":"b"}]',
+                   'fanfolio.prefs': '{"size":"18px"}' };
+  const load = new Function('localStorage',
+    `${body} return load;`)({ getItem: (k) => stored[k] ?? null });
+
+  const jobs = load('fanfolio.jobs', []);
+  assert.ok(Array.isArray(jobs), 'the queue is restored as an array, not as {0:…,1:…}');
+  assert.equal(jobs.length, 2);
+  assert.doesNotThrow(() => { for (const j of jobs) void j; }, 'and can be walked');
+
+  assert.deepEqual(load('fanfolio.prefs', { size: '16px', face: 'serif' }),
+    { size: '18px', face: 'serif' },
+    'while settings still layer over their defaults, so a new key has a value');
+  assert.deepEqual(load('nothing.saved', []), [], 'nothing saved is an empty list');
+});
+
+/*
+ * A 5xx from the archive is Cloudflare saying the origin did not answer it,
+ * and it comes and goes: the same address, seconds apart, answered 200 and
+ * then 525. Every one of these was being treated as a refusal.
+ */
+test('a page the archive fumbled is asked for again', () => {
+  const fn = js.slice(js.indexOf('async function archivePage('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /attempt < attempts/, 'more than one try');
+  assert.match(body, /await wait\(retryDelay\(attempt\)\)/, 'and longer each time');
+  assert.match(body, /if \(!isTransient\(failure\.message\)\) throw failure/,
+    'a 404 is the archive answering, and is not asked again');
+});
+
+test('one bad page does not lose the pages after it', () => {
+  const fn = js.slice(js.indexOf('async function walkAuthor('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  const loop = body.slice(body.indexOf('for (let page = 2'));
+  assert.match(loop, /try \{[\s\S]*catch \(e\) \{[\s\S]*missed\+\+/,
+    'an author with 44 works is three pages, and page two throwing took two of them');
+  assert.match(body, /if \(missed\) throw/,
+    'but the walk still counts as unfinished, so the totals are not recorded');
+});
+
+test('a work that could not be fetched is not called deleted', () => {
+  assert.ok(!/deleted or locked/.test(js),
+    'the archive answering 500 is not the same as a work being gone');
+});
+
 test('what is owed is picked up again after a restart', () => {
   const fn = js.slice(js.indexOf('function resumeJobs('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
