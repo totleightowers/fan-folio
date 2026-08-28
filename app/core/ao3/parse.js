@@ -335,3 +335,24 @@ export function parseWorkPage(html, { workId = null } = {}) {
     chapters,
   };
 }
+
+/**
+ * The name the archive is currently greeting.
+ *
+ * The bookmark listing lives under a username, and the app has a session but
+ * has never known whose. Rather than asking the reader to type a name the
+ * archive already knows, it is read out of the page the session returns.
+ */
+/* Paths under /users/ that are pages rather than people. A signed-out header
+   links to /users/login, and reading that as a username produced a sync that
+   would have walked the bookmarks of somebody called "login". */
+const NOT_A_USER = new Set(['login', 'logout', 'new', 'password', 'activate', 'search']);
+
+export function signedInUser(html) {
+  const text = String(html ?? '');
+  const match = text.match(/<a[^>]+href="\/users\/([^/"?]+)"[^>]*>\s*(?:My )?Dashboard\s*<\/a>/i)
+    ?? text.match(/id="greeting"[\s\S]{0,400}?href="\/users\/([^/"?]+)"/i);
+  if (!match) return null;
+  const name = decodeURIComponent(match[1]);
+  return NOT_A_USER.has(name.toLowerCase()) ? null : name;
+}
