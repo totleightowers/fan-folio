@@ -98,3 +98,42 @@ test('the gap between requests is varied, not a metronome', () => {
   const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
   assert.ok(mean > MIN_GAP_MS * 0.6 && mean < MIN_GAP_MS * 1.6, `mean gap ${Math.round(mean)}ms`);
 });
+
+/* ------------------------------------------------- an author's whole listing */
+const { walkListing, listingCost, shouldWalkWholeListing, PER_LISTING_PAGE } =
+  await import('../app/core/sync/run.js');
+
+test('the size of a listing is known from its page count alone', () => {
+  const cost = listingCost(3);
+  assert.equal(cost.pages, 3);
+  assert.equal(cost.works, 3 * PER_LISTING_PAGE);
+  assert.ok(cost.minutes >= 1, 'and roughly how long it will take');
+});
+
+test('a small author opens without being asked; a prolific one asks first', () => {
+  assert.equal(shouldWalkWholeListing(1), true, '20 works is a single request');
+  assert.equal(shouldWalkWholeListing(9), true, '180 works is under the threshold');
+  assert.equal(shouldWalkWholeListing(10), false, '200 is not fewer than 200');
+  assert.equal(shouldWalkWholeListing(40), false, '800 works is minutes of waiting');
+});
+
+test('walking a listing keeps works already held', () => {
+  // an author page is asked for to see all of it, not only the unfamiliar parts
+  return walkListing({
+    fetchPage: async (p) => page(p === 1 ? ['a', 'b'] : ['c'], 2),
+    wait: async () => {},
+  }).then(({ works, totalPages }) => {
+    assert.deepEqual(works.map((w) => w.workId), ['a', 'b', 'c']);
+    assert.equal(totalPages, 2);
+  });
+});
+
+test('walking a listing can be stopped', async () => {
+  let calls = 0;
+  const { works } = await walkListing({
+    fetchPage: async () => { calls++; return page(['w' + calls], 20); },
+    wait: async () => {},
+    shouldStop: () => calls >= 3,
+  });
+  assert.equal(works.length, 3);
+});

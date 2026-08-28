@@ -34,6 +34,11 @@ export function readings(user, page = 1) {
   return `${ORIGIN}/users/${enc(user)}/readings?page=${Number(page)}`;
 }
 
+/** Everything an author has posted, twenty to a page. */
+export function userWorks(user, page = 1) {
+  return `${ORIGIN}/users/${enc(user)}/works?page=${Number(page)}`;
+}
+
 export function bookmarks(user, page = 1) {
   return `${ORIGIN}/users/${enc(user)}/bookmarks?page=${Number(page)}`;
 }

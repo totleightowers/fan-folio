@@ -94,3 +94,62 @@ export async function fetchWorks({
 
   return { added, failed };
 }
+
+/** Twenty to a listing page, which is what decides how many pages a walk is. */
+export const PER_LISTING_PAGE = 20;
+
+/**
+ * How much work an author's listing represents, before any of it is done.
+ *
+ * A listing page describes twenty works for one request, so walking a prolific
+ * author is cheap per work and expensive in total. Knowing the size first is
+ * what lets a small author open instantly and a large one ask permission.
+ */
+export function listingCost(totalPages, perPage = PER_LISTING_PAGE) {
+  const pages = Math.max(1, Number(totalPages) || 1);
+  return { pages, works: pages * perPage, minutes: Math.ceil((pages * MIN_GAP_MS) / 60_000) };
+}
+
+/**
+ * Whether to walk the rest without being asked.
+ *
+ * Under the threshold the whole listing is a handful of requests and waiting
+ * for a tap only adds a tap. Over it, the reader is committing minutes of
+ * their time and the archive's patience, and should say so first.
+ */
+export function shouldWalkWholeListing(totalPages, threshold = 200) {
+  return listingCost(totalPages).works < threshold;
+}
+
+/**
+ * Walk every page of a listing, collecting what it describes.
+ *
+ * Unlike the bookmark sync this does not stop early at familiar works: an
+ * author page is asked for in order to see all of it, and a work already held
+ * still belongs in the list.
+ */
+export async function walkListing({
+  fetchPage,
+  maxPages = 200,
+  onProgress = () => {},
+  shouldStop = () => false,
+  wait,
+}) {
+  const works = [];
+  let totalPages = null;
+
+  for (let page = 1; page <= maxPages; page++) {
+    if (shouldStop()) break;
+    if (page > 1 && wait) await wait(nextGap());
+
+    const { works: found, pagination } = await fetchPage(page);
+    totalPages = pagination?.total ?? totalPages;
+    works.push(...found.filter((w) => w.workId));
+    onProgress({ page, totalPages, works: works.length });
+
+    if (!found.length) break;
+    if (totalPages && page >= totalPages) break;
+  }
+
+  return { works, totalPages: totalPages ?? 1 };
+}
