@@ -851,3 +851,32 @@ test('an unchanged refetch archives nothing', () => {
   assert.match(body, /continue;\s*\/\/ unchanged/, 'chapters that did not change are left alone');
   assert.match(body, /"removed"/, 'and a chapter with no replacement is recorded as gone');
 });
+
+/**
+ * The app can bring itself up to date.
+ *
+ * Syncing only ever existed as a script on a laptop, so a bookmark made on the
+ * archive stayed invisible until somebody ran a tool and carried a database
+ * across. The dangerous part is pace: an app that walks somebody's bookmarks
+ * impatiently gets their account limited and they will not know why.
+ */
+test('settings offers a sync, and it can be stopped', () => {
+  for (const id of ['sync-now', 'sync-stop', 'sync-status']) {
+    assert.ok(html.includes(`id="${id}"`), `#${id} is missing`);
+  }
+  assert.match(js, /\$\('#sync-stop'\)\.onclick/, 'a long job must be interruptible');
+});
+
+test('every archive request in a sync goes through the pacer', () => {
+  const fn = js.slice(js.indexOf('async function syncBookmarks('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /await wait\(nextGap\(\)\)/, 'pages are spaced apart');
+  assert.match(body, /wait,/, 'and so are the works');
+  assert.match(body, /shouldStop: \(\) => stopRequested/, 'both halves can be stopped');
+});
+
+test('the sync reads who is signed in rather than asking', () => {
+  const fn = js.slice(js.indexOf('async function whoAmI('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /signedInUser\(/, 'the archive already knows whose bookmarks these are');
+});

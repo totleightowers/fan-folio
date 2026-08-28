@@ -1,0 +1,100 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { findNewBookmarks, fetchWorks, nextGap, MIN_GAP_MS } from '../app/core/sync/run.js';
+
+/* The shape parsePagination actually returns. A fake that invents a field the
+   parser does not produce tests nothing but itself. */
+const page = (ids, total = 3) => ({
+  works: ids.map((workId) => ({ workId })),
+  pagination: { current: 1, total },
+});
+
+test('walking stops once a page holds nothing new', async () => {
+  const asked = [];
+  const held = new Set(['old1', 'old2']);
+  const { workIds } = await findNewBookmarks({
+    fetchPage: async (p) => { asked.push(p); return page(p === 1 ? ['new1', 'old1'] : ['old1', 'old2']); },
+    isHeld: (id) => held.has(id),
+  });
+  /* Bookmarks are newest first, so a page with nothing new means the rest was
+     gathered on an earlier run. A full walk is 86 pages; this is two. */
+  assert.deepEqual(asked, [1, 2]);
+  assert.deepEqual(workIds, ['new1']);
+});
+
+test('everything new across several pages is collected', async () => {
+  const { workIds } = await findNewBookmarks({
+    fetchPage: async (p) => page(p === 1 ? ['a', 'b'] : p === 2 ? ['c'] : ['d']),
+    isHeld: () => false,
+  });
+  assert.deepEqual(workIds, ['a', 'b', 'c', 'd']);
+});
+
+test('walking stops at the last page the archive reports', async () => {
+  let calls = 0;
+  await findNewBookmarks({
+    fetchPage: async () => { calls++; return page(['x' + calls], 2); },
+    isHeld: () => false,
+  });
+  assert.equal(calls, 2, 'it does not ask for a page beyond the end');
+});
+
+test('a sync can be stopped while it is walking', async () => {
+  let calls = 0;
+  const { workIds } = await findNewBookmarks({
+    fetchPage: async () => { calls++; return page(['y' + calls], 50); },
+    isHeld: () => false,
+    shouldStop: () => calls >= 2,
+  });
+  assert.equal(calls, 2);
+  assert.equal(workIds.length, 2);
+});
+
+test('a work that cannot be fetched does not end the sync', async () => {
+  const { added, failed } = await fetchWorks({
+    workIds: ['1', '2', '3'],
+    fetchWork: async (id) => {
+      if (id === '2') throw new Error('deleted');
+      return { workId: id };
+    },
+    wait: async () => {},
+  });
+  // a bookmark outlives the work it points at
+  assert.deepEqual(added.map((a) => a.workId), ['1', '3']);
+  assert.deepEqual(failed, [{ workId: '2', reason: 'deleted' }]);
+});
+
+test('it waits between works, but not before the first', async () => {
+  const waits = [];
+  await fetchWorks({
+    workIds: ['1', '2', '3'],
+    fetchWork: async (id) => ({ workId: id }),
+    wait: async (ms) => { waits.push(ms); },
+  });
+  assert.equal(waits.length, 2, 'two gaps for three works');
+  for (const ms of waits) assert.ok(ms > 0);
+});
+
+test('fetching stops when asked', async () => {
+  let done = 0;
+  await fetchWorks({
+    workIds: ['1', '2', '3', '4'],
+    fetchWork: async (id) => { done++; return { workId: id }; },
+    wait: async () => {},
+    shouldStop: () => done >= 2,
+  });
+  assert.equal(done, 2);
+});
+
+test('the gap between requests is varied, not a metronome', () => {
+  const gaps = Array.from({ length: 400 }, () => nextGap());
+  const unique = new Set(gaps).size;
+  assert.ok(unique > 100, 'a fixed interval is the easiest thing to notice');
+
+  for (const g of gaps) {
+    assert.ok(g >= MIN_GAP_MS * 0.45, `${g} is too close to the last request`);
+    assert.ok(g <= MIN_GAP_MS * 2.5, `${g} waits absurdly long`);
+  }
+  const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  assert.ok(mean > MIN_GAP_MS * 0.6 && mean < MIN_GAP_MS * 1.6, `mean gap ${Math.round(mean)}ms`);
+});
