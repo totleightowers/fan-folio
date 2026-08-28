@@ -472,16 +472,17 @@ export function saveStubs(works) {
 }
 
 /**
- * Fetch one image a work points at, and keep it.
+ * Ask the shell to fetch the next picture this work is missing.
  *
- * Returns the hash it was stored under, which is where the page can then point
- * the picture — no re-render, the image simply arrives.
+ * No address crosses the bridge: the shell reads the next one out of the
+ * chapter text it already holds. Returns the url it dealt with and the hash it
+ * was stored under, or done when there is nothing left.
  */
-export async function fetchImage(workId, url) {
-  if (!isNative) return null;
-  const out = JSON.parse(native.fetchImage(String(workId), String(url)));
-  if (out.error) throw new Error(out.error);
-  return out.sha256;
+export async function fetchNextImage(workId) {
+  if (!isNative) return { done: true };
+  const out = JSON.parse(native.fetchNextImage(String(workId)));
+  if (out.error) return { error: out.error };
+  return out;
 }
 
 export function importDatabase() {

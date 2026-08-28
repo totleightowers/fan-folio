@@ -1150,8 +1150,9 @@ test('a chapter collects the pictures it is missing', () => {
   const fn = js.slice(js.indexOf('async function collectImages('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /img\[data-remote-src\]/, 'it looks for what did not load');
-  assert.match(body, /await fetchImage\(workId, url\)/, 'and asks the shell for it');
-  assert.match(body, /img\.src = `\/img\/\$\{sha\}`/,
+  assert.match(body, /await fetchNextImage\(workId\)/,
+    'the shell is asked for the next one; no address crosses the bridge');
+  assert.match(body, /img\.src = `\/img\/\$\{out\.sha256\}`/,
     'the picture arrives in place, without rebuilding the page under the reader');
   assert.match(body, /current\.workId !== workId/, 'and stops if they have gone elsewhere');
 });
@@ -1169,7 +1170,7 @@ test('the session never travels to an image host', () => {
 
 test('only pictures are stored, and not enormous ones', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const fn = java.slice(java.indexOf('public String fetchImage('));
+  const fn = java.slice(java.indexOf('public String fetchNextImage('));
   const body = fn.slice(0, fn.indexOf('\n        }\n'));
   assert.match(body, /mime\.startsWith\("image\/"\)/,
     'an error page stored where an image should be renders as a broken one for ever');
@@ -1177,18 +1178,22 @@ test('only pictures are stored, and not enormous ones', () => {
   assert.match(body, /storeDead\(/, 'what cannot be had is remembered, not asked for for ever');
 });
 
-test('only an image the work actually points at can be fetched', () => {
+test('the page cannot say where an image request goes', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const fn = java.slice(java.indexOf('public String fetchImage('));
+  const fn = java.slice(java.indexOf('public String fetchNextImage('));
+  const signature = fn.slice(0, fn.indexOf('{'));
   const body = fn.slice(0, fn.indexOf('\n        }\n'));
-  /* Images may come from anywhere, which is a deliberate loosening. What stops
-     that being "the page may ask for any address at all" is that the address
-     has to appear in chapter text we already hold from the archive. */
-  const guardAt = body.indexOf('referencedBy(workId, rawUrl)');
-  const openAt = body.indexOf('open(u)');
-  assert.ok(guardAt > 0 && guardAt < openAt, 'checked before anything is opened');
 
-  const check = java.slice(java.indexOf('private boolean referencedBy('));
-  assert.match(check.slice(0, check.indexOf('\n    }')), /instr\(html, \?\)/,
-    'against the stored chapters, with the address bound rather than pasted');
+  /* Images may come from anywhere, which is a deliberate loosening: an author
+     puts them where they like. What stops that being "the page may ask for any
+     address at all" is that no address crosses the bridge — the shell reads the
+     next one out of chapter text it already holds. Checking a caller-supplied
+     address and hoping the check holds is the weaker arrangement, and it is
+     the one CodeQL objected to on the write path for the same reason. */
+  assert.ok(!/String\s+\w*[Uu]rl/.test(signature), `the page passes no address: ${signature}`);
+  assert.match(body, /nextImageFor\(workId\)/, 'the shell chooses which picture');
+
+  const finder = java.slice(java.indexOf('private String nextImageFor('));
+  assert.match(finder.slice(0, finder.indexOf('\n    }\n')), /FROM chapters WHERE work_id = \?/,
+    'from the work itself, with the id bound rather than pasted');
 });

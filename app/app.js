@@ -16,7 +16,7 @@ import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, userProfile as us
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchImage } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -1471,22 +1471,23 @@ function resumeJobs() {
  */
 async function collectImages(workId) {
   if (!isNative) return;
-  const missing = $$('#workskin img[data-remote-src]');
-  for (const img of missing) {
-    if (current.workId !== workId) return;      // they have gone elsewhere
-    const url = img.dataset.remoteSrc;
-    if (!url) continue;
-    try {
-      const sha = await fetchImage(workId, url);
-      if (!sha) continue;
-      img.src = `/img/${sha}`;
-      img.removeAttribute('data-remote-src');
-      img.classList.remove('ar-missing-image');
-      img.removeAttribute('alt');
-    } catch {
-      /* Recorded as unavailable by the shell so it is not asked for again;
-         the placeholder stays, which is the honest thing to show. */
+  for (let i = 0; i < 60; i++) {
+    if (current.workId !== workId) return;        // they have gone elsewhere
+    const out = await fetchNextImage(workId);
+    if (out.done) return;
+    if (out.url && out.sha256) {
+      /* Put in place rather than re-rendering: the reader is looking at this
+         page, and rebuilding it under them to show a picture is worse than
+         the picture arriving. */
+      for (const img of $$(`#workskin img[data-remote-src]`)) {
+        if (img.dataset.remoteSrc !== out.url) continue;
+        img.src = `/img/${out.sha256}`;
+        img.removeAttribute('data-remote-src');
+        img.classList.remove('ar-missing-image');
+        img.removeAttribute('alt');
+      }
     }
+    // an error is already recorded by the shell as not worth asking for again
     await new Promise((r) => setTimeout(r, 250));
   }
 }
