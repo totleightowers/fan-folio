@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { linkTarget, isAo3Link, workIdFrom, AO3_HOSTS } from '../app/core/ao3/urls.js';
+import { linkTarget, isAo3Link, workIdFrom, AO3_HOSTS,
+  authorWorks, authorProfile, isOrphan } from '../app/core/ao3/urls.js';
 
 /**
  * Every shape an archive link arrives in.
@@ -120,4 +121,33 @@ test('the manifest claims only paths that can name a work', async () => {
       `${claimed} is a listing; claiming it takes links the app cannot show`);
   }
   assert.deepEqual(prefixes.sort(), ['/chapters', '/downloads', '/series', '/works']);
+});
+
+/*
+ * These are the shapes a real library actually holds. Roughly a quarter of
+ * the bylines in mine carry a pseud, and not one of them had ever been put
+ * through the URL builder before the app started reporting 404s for them.
+ * The expected strings below are AO3's own hrefs, read off its work pages.
+ */
+test('a byline names a pseud, and that is where its works are', () => {
+  assert.equal(authorWorks('Anna (pineconepickers)'),
+    'https://archiveofourown.org/users/pineconepickers/pseuds/Anna/works?page=1',
+    'the whole byline as a username is the 404 this fixes');
+  assert.equal(authorWorks('beebalm'),
+    'https://archiveofourown.org/users/beebalm/pseuds/beebalm/works?page=1',
+    'a bare name is a pseud of the same name');
+  assert.equal(authorProfile('Mother of Pearl (notnacre)'),
+    'https://archiveofourown.org/users/notnacre/pseuds/Mother%20of%20Pearl',
+    'a pseud with a space in it still has to survive being put in a path');
+});
+
+test('a tap on an orphaned work does not download the orphanage', () => {
+  assert.ok(isOrphan('x______o (orphan_account)'), 'the account is what marks it');
+  assert.ok(isOrphan('orphan_account'));
+  assert.ok(!isOrphan('beebalm'));
+  /* Resolving a byline to its account instead of its pseud would send this
+     one to /users/orphan_account, which holds over a million works. */
+  assert.match(authorWorks('x______o (orphan_account)'),
+    /\/users\/orphan_account\/pseuds\/x______o\/works/,
+    'never the bare account');
 });

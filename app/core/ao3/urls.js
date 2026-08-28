@@ -35,6 +35,55 @@ export function readings(user, page = 1) {
 }
 
 /**
+ * Where a byline points.
+ *
+ * The archive writes a byline as "Pseud (Username)" whenever the two differ,
+ * and roughly a quarter of a library is that shape. Handing that whole string
+ * over as a username asks for /users/Anna%20(pineconepickers) and is answered
+ * with a 404 — which is what every one of those authors did.
+ *
+ * The link the archive puts on its own byline is the pseud's:
+ *
+ *   <a rel="author" href="/users/pineconepickers/pseuds/Anna">Anna (pineconepickers)</a>
+ *
+ * so that is the shape built here, and a bare name is a pseud of the same
+ * name. Going by pseud rather than account is not only what the byline means,
+ * it is the only safe reading of one: orphaned works are posted under
+ * orphan_account, whose account page holds over a million works. An app that
+ * resolved a byline to its account would answer a tap on one orphaned story
+ * by trying to download the entire orphanage.
+ */
+export function authorPath(byline) {
+  const name = String(byline ?? '').trim();
+  const paren = /^(.*?)\s*\(([^()]+)\)$/.exec(name);
+  const pseud = paren ? paren[1].trim() : name;
+  const user = paren ? paren[2].trim() : name;
+  return `/users/${enc(user)}/pseuds/${enc(pseud)}`;
+}
+
+/** Works and bookmarks are the archive's own name for these two tabs. */
+export function authorProfile(byline) {
+  return `${ORIGIN}${authorPath(byline)}`;
+}
+export function authorWorks(byline, page = 1) {
+  return `${ORIGIN}${authorPath(byline)}/works?page=${Number(page)}`;
+}
+export function authorBookmarks(byline, page = 1) {
+  return `${ORIGIN}${authorPath(byline)}/bookmarks?page=${Number(page)}`;
+}
+
+/**
+ * Orphaning is the archive's way of keeping a work and losing its author, and
+ * it means what it says: the pseud page 404s even though the byline links to
+ * it. There is no catalogue behind these names, so there is nothing to walk.
+ */
+export function isOrphan(byline) {
+  const name = String(byline ?? '').trim();
+  const paren = /^(.*?)\s*\(([^()]+)\)$/.exec(name);
+  return (paren ? paren[2].trim() : name) === 'orphan_account';
+}
+
+/**
  * A person's own page, which states how much they have.
  *
  * The counts are on it — Works (89), Bookmarks (503) — so one request can say
