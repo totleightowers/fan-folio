@@ -808,7 +808,7 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here', '.version-row', '#ab-current',
+  '#to-work', '#on-archive', '#kudos-here', '.version-row', '#ab-current', '.job-act',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -1325,6 +1325,9 @@ $('#ab-current').onclick = leaveArchive;
  */
 const JOBS_KEY = 'fanfolio.jobs';
 
+/* The last thing that went wrong in the background, shown in settings. */
+let jobError = null;
+
 const jobs = createQueue({
   runTask: (workId) => addWork(String(workId)),
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -1349,6 +1352,17 @@ function paintJobs() {
   const box = $('#job-list');
   box.textContent = '';
   const list = jobs.list().filter((j) => j.state !== 'done');
+
+  if (jobError) {
+    /* Failures from background work belong here, next to the thing that
+       failed — not over the library, where the reader is doing something
+       else and cannot act on it anyway. */
+    const bad = document.createElement('p');
+    bad.className = 'job-error';
+    bad.textContent = jobError;
+    box.append(bad);
+  }
+
   if (!list.length) {
     const idle = document.createElement('p');
     idle.className = 'setting-note';
@@ -1357,48 +1371,70 @@ function paintJobs() {
     return;
   }
 
+  const panel = document.createElement('div');
+  panel.className = 'job-panel';
+  box.append(panel);
+
   for (const job of list) {
     const row = document.createElement('div');
     row.className = 'job-row';
 
-    const what = document.createElement('span');
-    what.className = 'job-what';
-    /* Whose, which half, and how far through — the three things somebody
-       looking at a queue actually wants to know. */
-    what.textContent = `${job.author} · ${job.part} · ${job.added} of ${job.total}`;
-    row.append(what);
+    const text = document.createElement('div');
+    text.className = 'job-text';
+    const who = document.createElement('span');
+    who.className = 'job-who';
+    who.textContent = `${job.author} · ${job.part}`;
+    const how = document.createElement('span');
+    how.className = 'job-how';
+    how.textContent = `${job.added} of ${job.total}`
+      + (job.failed ? ` · ${job.failed} unavailable` : '')
+      + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
+        : job.state === 'paused' ? ' · paused'
+        : job.state === 'cancelled' ? ' · stopped' : ' · waiting');
 
-    const state = document.createElement('span');
-    state.className = 'job-state';
-    state.textContent = job.state === 'running' ? (job.parallel ? 'running now' : 'downloading')
-      : job.state === 'paused' ? 'paused'
-      : job.state === 'cancelled' ? 'stopped'
-      : 'waiting';
-    row.append(state);
+    /* How far along, as a bar rather than a badge. A pill saying "downloading"
+       spends a third of the row restating a word already in the line above it
+       and shows nothing about progress; a bar under the text costs two pixels
+       of height and answers the actual question at a glance. */
+    const track = document.createElement('div');
+    track.className = 'job-bar';
+    const fill = document.createElement('div');
+    fill.style.width = `${job.total ? Math.round((job.done / job.total) * 100) : 0}%`;
+    if (job.state !== 'running') fill.classList.add('idle');
+    track.append(fill);
 
-    const act = (label, fn) => {
+    text.append(who, how, track);
+    row.append(text);
+
+    const acts = document.createElement('div');
+    acts.className = 'job-acts';
+    /* Icons, because these repeat on every row: six words per job would make
+       each row three times as wide as the thing it describes. Every one keeps
+       its name for anything that is not looking at it. */
+    const act = (icon_, label, fn, danger = false) => {
       const b = document.createElement('button');
-      b.className = 'linkish';
-      b.textContent = label;
+      b.className = `job-act${danger ? ' job-danger' : ''}`;
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.append(icon(icon_, 'ic'));
       b.onclick = () => { fn(); paintJobs(); };
-      row.append(b);
+      acts.append(b);
     };
 
     if (job.state === 'running') {
-      act('Pause', () => jobs.pause(job.id));
-      act('Stop', () => jobs.stop(job.id));
+      act('pause', 'Pause', () => jobs.pause(job.id));
+      act('stop', 'Stop', () => jobs.stop(job.id));
     } else if (job.state === 'paused') {
-      act('Resume', () => jobs.resume(job.id));
-      act('Stop', () => jobs.stop(job.id));
+      act('play', 'Resume', () => jobs.resume(job.id));
+      act('stop', 'Stop', () => jobs.stop(job.id));
     } else if (job.state === 'queued') {
-      /* Runs alongside whatever is going rather than displacing it: a job
-         halfway through an author should not lose that to an impatient tap. */
-      act('Start now', () => jobs.startNow(job.id));
-      act('Up', () => jobs.moveUp(job.id));
-      act('Down', () => jobs.moveDown(job.id));
+      act('bolt', 'Start now, alongside what is running', () => jobs.startNow(job.id));
+      act('prev', 'Move up', () => jobs.moveUp(job.id));
+      act('next', 'Move down', () => jobs.moveDown(job.id));
     }
-    act('Delete', () => jobs.remove(job.id));
-    box.append(row);
+    act('trash', 'Delete', () => jobs.remove(job.id), true);
+    row.append(acts);
+    panel.append(row);
   }
 }
 
@@ -1451,8 +1487,12 @@ function openAuthor(name) {
      all. Sequential, so the listings do not race each other for the pacer. */
   if (isNative && signedIn()) {
     (async () => {
-      await walkAuthor(name, { onlyIfSmall: true, listing: 'works' });
-      if (currentAuthor === name) await walkAuthor(name, { onlyIfSmall: true, listing: 'bookmarks' });
+      for (const listing of ['works', 'bookmarks']) {
+        if (currentAuthor !== name) return;
+        // one half failing is not a reason to skip the other
+        try { await walkAuthor(name, { onlyIfSmall: true, listing }); } catch { /* said above */ }
+        await wait(nextGap());
+      }
     })();
   }
 }
@@ -1460,61 +1500,62 @@ function openAuthor(name) {
 let currentAuthor = null;
 
 async function walkAuthor(name, { onlyIfSmall = false, listing = 'works' } = {}) {
-  if (authorBusy) return;
   if (!isNative) { toast('Reading the archive needs the app'); return; }
   if (!signedIn()) { toast('Sign in to the archive first'); return; }
 
-  authorBusy = true;
   authorHalt = false;
   $('#ab-halt').hidden = false;
   const url = listing === 'works' ? userWorksUrl : bookmarksUrl;
+  const part = listing;
+  let jobId = null;
+
+  /* Queued as each page lands rather than after the whole walk. A listing is
+     read a page at a time with a pause between, so an author with five pages
+     is two minutes of an app that looks like it did nothing at all. */
+  const keep = (works) => {
+    saveStubs(asStubs(works));
+    const missing = works.map((w) => String(w.workId)).filter((id) => !workIsHeld(id));
+    if (!missing.length) return;
+    if (jobId === null) jobId = jobs.add({ author: name, part, workIds: missing });
+    else jobs.append(jobId, missing);
+  };
 
   try {
     const first = parseListing(await archivePage(url(name, 1)));
     const pages = first.pagination?.total ?? 1;
     const cost = listingCost(pages);
-
-    if (onlyIfSmall && !shouldWalkWholeListing(pages)) {
-      /* Too big to walk unasked. What the first page found is kept anyway —
-         it is already paid for. */
-      saveStubs(asStubs(first.works));
-      authorSay(`about ${cost.works} works, ${cost.minutes} min to list`);
-      $('#ab-works').textContent = `List all ~${cost.works} works`;
-      return;
-    }
-
-    let all = [...first.works];
-    if (pages > 1) {
-      const rest = await walkListing({
-        fetchPage: async (page) => parseListing(await archivePage(url(name, page))),
-        wait,
-        shouldStop: () => authorHalt,
-        onProgress: ({ page, works }) => authorSay(`page ${page} of ${pages} — ${works} works`),
-        maxPages: pages,
-      });
-      // walkListing re-reads page one; the first page is already in hand
-      all = rest.works.length ? rest.works : all;
-    }
-
-    saveStubs(asStubs(all));
+    keep(first.works);
     offset = 0;
     await loadMore(true);
 
-    /* Listing them was the cheap half. The point of asking about an author is
-       to keep what they wrote, so what is not held is queued for download and
-       runs in the background from here. */
-    const missing = all.map((w) => String(w.workId)).filter((id) => !workIsHeld(id));
-    if (missing.length) {
-      jobs.add({ author: name, part: listing, workIds: missing });
-      authorSay(`${all.length} listed · ${missing.length} queued to download`
-        + (authorHalt ? ' (listing stopped)' : ''));
-    } else {
-      authorSay(`${all.length} listed — all of them already here`);
+    if (onlyIfSmall && !shouldWalkWholeListing(pages)) {
+      /* Too big to walk unasked. The first page is kept regardless — it is
+         already paid for — and the rest waits to be asked for. */
+      authorSay(`${name}: about ${cost.works} ${part}, ${cost.minutes} min to list`);
+      $('#ab-works').textContent = `List all ~${cost.works} ${part}`;
+      return;
     }
+
+    for (let page = 2; page <= pages; page++) {
+      if (authorHalt) break;
+      await wait(nextGap());
+      if (authorHalt) break;
+      authorSay(`${part}: page ${page} of ${pages}`);
+      keep(parseListing(await archivePage(url(name, page))).works);
+    }
+
+    authorSay(`${part}: ${pages} page${pages === 1 ? '' : 's'} read`
+      + (authorHalt ? ' (stopped)' : '') + (jobId === null ? ' — all already here' : ''));
   } catch (e) {
-    authorSay(e.message);
+    /* The archive answers 503 when it is busy. That is not the reader's
+       problem to solve, and telling them about it over a shelf they are
+       reading gives them a sentence they cannot act on while doing something
+       else. It is kept for the settings screen, where the thing that failed
+       is also shown. Rethrown so the other half still gets its turn. */
+    jobError = `${name} · ${part}: ${e.message}`;
+    authorSay('stopped — see Settings');
+    throw e;
   } finally {
-    authorBusy = false;
     $('#ab-halt').hidden = true;
   }
 }
@@ -1530,6 +1571,7 @@ const asStubs = (works) => works.map((w) => ({
   complete: Boolean(w.complete),
   words: w.words ?? 0,
   chapters: w.chapters ?? 0,
+  chaptersPlanned: w.chaptersPlanned ?? null,
   kudos: w.kudos ?? 0,
   bookmarkCount: w.bookmarkCount ?? 0,
   hits: w.hits ?? 0,
@@ -1540,8 +1582,8 @@ const asStubs = (works) => works.map((w) => ({
   },
 }));
 
-$('#ab-works').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'works' });
-$('#ab-bookmarks').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'bookmarks' });
+$('#ab-works').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'works' }).catch(() => {});
+$('#ab-bookmarks').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'bookmarks' }).catch(() => {});
 $('#ab-halt').onclick = () => { authorHalt = true; authorSay('stopping…'); };
 
 /* -------------------------------------------------------------------- sync */

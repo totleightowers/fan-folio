@@ -58,6 +58,18 @@
       <path d="M14.2 4.6h5.2v5.2M19.4 4.6 11.6 12.4"/>
       <path d="M17.4 13.8v4.6a1 1 0 0 1-1 1H5.6a1 1 0 0 1-1-1V7.6a1 1 0 0 1 1-1h4.6"/>
     </symbol>
+    <!-- Queue controls. Same grid, same stroke: a row of actions repeated on
+         every job is exactly where icons earn their place, and where words
+         would make each row three times as wide as its subject. -->
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9.4 5.5v13M14.6 5.5v13"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8.2 5.6 18 12 8.2 18.4z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.6" y="6.6" width="10.8" height="10.8" rx="2.2"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path d="M4.8 7.2h14.4M9.6 7.2V5.4a.9.9 0 0 1 .9-.9h3a.9.9 0 0 1 .9.9v1.8"/>
+      <path d="M6.9 7.2 7.7 19a1 1 0 0 0 1 .9h6.6a1 1 0 0 0 1-.9l.8-11.8"/>
+      <path d="M10.4 10.8v5.4M13.6 10.8v5.4"/>
+    </symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2.8 6.2 13.4h5l-1.6 7.8 7.2-10.6h-5z"/></symbol>
     <symbol id="i-bookmark" viewBox="0 0 24 24">
       <path d="M6.6 4.4h10.8a.8.8 0 0 1 .8.8v14.2l-6.2-4-6.2 4V5.2a.8.8 0 0 1 .8-.8z"/>
     </symbol>
@@ -101,59 +113,56 @@
     <h2 class="settings-title">Settings</h2>
 
     <div class="setting-group">
-      <h3 class="group">This library</h3>
+      <h3 class="group">Your library</h3>
       <dl id="library-facts" class="facts"></dl>
     </div>
 
     <div class="setting-group">
-      <h3 class="group">Keeping it safe</h3>
-      <p class="setting-note">Everything the app holds is a single file: the works, the
-        chapters, where you are in each of them, and the search index. A copy of it is a
-        copy of the whole library.</p>
-      <button id="backup" class="primary">Back up the library</button>
-      <p id="backup-state" class="setting-note" hidden></p>
-      <button id="import-replace" class="linkish">Replace it from a backup…</button>
-      <p class="setting-note">Importing replaces what is here now. Back up first if this
-        library has reading in it that the backup does not.</p>
-    </div>
-
-    <div class="setting-group">
-      <h3 class="group">Archive account</h3>
-      <p class="setting-note">Signing in lets works be fetched from the archive, including
-        anything restricted to logged-in users.</p>
-      <button id="account" class="account-btn">Sign in</button>
-    </div>
-
-    <div class="setting-group">
-      <h3 class="group">Downloading</h3>
-      <p class="setting-note">Work the app owes the archive. It asks for one thing at a time with
-        a pause between; starting a job now skips those pauses, which is faster and may get the
-        archive to refuse for a while.</p>
+      <h3 class="group">Downloads</h3>
+      <p class="setting-note">Works waiting to be downloaded. Fan Folio asks the archive for one
+        at a time and waits about half a minute between, so a large author takes a while.</p>
+      <p class="setting-note">Tapping an author reads their list of works first, a page at a
+        time, so the queue can take a minute or two to appear.</p>
       <div id="job-list"></div>
+      <p class="setting-note">Start now begins a job straight away and skips the waiting. It is
+        faster, and the archive may start refusing for a while.</p>
     </div>
 
     <div class="setting-group">
-      <h3 class="group">Sync</h3>
-      <p class="setting-note">Looks for bookmarks made on the archive since the last time, and
-        fetches the works. It asks for one thing at a time with a pause between, so it is slow
-        on purpose — the archive limits an account that asks too quickly.</p>
-      <button id="sync-now" class="primary">Sync bookmarks</button>
+      <h3 class="group">New bookmarks</h3>
+      <p class="setting-note">Checks the archive for bookmarks you have made since the last
+        time, and downloads those works.</p>
+      <button id="sync-now" class="primary">Check for new bookmarks</button>
       <button id="sync-stop" class="linkish" hidden>Stop</button>
       <p id="sync-status" class="setting-note" hidden></p>
     </div>
 
     <div class="setting-group">
-      <h3 class="group">Feedback</h3>
-      <p class="setting-note">A small tick when a page turns, refuses to turn, or a sheet is
-        pushed away. Your phone's own haptic setting still has the last word.</p>
-      <label class="setting-toggle">Haptics
+      <h3 class="group">Reading</h3>
+      <button id="open-typo" class="linkish">Typeface, size and margins…</button>
+      <label class="setting-toggle">Vibrate on page turns
         <input id="haptics" type="checkbox">
       </label>
+      <p class="setting-note">A small tick when a page turns or refuses to. Your phone's own
+        vibration setting still has the last word.</p>
     </div>
 
     <div class="setting-group">
-      <h3 class="group">Reading</h3>
-      <button id="open-typo" class="linkish">Typeface, size and margins…</button>
+      <h3 class="group">Archive account</h3>
+      <p class="setting-note">Signing in lets Fan Folio download works, including ones only
+        logged-in users can see.</p>
+      <button id="account" class="account-btn">Sign in</button>
+    </div>
+
+    <div class="setting-group">
+      <h3 class="group">Your data</h3>
+      <p class="setting-note">Everything is in one file: the works, the chapters, where you are
+        in each of them, and the search index. Keep a copy somewhere that is not this phone.</p>
+      <button id="backup" class="primary">Back up the library</button>
+      <p id="backup-state" class="setting-note" hidden></p>
+      <button id="import-replace" class="linkish">Add another library from a file…</button>
+      <p class="setting-note">Works and chapters come from the file. Your reading positions,
+        the kudos you have left, and anything only on this phone stay as they are.</p>
     </div>
 
     <p id="version" class="setting-note version"></p>
