@@ -180,3 +180,22 @@ test('a signed-out page names nobody', async () => {
   assert.equal(signedInUser('<div id="greeting"><a href="/users/login">Log In</a></div>'), null);
   assert.equal(signedInUser(''), null);
 });
+
+test("a person's page says how much they have", async () => {
+  const { parseUserCounts } = await import('../app/core/ao3/parse.js');
+  const page = `<ul class="navigation actions">
+      <li><a href="/users/andlovetoo/profile">Profile</a></li>
+      <li><a href="/users/andlovetoo/works">Works (89)</a></li>
+      <li><a href="/users/andlovetoo/bookmarks">Bookmarks (1,503)</a></li>
+    </ul>`;
+  assert.deepEqual(parseUserCounts(page), { works: 89, bookmarks: 1503 });
+});
+
+test('a count the page does not give is not zero', async () => {
+  const { parseUserCounts } = await import('../app/core/ao3/parse.js');
+  /* "the page did not say" and "they have none" lead to opposite decisions:
+     one means walk to find out, the other means there is nothing to walk. */
+  const page = '<ul class="navigation actions"><li><a href="/users/x/works">Works (4)</a></li></ul>';
+  assert.deepEqual(parseUserCounts(page), { works: 4, bookmarks: null });
+  assert.deepEqual(parseUserCounts(''), { works: null, bookmarks: null });
+});
