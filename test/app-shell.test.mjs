@@ -921,7 +921,7 @@ test('an author opens their catalogue, not just a filter', () => {
   assert.match(js, /function openAuthor\(/, 'tapping a name opens the author');
   const fn = js.slice(js.indexOf('function openAuthor('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /walkAuthor\(name, \{ onlyIfSmall: true \}\)/,
+  assert.match(body, /onlyIfSmall: true/,
     'a small catalogue is walked without being asked');
 });
 
@@ -942,4 +942,60 @@ test('listing works never overwrites one already held', () => {
      must never replace one. */
   assert.match(body, /CONFLICT_IGNORE/, 'existing rows are left alone');
   assert.match(body, /v\.put\("has_text", 0\)/, 'and what is written says the text is still to come');
+});
+
+/**
+ * Downloading an author's catalogue is hundreds of requests over an hour.
+ *
+ * That is fine to spend, but not fine to spend invisibly: an app that is
+ * quietly busy for an hour and never says so is indistinguishable from one
+ * that is broken.
+ */
+test('asking about an author queues the works, not just their titles', () => {
+  const fn = js.slice(js.indexOf('async function walkAuthor('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  /* Listing them is the cheap half. The point of asking about an author is to
+     keep what they wrote. */
+  assert.match(body, /jobs\.add\(\{/, 'what is missing is queued for download');
+  assert.match(body, /!workIsHeld\(id\)/, 'and what is already here is not fetched twice');
+});
+
+test('progress is reported as it happens', () => {
+  const wiring = js.slice(js.indexOf('const jobs = createQueue('));
+  const body = wiring.slice(0, wiring.indexOf('\n});'));
+  assert.match(body, /e\.job\.added.*e\.job\.total/s, 'each work says which of how many');
+  assert.match(body, /save\(JOBS_KEY/, 'and what is left survives the app closing');
+});
+
+test('what is owed is picked up again after a restart', () => {
+  const fn = js.slice(js.indexOf('function resumeJobs('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /!workIsHeld\(String\(id\)\)/,
+    'anything fetched in the meantime is dropped rather than fetched twice');
+});
+
+test('a queued job can be started, reordered or deleted; a running one paused', () => {
+  const fn = js.slice(js.indexOf('function paintJobs('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  for (const [label, call] of [
+    ['Pause', 'jobs.pause'], ['Stop', 'jobs.stop'], ['Resume', 'jobs.resume'],
+    ['Start now', 'jobs.startNow'], ['Up', 'jobs.moveUp'], ['Down', 'jobs.moveDown'],
+    ['Delete', 'jobs.remove'],
+  ]) {
+    assert.ok(body.includes(label) && body.includes(call), `${label} is missing`);
+  }
+});
+
+test('a job row says whose it is, which half, and how far through', () => {
+  const fn = js.slice(js.indexOf('function paintJobs('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /job\.author.*job\.part.*job\.added.*job\.total/s,
+    'the three things somebody looking at a queue wants to know');
+});
+
+test('asking about an author asks about both halves', () => {
+  const fn = js.slice(js.indexOf('function openAuthor('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /listing: 'works'/, 'what they wrote');
+  assert.match(body, /listing: 'bookmarks'/, 'and what they kept');
 });
