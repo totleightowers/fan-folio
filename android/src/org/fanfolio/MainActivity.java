@@ -710,6 +710,26 @@ public class MainActivity extends Activity {
         return archived;
     }
 
+    /**
+     * Does this work actually point at this image?
+     *
+     * Images may be fetched from anywhere, which is a deliberate loosening —
+     * an author puts them wherever they like. What stops that being "the page
+     * may ask for any address at all" is this: the address has to appear in
+     * the chapter text we already hold, which came from the archive. The page
+     * chooses which of a work's images to fetch, not what a work's images are.
+     */
+    private boolean referencedBy(String workId, String url) {
+        if (url == null || url.isEmpty()) return false;
+        try (Cursor c = db.rawQuery(
+                "SELECT 1 FROM chapters WHERE work_id = ? AND instr(html, ?) > 0 LIMIT 1",
+                new String[]{ workId, url })) {
+            return c.moveToFirst();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     /** Remember that a picture cannot be had, so it is not asked for for ever. */
     private String storeDead(String workId, String url, String why) {
         try {
@@ -1221,6 +1241,9 @@ public class MainActivity extends Activity {
             if (db == null) return errorJson("no library open");
             HttpURLConnection c = null;
             try {
+                if (!referencedBy(workId, rawUrl)) {
+                    return errorJson("that work does not point at that image");
+                }
                 URL u = new URL(rawUrl);
                 if (!"https".equalsIgnoreCase(u.getProtocol())) return errorJson("https only");
 

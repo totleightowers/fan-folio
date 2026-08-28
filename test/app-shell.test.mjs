@@ -1176,3 +1176,19 @@ test('only pictures are stored, and not enormous ones', () => {
   assert.match(body, /12 \* 1024 \* 1024/, 'and one picture cannot fill the library');
   assert.match(body, /storeDead\(/, 'what cannot be had is remembered, not asked for for ever');
 });
+
+test('only an image the work actually points at can be fetched', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public String fetchImage('));
+  const body = fn.slice(0, fn.indexOf('\n        }\n'));
+  /* Images may come from anywhere, which is a deliberate loosening. What stops
+     that being "the page may ask for any address at all" is that the address
+     has to appear in chapter text we already hold from the archive. */
+  const guardAt = body.indexOf('referencedBy(workId, rawUrl)');
+  const openAt = body.indexOf('open(u)');
+  assert.ok(guardAt > 0 && guardAt < openAt, 'checked before anything is opened');
+
+  const check = java.slice(java.indexOf('private boolean referencedBy('));
+  assert.match(check.slice(0, check.indexOf('\n    }')), /instr\(html, \?\)/,
+    'against the stored chapters, with the address bound rather than pasted');
+});
