@@ -880,3 +880,22 @@ test('the sync reads who is signed in rather than asking', () => {
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /signedInUser\(/, 'the archive already knows whose bookmarks these are');
 });
+
+/**
+ * A work can be known without being held, and the two must not look alike.
+ *
+ * The listings describe thousands of works that have never been downloaded.
+ * Opening one of those into an empty reader looks like the app has lost it, so
+ * the work page offers to fetch it rather than to read nothing.
+ */
+test('a work with no text offers to fetch itself', () => {
+  const fn = js.slice(js.indexOf('async function openWork('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(!w\.has_text\)/, 'the work page knows the difference');
+  assert.match(body, /Fetch this work/, 'and offers the one request that fixes it');
+});
+
+test('a shelf row says when a work is not downloaded', () => {
+  assert.match(js, /not-held/, 'the row is marked');
+  assert.match(css, /\.not-held\s*\{/, 'and the mark is styled');
+});

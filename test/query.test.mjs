@@ -205,3 +205,19 @@ test('a work whose counts we have never seen ranks last, not first', () => {
   // descending in SQLite puts NULL first, which would rank the uncounted top
   assert.equal(run(db, { sort: 'kudos' })[0], '1');
 });
+
+test('a work can be known without being held', () => {
+  const db = library();
+  db.prepare('UPDATE works SET has_text = 1 WHERE work_id IN (?,?)').run('1', '2');
+  db.prepare('UPDATE works SET has_text = 0 WHERE work_id = ?').run('3');
+  assert.deepEqual(run(db, { state: 'held' }), ['1', '2']);
+  assert.deepEqual(run(db, { state: 'known' }), ['3']);
+});
+
+test('a work described from a listing still filters by its tags', () => {
+  /* The point of describing thousands of works for nothing is that they can be
+     found. A stub that cannot be filtered is a row taking up space. */
+  const db = library();
+  db.prepare('UPDATE works SET has_text = 0').run();
+  assert.deepEqual(run(db, { state: 'known', include: 'BTS' }), ['1', '2']);
+});
