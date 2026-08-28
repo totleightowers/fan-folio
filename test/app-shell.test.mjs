@@ -1061,3 +1061,40 @@ test('a failure worth retrying is retried rather than called unavailable', () =>
   assert.match(body, /shouldRetry: isTransient/, 'the queue knows what is worth another go');
   assert.match(body, /retryWait/, 'and waits longer each time');
 });
+
+/**
+ * The app must ask the way the working client asks.
+ *
+ * The proxy sent a Chrome user agent and nothing else — no Accept, no
+ * Accept-Language, none of the Sec-Fetch headers a browser sends on every
+ * navigation. Claiming to be a browser and then not behaving like one is a
+ * plain bot signature, and the archive sits behind Cloudflare: the same
+ * account walking the same pages from a laptop with the full set ran hundreds
+ * of requests without being throttled once, while the app took 5xx almost
+ * straight away.
+ */
+test('the shell sends the same headers as the client that is not throttled', () => {
+  const client = readFileSync(new URL('../tools/lib/client.mjs', import.meta.url), 'utf8');
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+
+  const fn = client.slice(client.indexOf('function browserHeaders('));
+  const wanted = [...fn.slice(0, fn.indexOf('\n}')).matchAll(/'?([A-Z][A-Za-z-]+)'?:/g)]
+    .map((m) => m[1])
+    // Java adds this itself and decompresses transparently, but only while
+    // nothing has set it by hand
+    .filter((h) => h !== 'Accept-Encoding');
+
+  const sent = java.slice(java.indexOf('private void browserHeaders('));
+  const body = sent.slice(0, sent.indexOf('\n    }'));
+  const missing = wanted.filter((h) => !body.includes(`"${h}"`));
+  assert.deepEqual(missing, [],
+    `the client sends these and the shell does not: ${missing.join(', ')}`);
+});
+
+test('a referer is carried between archive pages', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  /* Somebody on page seven got there from page six. Arriving with no referer
+     at all, page after page, is not what browsing looks like. */
+  assert.match(java, /lastArchiveUrl/, 'the last archive page is remembered');
+  assert.match(java, /setRequestProperty\("Referer", lastArchiveUrl\)/, 'and offered as the referer');
+});
