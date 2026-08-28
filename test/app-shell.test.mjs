@@ -1133,6 +1133,38 @@ test('one primary action, and the rest are not', () => {
   assert.equal(primaries, 1, 'a screen with two primary actions has none');
 });
 
+/*
+ * The visual pass that followed the work page. Each of these is a rule the
+ * page is meant to hold to everywhere, and each is one a later edit could
+ * quietly undo without breaking anything that would show up in a test run.
+ */
+test('a work\'s tags are not fenced', () => {
+  const rule = css.slice(css.indexOf('.work-tags .chip {'));
+  const body = rule.slice(0, rule.indexOf('}'));
+  assert.match(body, /border-color: transparent/,
+    'a filter chip is a control and earns its outline; a tag is what the work is about');
+  assert.ok(!/background: var\(--pane\)/.test(body),
+    'thirty pane-filled boxes is a wall in front of the summary');
+});
+
+test('a list of works is a list, not a stack of boxes', () => {
+  const rule = css.slice(css.indexOf('.work-card {'));
+  const body = rule.slice(0, rule.indexOf('}'));
+  assert.ok(!/background: var\(--pane\)/.test(body), 'a row in a list has no fill');
+  assert.ok(!/border: 1px solid/.test(body), 'and no frame of its own');
+  assert.match(css, /\.work-card \+ \.work-card \{ border-top/,
+    'what separates two rows is the line between them');
+});
+
+test('section headings all speak at the same volume', () => {
+  for (const sel of ['.group {', '.shelf-head h2 {', '.fandom-block h2 {']) {
+    const rule = css.slice(css.indexOf(sel));
+    const body = rule.slice(0, rule.indexOf('}'));
+    assert.match(body, /text-transform: uppercase/, sel + ' is a sign, not a headline');
+    assert.match(body, /color: var\(--muted\)/, sel + ' does not compete with the titles under it');
+  }
+});
+
 test('tag groups label above, not beside', () => {
   const fn = js.slice(js.indexOf('function tagGroup('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
