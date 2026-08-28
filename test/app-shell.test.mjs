@@ -892,17 +892,32 @@ test('the sync reads who is signed in rather than asking', () => {
 });
 
 /**
- * A work can be known without being held, and the two must not look alike.
+ * A work can be known without being held, and opening one gets it.
  *
- * The listings describe thousands of works that have never been downloaded.
- * Opening one of those into an empty reader looks like the app has lost it, so
- * the work page offers to fetch it rather than to read nothing.
+ * The listings describe thousands of works never downloaded. Navigating to one
+ * is the instruction to have it — the same way choosing this app for a link
+ * is — so it fetches on arrival rather than asking again with a button that
+ * did exactly what Fetch again does, by the same call.
  */
-test('a work with no text offers to fetch itself', () => {
+test('a work with no text fetches itself when opened', () => {
   const fn = js.slice(js.indexOf('async function openWork('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /if \(!w\.has_text\)/, 'the work page knows the difference');
-  assert.match(body, /Fetch this work/, 'and offers the one request that fixes it');
+  assert.match(body, /if \(!w\.has_text\) await fetchOnArrival\(/,
+    'opening it is the instruction to have it');
+
+  const helper = js.slice(js.indexOf('async function fetchOnArrival('));
+  const inner = helper.slice(0, helper.indexOf('\n}\n'));
+  assert.match(inner, /await addWork\(String\(workId\)\)/, 'and it is one request');
+  assert.match(inner, /token !== pending/,
+    'which is dropped if the reader has moved on while it ran');
+});
+
+test('there is one way to fetch a work, not two', () => {
+  /* "Fetch this work" and "Fetch again" called the identical function on the
+     same work id; only the label and the state differed. */
+  const buttons = [...js.matchAll(/textContent = '(Fetch[^']*)'/g)].map((m) => m[1]);
+  assert.deepEqual([...new Set(buttons)].sort(), ['Fetching…'],
+    `only the in-progress label remains: ${buttons}`);
 });
 
 test('a shelf row says when a work is not downloaded', () => {
