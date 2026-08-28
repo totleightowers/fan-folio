@@ -710,6 +710,63 @@ public class MainActivity extends Activity {
         return archived;
     }
 
+    /**
+     * The first picture in this work's chapters that has not been dealt with.
+     *
+     * Read out of the stored chapter text, which came from the archive. This
+     * is what keeps the address out of the page's hands: nothing chooses where
+     * a request goes except the work itself.
+     */
+    private String nextImageFor(String workId) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        try (Cursor c = db.rawQuery("SELECT url FROM images WHERE work_id = ?",
+                new String[]{ workId })) {
+            while (c.moveToNext()) seen.add(c.getString(0));
+        } catch (Exception ignored) {
+            return null;
+        }
+
+        java.util.regex.Pattern img =
+            java.util.regex.Pattern.compile("<img\\b[^>]*\\bsrc=\"(https://[^\"]+)\"",
+                java.util.regex.Pattern.CASE_INSENSITIVE);
+        try (Cursor c = db.rawQuery(
+                "SELECT html FROM chapters WHERE work_id = ? ORDER BY number",
+                new String[]{ workId })) {
+            while (c.moveToNext()) {
+                String html = c.getString(0);
+                if (html == null) continue;
+                java.util.regex.Matcher m = img.matcher(html);
+                while (m.find()) {
+                    String url = m.group(1).replace("&amp;", "&");
+                    if (!seen.contains(url)) return url;
+                }
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    /** Remember that a picture cannot be had, so it is not asked for for ever. */
+    private String storeDead(String workId, String url, String why) {
+        try {
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put("work_id", workId);
+            v.put("url", url);
+            v.put("status", "dead");
+            v.put("fetched_at", nowIso());
+            db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        } catch (Exception ignored) {}
+        return errorJson(why);
+    }
+
+    private static String sha256Hex(byte[] bytes) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        StringBuilder hex = new StringBuilder();
+        for (byte b : md.digest(bytes)) hex.append(String.format("%02x", b));
+        return hex.toString();
+    }
+
     private static String errorJson(String message) {
         return "{\"error\":" + org.json.JSONObject.quote(String.valueOf(message)) + "}";
     }
@@ -1179,6 +1236,84 @@ public class MainActivity extends Activity {
                 return errorJson(String.valueOf(e.getMessage()));
             }
             return "{\"added\":" + added + "}";
+        }
+
+        /**
+         * Fetch the next picture this work is still missing.
+         *
+         * The page does not say which. It asks the shell to get on with the
+         * next one, and the address comes out of the chapter text already
+         * held — so there is no address crossing the bridge for anything to
+         * choose. Checking a caller-supplied URL and hoping the check holds is
+         * the weaker arrangement, and it is the one CodeQL objected to on the
+         * write path for the same reason.
+         *
+         * Images may come from anywhere, which is a deliberate loosening: an
+         * author puts them where they like. The rule that does not bend is the
+         * cookie — open() attaches the session only to the archive.
+         */
+        @JavascriptInterface
+        public String fetchNextImage(String workId) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            String target = nextImageFor(workId);
+            if (target == null) return "{\"done\":true}";
+
+            HttpURLConnection c = null;
+            try {
+                URL u = new URL(target);
+                if (!"https".equalsIgnoreCase(u.getProtocol())) {
+                    return storeDead(workId, target, "https only");
+                }
+                c = open(u);
+                c.setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8");
+                c.setRequestProperty("Sec-Fetch-Dest", "image");
+                c.setRequestProperty("Sec-Fetch-Mode", "no-cors");
+
+                int status = c.getResponseCode();
+                if (status != 200) return storeDead(workId, target, "answered " + status);
+
+                String mime = c.getContentType();
+                mime = mime == null ? "" : mime.split(";")[0].trim().toLowerCase(Locale.ROOT);
+                /* Only pictures. An error page stored where an image should be
+                   renders as a broken one for ever. */
+                if (!mime.startsWith("image/")) return storeDead(workId, target, "not an image");
+
+                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[1 << 15];
+                int read;
+                try (InputStream in = c.getInputStream()) {
+                    while ((read = in.read(chunk)) > 0) {
+                        buf.write(chunk, 0, read);
+                        // one picture should not be able to fill the library
+                        if (buf.size() > 12 * 1024 * 1024) {
+                            return storeDead(workId, target, "too large");
+                        }
+                    }
+                }
+                byte[] bytes = buf.toByteArray();
+                if (bytes.length == 0) return storeDead(workId, target, "empty");
+
+                String sha = sha256Hex(bytes);
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put("work_id", workId);
+                v.put("url", target);
+                v.put("sha256", sha);
+                v.put("mime", mime);
+                v.put("bytes", bytes);
+                v.put("status", "stored");
+                v.put("fetched_at", nowIso());
+                db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+
+                org.json.JSONObject out = new org.json.JSONObject();
+                out.put("url", target);
+                out.put("sha256", sha);
+                return out.toString();
+            } catch (Exception e) {
+                return storeDead(workId, target, String.valueOf(e.getMessage()));
+            } finally {
+                if (c != null) c.disconnect();
+            }
         }
 
         @JavascriptInterface
