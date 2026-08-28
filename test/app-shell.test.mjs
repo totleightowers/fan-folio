@@ -997,6 +997,36 @@ test('a list comes back a list', () => {
  * and it comes and goes: the same address, seconds apart, answered 200 and
  * then 525. Every one of these was being treated as a refusal.
  */
+/*
+ * An author's catalogue takes an hour to come down, and the shelves it fills
+ * were redrawn only when the whole job ended — so the library grew all
+ * afternoon while the home screen showed what it had shown at the start.
+ */
+test('the shelves keep up with what is arriving', () => {
+  const fn = js.slice(js.indexOf('function freshen('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /hidden \|\| window\.scrollY < 40/,
+    'a screen being read is not rebuilt under the reader; a hidden one is rebuilt freely');
+  assert.match(body, /buildHome\(\)/);
+  assert.match(body, /loadMore\(true\)/);
+
+  const soon = js.slice(js.indexOf('function freshenSoon('));
+  assert.match(soon.slice(0, soon.indexOf('\n}\n')), /if \(freshenTimer\) return/,
+    'two works landing together do not cause two rebuilds');
+});
+
+test('progress redraws, not only completion', () => {
+  const start = js.indexOf('const jobs = createQueue({');
+  const body = js.slice(start, js.indexOf('\n});\n', start));
+  const progress = body.indexOf("e.type === 'progress'");
+  const finished = body.indexOf("e.type === 'finished'");
+  assert.ok(progress > -1 && finished > progress);
+  assert.match(body.slice(progress, finished), /freshenSoon\(\)/,
+    'an hour of downloading should not look like an hour of nothing happening');
+  assert.match(body, /e\.type === 'finished'\) \{/,
+    'and a job that ends refreshes whatever state it ended in');
+});
+
 test('a page the archive fumbled is asked for again', () => {
   const fn = js.slice(js.indexOf('async function archivePage('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
