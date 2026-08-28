@@ -22,22 +22,41 @@ export function createQueue({
   wait,
   gap,
   onEvent = () => {},
+  /* A deleted work is deleted next time too. A 500 is the archive having a bad
+     moment, and giving up on it writes off something that was probably fine a
+     minute later — so one is retried and the other is not. */
+  shouldRetry = () => false,
+  retryWait = (attempt) => gap() * (attempt + 1),
+  maxRetries = 3,
 } = {}) {
   const jobs = [];
 
   const view = (j) => ({
     id: j.id, author: j.author, part: j.part, state: j.state,
     total: j.workIds.length, done: j.done, added: j.added, failed: j.failed,
-    parallel: j.parallel,
+    parallel: j.parallel, retrying: j.retrying ?? null, lastError: j.lastError ?? null,
   });
   const snapshot = () => jobs.map(view);
   const announce = (type, job) => onEvent({ type, job: job && view(job), jobs: snapshot() });
   const find = (id) => jobs.find((j) => j.id === id);
 
+  /**
+   * Add work, or give it to the job already doing that job.
+   *
+   * Opening an author twice should not start a second download of the same
+   * catalogue. A job for the same author and the same half is the same job.
+   */
   function add({ author, part, workIds }) {
+    const existing = jobs.find((j) => j.author === author && j.part === part
+      && j.state !== 'done' && j.state !== 'cancelled');
+    if (existing) {
+      append(existing.id, workIds);
+      return existing.id;
+    }
     const job = {
       id: nextId++, author, part, workIds: [...workIds],
       done: 0, added: 0, failed: 0, state: 'queued', parallel: false,
+      attempt: 0, retrying: null, lastError: null,
     };
     jobs.push(job);
     announce('queued', job);
@@ -163,11 +182,27 @@ export function createQueue({
       try {
         await runTask(job.workIds[job.done]);
         job.added += 1;
-      } catch {
+        job.attempt = 0;
+      } catch (e) {
+        const attempt = job.attempt ?? 0;
+        if (shouldRetry(e?.message) && attempt < maxRetries) {
+          /* Left where it is and tried again, longer each time. It is not
+             finished with, so it does not count as done and does not count
+             against the work. */
+          job.attempt = attempt + 1;
+          job.retrying = String(e?.message ?? '');
+          announce('retrying', job);
+          await wait(retryWait(attempt));
+          continue;
+        }
         // a bookmark outlives the work it points at: note it and carry on
         job.failed += 1;
+        job.lastError = String(e?.message ?? '');
+        job.attempt = 0;
+        job.retrying = null;
       }
       job.done += 1;
+      job.retrying = null;
       announce('progress', job);
     }
 

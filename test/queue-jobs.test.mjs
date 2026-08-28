@@ -179,3 +179,53 @@ test('a job that had finished its list picks up what is added after', async () =
   await settle(); await tick();
   assert.deepEqual(order, ['1'], 'a finished job stays finished rather than silently reopening');
 });
+
+test('a work that failed for a passing reason is tried again', async () => {
+  const tries = [];
+  let fail = 2;
+  const q = createQueue({
+    runTask: async (id) => {
+      tries.push(id);
+      if (fail-- > 0) throw new Error('The archive answered 503');
+    },
+    wait: async () => {},
+    gap: () => 1,
+    shouldRetry: (m) => /5\d\d/.test(String(m)),
+  });
+  q.add(job('a', 'works', ['1']));
+  await settle();
+  /* Giving up on a 503 writes off a work that was probably fine a minute
+     later, and calls it unavailable. */
+  assert.deepEqual(tries, ['1', '1', '1']);
+  assert.equal(q.list()[0].added, 1);
+  assert.equal(q.list()[0].failed, 0);
+});
+
+test('a work that is gone is not tried again', async () => {
+  const tries = [];
+  const q = createQueue({
+    runTask: async (id) => { tries.push(id); throw new Error('has been deleted'); },
+    wait: async () => {},
+    gap: () => 1,
+    shouldRetry: (m) => /5\d\d/.test(String(m)),
+  });
+  q.add(job('a', 'works', ['1']));
+  await settle();
+  assert.deepEqual(tries, ['1'], 'asking a second time is rude and pointless');
+  assert.equal(q.list()[0].failed, 1);
+});
+
+test('it gives up eventually rather than trying for ever', async () => {
+  const tries = [];
+  const q = createQueue({
+    runTask: async (id) => { tries.push(id); throw new Error('answered 500'); },
+    wait: async () => {},
+    gap: () => 1,
+    shouldRetry: () => true,
+    maxRetries: 2,
+  });
+  q.add(job('a', 'works', ['1']));
+  await settle();
+  assert.equal(tries.length, 3, 'the first go and two more');
+  assert.equal(q.list()[0].failed, 1);
+});

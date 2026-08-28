@@ -34,6 +34,17 @@ export function readings(user, page = 1) {
   return `${ORIGIN}/users/${enc(user)}/readings?page=${Number(page)}`;
 }
 
+/**
+ * A person's own page, which states how much they have.
+ *
+ * The counts are on it — Works (89), Bookmarks (503) — so one request can say
+ * there is nothing to do, where finding that out by walking is a page for
+ * every twenty works.
+ */
+export function userProfile(user) {
+  return `${ORIGIN}/users/${enc(user)}`;
+}
+
 /** Everything an author has posted, twenty to a page. */
 export function userWorks(user, page = 1) {
   return `${ORIGIN}/users/${enc(user)}/works?page=${Number(page)}`;

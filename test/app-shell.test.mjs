@@ -932,22 +932,6 @@ test('a shelf row says when a work is not downloaded', () => {
  * cheap to know and expensive only to read. The size decides whether the app
  * walks it unasked.
  */
-test('an author opens their catalogue, not just a filter', () => {
-  assert.match(js, /function openAuthor\(/, 'tapping a name opens the author');
-  const fn = js.slice(js.indexOf('function openAuthor('));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /onlyIfSmall: true/,
-    'a small catalogue is walked without being asked');
-});
-
-test('a large catalogue asks before spending minutes on it', () => {
-  const fn = js.slice(js.indexOf('async function walkAuthor('));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /onlyIfSmall && !shouldWalkWholeListing\(pages\)/,
-    'the threshold decides');
-  assert.match(body, /keep\(first\.works\)/,
-    'and the page already fetched is kept rather than thrown away');
-});
 
 test('listing works never overwrites one already held', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
@@ -1008,16 +992,6 @@ test('a job row says whose it is, which half, and how far through', () => {
     'the three things somebody looking at a queue wants to know');
 });
 
-test('asking about an author asks about both halves', () => {
-  const fn = js.slice(js.indexOf('function openAuthor('));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  /* Asserted as the pair it walks rather than as two literals in the source:
-     the loop that reads them is an implementation detail and has changed
-     twice, while "both halves" is the thing that must stay true. */
-  assert.match(body, /\['works', 'bookmarks'\]/, 'what they wrote and what they kept');
-  assert.match(body, /walkAuthor\(name, \{ onlyIfSmall: true, listing \}\)/,
-    'each half walked on its own terms');
-});
 
 /**
  * A row of jobs is a list, and it should read like one.
@@ -1054,4 +1028,36 @@ test('background failures are shown in settings and nowhere else', () => {
   assert.match(body, /jobError =/, 'the failure is recorded for settings');
   assert.ok(!/authorSay\(e\.message\)/.test(body), 'and not printed over the library');
   assert.match(js, /jobError\b[\s\S]{0,400}job-error/, 'settings is where it appears');
+});
+
+/**
+ * Opening a person queues both halves, without asking.
+ *
+ * Choosing between "their works" and "their bookmarks" is a decision nobody
+ * wants to make on the way to reading something, and the answer is always
+ * both. Settings is where a download is stopped.
+ */
+test('opening an author queues works and bookmarks, with no buttons to press', () => {
+  const fn = js.slice(js.indexOf('async function catchUpOn('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /\['works', 'bookmarks'\]/, 'both halves, always');
+  assert.ok(!html.includes('id="ab-works"') && !html.includes('id="ab-bookmarks"'),
+    'and no buttons offering the choice');
+});
+
+test('opening the same author again does not walk their index over', () => {
+  const fn = js.slice(js.indexOf('async function catchUpOn('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  /* The archive prints the totals on a person's own page. One request answers
+     "has anything changed"; finding out by walking is a page per twenty works. */
+  assert.match(body, /parseUserCounts\(/, 'the totals are read from their page');
+  assert.match(body, /seen\[part\] === total/, 'and compared with what was seen last time');
+  assert.match(js, /AUTHORS_KEY/, 'which is remembered across restarts');
+});
+
+test('a failure worth retrying is retried rather than called unavailable', () => {
+  const wiring = js.slice(js.indexOf('const jobs = createQueue('));
+  const body = wiring.slice(0, wiring.indexOf('\n});'));
+  assert.match(body, /shouldRetry: isTransient/, 'the queue knows what is worth another go');
+  assert.match(body, /retryWait/, 'and waits longer each time');
 });

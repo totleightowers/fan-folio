@@ -356,3 +356,23 @@ export function signedInUser(html) {
   const name = decodeURIComponent(match[1]);
   return NOT_A_USER.has(name.toLowerCase()) ? null : name;
 }
+
+/**
+ * How many works and bookmarks a person has, from their own page.
+ *
+ * The archive prints the totals in the navigation beside each link. Reading
+ * them costs one request and can save walking twenty-five pages to discover
+ * that nothing has changed since last time.
+ *
+ * Returns null for a count that is not there rather than zero: "the page did
+ * not say" and "they have none" lead to opposite decisions.
+ */
+export function parseUserCounts(html) {
+  const text = String(html ?? '');
+  const count = (section) => {
+    const m = text.match(
+      new RegExp(`href="/users/[^"]*/${section}"[^>]*>\\s*[^<(]*\\((\\d[\\d,]*)\\)`, 'i'));
+    return m ? Number(m[1].replace(/,/g, '')) : null;
+  };
+  return { works: count('works'), bookmarks: count('bookmarks') };
+}
