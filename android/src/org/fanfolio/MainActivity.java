@@ -1057,6 +1057,89 @@ public class MainActivity extends Activity {
          * reindexing forty million words, which is not something to do because
          * somebody pasted a link.
          */
+        /**
+         * Hold the screen on while a chapter is open.
+         *
+         * Deleted once by an edit that replaced the span of code it sat in —
+         * the same way markWork was — and unnoticed because the test that
+         * catches this only read api.js, while this one is called from app.js.
+         */
+        @JavascriptInterface
+        public void keepAwake(final boolean on) {
+            mustBeOurPage();
+            runOnUiThread(new Runnable() { @Override public void run() {
+                if (web == null) return;
+                web.setKeepScreenOn(on);
+            }});
+        }
+
+        /**
+         * Record works a listing described, without their text.
+         *
+         * Cannot damage anything by construction: a work already held is left
+         * exactly as it is, because a blurb knows less than the work page a
+         * held copy came from. Only rows that do not exist are written, with
+         * has_text at 0, so the app knows the chapters are still to come.
+         */
+        @JavascriptInterface
+        public String saveStubs(String json) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            int added = 0;
+            try {
+                org.json.JSONArray works = new org.json.JSONArray(json);
+                db.beginTransaction();
+                try {
+                    for (int i = 0; i < works.length(); i++) {
+                        org.json.JSONObject b = works.getJSONObject(i);
+                        String id = b.optString("workId", "");
+                        if (id.isEmpty()) continue;
+
+                        android.content.ContentValues v = new android.content.ContentValues();
+                        v.put("work_id", id);
+                        v.put("title", b.optString("title", null));
+                        v.put("authors", b.optString("authors", "[]"));
+                        v.put("summary", b.optString("summary", null));
+                        v.put("rating", b.optString("rating", null));
+                        v.put("language", b.optString("language", null));
+                        v.put("complete", b.optBoolean("complete") ? 1 : 0);
+                        v.put("words", b.optInt("words"));
+                        v.put("chapter_count", b.optInt("chapters"));
+                        v.put("kudos", b.optInt("kudos"));
+                        v.put("bookmark_count", b.optInt("bookmarkCount"));
+                        v.put("hits", b.optInt("hits"));
+                        v.put("source", "listing");
+                        v.put("has_text", 0);
+
+                        long row = db.insertWithOnConflict("works", null, v,
+                                SQLiteDatabase.CONFLICT_IGNORE);
+                        if (row == -1) continue;      // already held, and left alone
+                        added++;
+
+                        org.json.JSONObject tags = b.optJSONObject("tags");
+                        java.util.Iterator<String> kinds = tags == null ? null : tags.keys();
+                        while (kinds != null && kinds.hasNext()) {
+                            String kind = kinds.next();
+                            org.json.JSONArray names = tags.optJSONArray(kind);
+                            for (int t = 0; names != null && t < names.length(); t++) {
+                                android.content.ContentValues tag = new android.content.ContentValues();
+                                tag.put("work_id", id);
+                                tag.put("kind", kind);
+                                tag.put("name", names.getString(t));
+                                db.insertWithOnConflict("tags", null, tag, SQLiteDatabase.CONFLICT_IGNORE);
+                            }
+                        }
+                    }
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+            return "{\"added\":" + added + "}";
+        }
+
         @JavascriptInterface
         public String saveWork(String json) {
             mustBeOurPage();

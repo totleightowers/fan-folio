@@ -8,13 +8,13 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
-import { findNewBookmarks, fetchWorks, nextGap } from './core/sync/run.js';
+import { findNewBookmarks, fetchWorks, nextGap, walkListing, listingCost, shouldWalkWholeListing } from './core/sync/run.js';
 import { parseListing, signedInUser } from './core/ao3/parse.js';
-import { bookmarks as bookmarksUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
+import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -1311,6 +1311,122 @@ function leaveArchive() {
 
 $('#ab-current').onclick = leaveArchive;
 
+/* ------------------------------------------------------------------ author */
+
+/**
+ * Everything by one person, and everything they liked.
+ *
+ * Tapping a name used to filter the shelf to what was already held, which
+ * answers a smaller question than the one being asked: not "what of theirs do
+ * I have" but "what have they written".
+ *
+ * An index page describes twenty works for a single request, so a whole
+ * catalogue is cheap to know and expensive only to read. Under two hundred
+ * works that is a handful of requests and waiting for a tap only adds a tap;
+ * over it, the reader is spending minutes of their time and the archive's
+ * patience, and is asked first.
+ */
+const AUTHOR_THRESHOLD = 200;
+let authorHalt = false;
+let authorBusy = false;
+
+function showAuthorBar(name) {
+  const bar = $('#author-bar');
+  bar.hidden = false;
+  $('#ab-who').textContent = name;
+  $('#ab-note').textContent = '';
+  $('#ab-works').textContent = 'Their works on the archive';
+  $('#ab-works').hidden = false;
+  $('#ab-halt').hidden = true;
+}
+
+const authorSay = (text) => { $('#ab-note').textContent = text; };
+
+function openAuthor(name) {
+  currentAuthor = name;
+  filterBy('author', name);
+  showAuthorBar(name);
+  // a small catalogue is a few requests; asking permission for that is friction
+  if (isNative && signedIn()) walkAuthor(name, { onlyIfSmall: true });
+}
+
+let currentAuthor = null;
+
+async function walkAuthor(name, { onlyIfSmall = false, listing = 'works' } = {}) {
+  if (authorBusy) return;
+  if (!isNative) { toast('Reading the archive needs the app'); return; }
+  if (!signedIn()) { toast('Sign in to the archive first'); return; }
+
+  authorBusy = true;
+  authorHalt = false;
+  $('#ab-halt').hidden = false;
+  const url = listing === 'works' ? userWorksUrl : bookmarksUrl;
+
+  try {
+    const first = parseListing(await archivePage(url(name, 1)));
+    const pages = first.pagination?.total ?? 1;
+    const cost = listingCost(pages);
+
+    if (onlyIfSmall && !shouldWalkWholeListing(pages)) {
+      /* Too big to walk unasked. What the first page found is kept anyway —
+         it is already paid for. */
+      saveStubs(asStubs(first.works));
+      authorSay(`about ${cost.works} works, ${cost.minutes} min to list`);
+      $('#ab-works').textContent = `List all ~${cost.works} works`;
+      return;
+    }
+
+    let all = [...first.works];
+    if (pages > 1) {
+      const rest = await walkListing({
+        fetchPage: async (page) => parseListing(await archivePage(url(name, page))),
+        wait,
+        shouldStop: () => authorHalt,
+        onProgress: ({ page, works }) => authorSay(`page ${page} of ${pages} — ${works} works`),
+        maxPages: pages,
+      });
+      // walkListing re-reads page one; the first page is already in hand
+      all = rest.works.length ? rest.works : all;
+    }
+
+    const { added } = saveStubs(asStubs(all));
+    offset = 0;
+    await loadMore(true);
+    authorSay(`${all.length} works listed, ${added} new`
+      + (authorHalt ? ' (stopped)' : '') + ' — open one to fetch it');
+  } catch (e) {
+    authorSay(e.message);
+  } finally {
+    authorBusy = false;
+    $('#ab-halt').hidden = true;
+  }
+}
+
+/** A listing blurb, in the shape the shell stores. */
+const asStubs = (works) => works.map((w) => ({
+  workId: w.workId,
+  title: w.title ?? null,
+  authors: JSON.stringify(w.authors ?? []),
+  summary: w.summary ?? null,
+  rating: w.rating ?? null,
+  language: w.language ?? null,
+  complete: Boolean(w.complete),
+  words: w.words ?? 0,
+  chapters: w.chapters ?? 0,
+  kudos: w.kudos ?? 0,
+  bookmarkCount: w.bookmarkCount ?? 0,
+  hits: w.hits ?? 0,
+  tags: {
+    fandom: w.fandoms ?? [], relationship: w.relationships ?? [],
+    character: w.characters ?? [], freeform: w.freeform ?? [],
+    warning: w.warnings ?? [], category: w.categories ?? [],
+  },
+}));
+
+$('#ab-works').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'works' });
+$('#ab-bookmarks').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'bookmarks' });
+$('#ab-halt').onclick = () => { authorHalt = true; authorSay('stopping…'); };
+
 /* -------------------------------------------------------------------- sync */
 
 /**
@@ -1729,7 +1845,7 @@ function buildBrowse(browse) {
  */
 const FILTERS = {
   tag: (value) => { view.include = [value]; },
-  author: (value) => { view.author = [value]; },
+  author: (value) => { view.author = [value]; },   // openAuthor adds the archive half
   rating: (value) => { view.rating = [value]; },
   language: (value) => { view.language = value; },
 };
@@ -1737,6 +1853,7 @@ const FILTERS = {
 function filterBy(kind, value) {
   const apply = FILTERS[kind];
   if (!apply || !value) return;
+  if (kind !== 'author') { $('#author-bar').hidden = true; currentAuthor = null; }
   Object.assign(view, {
     state: 'all', include: [], exclude: [], rating: [], author: [],
     complete: '', language: '', wordsMin: '', wordsMax: '',
@@ -1755,7 +1872,8 @@ $('#detail').addEventListener('click', (e) => {
   const pill = e.target.closest?.('[data-filter]');
   if (!pill) return;
   e.preventDefault();
-  filterBy(pill.dataset.filter, pill.dataset.value);
+  if (pill.dataset.filter === 'author') openAuthor(pill.dataset.value);
+  else filterBy(pill.dataset.filter, pill.dataset.value);
 });
 
 function openTag(tag, rating) {

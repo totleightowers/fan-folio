@@ -510,7 +510,17 @@ test('the shell exposes every bridge method the page calls', () => {
     [...java.matchAll(/@JavascriptInterface\s+public\s+(?:final\s+)?[\w.<>[\]]+\s+(\w+)\s*\(/g)]
       .map((m) => m[1])
   );
-  const called = [...new Set([...api.matchAll(/\bnative\.(\w+)\s*\(/g)].map((m) => m[1]))];
+  /* app.js reaches the bridge too, through its own handle. Reading only api.js
+     is why keepAwake could be deleted and stay deleted for five releases. */
+  const page = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
+  const called = [...new Set([
+    ...[...api.matchAll(/\bnative\.(\w+)\s*\(/g)].map((m) => m[1]),
+    /* Optional chaining included: the call that went missing is written
+       nativeShell?.keepAwake?.(), and a pattern that only matched a plain dot
+       would have gone on not seeing it. */
+    ...[...page.matchAll(/\bnativeShell\??\.(\w+)(?:\?\.)?\s*\(/g)].map((m) => m[1]),
+    ...[...page.matchAll(/window\.ArchiveNative\??\.(\w+)(?:\?\.)?\s*\(/g)].map((m) => m[1]),
+  ])];
 
   assert.ok(called.length > 5, 'the page should be calling the bridge at all');
   const missing = called.filter((name) => !exposed.has(name));
@@ -898,4 +908,38 @@ test('a work with no text offers to fetch itself', () => {
 test('a shelf row says when a work is not downloaded', () => {
   assert.match(js, /not-held/, 'the row is marked');
   assert.match(css, /\.not-held\s*\{/, 'and the mark is styled');
+});
+
+/**
+ * Tapping an author asks what they have written, not only what is held.
+ *
+ * An index page describes twenty works for one request, so a catalogue is
+ * cheap to know and expensive only to read. The size decides whether the app
+ * walks it unasked.
+ */
+test('an author opens their catalogue, not just a filter', () => {
+  assert.match(js, /function openAuthor\(/, 'tapping a name opens the author');
+  const fn = js.slice(js.indexOf('function openAuthor('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /walkAuthor\(name, \{ onlyIfSmall: true \}\)/,
+    'a small catalogue is walked without being asked');
+});
+
+test('a large catalogue asks before spending minutes on it', () => {
+  const fn = js.slice(js.indexOf('async function walkAuthor('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /onlyIfSmall && !shouldWalkWholeListing\(pages\)/,
+    'the threshold decides');
+  assert.match(body, /saveStubs\(asStubs\(first\.works\)\)/,
+    'and the page already fetched is kept rather than thrown away');
+});
+
+test('listing works never overwrites one already held', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public String saveStubs('));
+  const body = fn.slice(0, fn.indexOf('\n        }\n'));
+  /* A blurb knows less than the work page a held copy came from, so a stub
+     must never replace one. */
+  assert.match(body, /CONFLICT_IGNORE/, 'existing rows are left alone');
+  assert.match(body, /v\.put\("has_text", 0\)/, 'and what is written says the text is still to come');
 });

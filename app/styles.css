@@ -1562,3 +1562,19 @@ button:disabled, .opt:disabled {
   font-size: .72rem;
   color: var(--muted);
 }
+
+/* ------------------------------------------------------------ author bar
+ *
+ * Tapping a name used to filter the shelf to what was already held, which
+ * answers a smaller question than the one being asked: not what of theirs do I
+ * have, but what have they written. This is the other half.
+ */
+#author-bar {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem .8rem;
+  margin: 0 0 .8rem; padding: .7rem .9rem;
+  border: 1px solid var(--rule); border-radius: 12px;
+  background: var(--pane);
+}
+#ab-who { font-weight: 650; }
+#ab-note { color: var(--muted); font-size: .8rem; flex: 1 1 100%; }
+.author-acts { display: flex; flex-wrap: wrap; gap: .9rem; }
