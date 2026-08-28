@@ -460,6 +460,20 @@ export function openOnArchive(path) {
   native.openInBrowser(path);
 }
 
+/**
+ * Record works a listing described, without fetching any of them.
+ *
+ * One request describes twenty works; fetching twenty costs twenty. This is
+ * how an author's whole catalogue becomes browsable for the price of reading
+ * their index.
+ */
+export function saveStubs(works) {
+  if (!isNative) return { added: 0 };
+  const out = JSON.parse(native.saveStubs(JSON.stringify(works)));
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }
