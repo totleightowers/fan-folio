@@ -973,6 +973,10 @@ $('#backup').onclick = () => {
    a browser means it was not allowed to look. */
 window.__noBrowser = () => toast('No browser available to open the archive');
 
+/* A merge that could not finish leaves the library as it was, so this is a
+   report rather than a warning about damage. */
+window.__importFailed = (why) => toast(`That library could not be merged: ${why}`);
+
 window.__backupDone = () => {
   $('#backup').classList.remove('is-busy');
   const state = $('#backup-state');

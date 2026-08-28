@@ -303,7 +303,9 @@ public class MainActivity extends Activity {
      * on every open. Anything that ever needs more than this should be a
      * versioned migration rather than an addition here.
      */
-    private void migrate() {
+    private void migrate() { migrate(db); }
+
+    private void migrate(SQLiteDatabase db) {
         java.util.Set<String> have = new java.util.HashSet<>();
         android.database.Cursor c = null;
         try {
@@ -1350,16 +1352,84 @@ public class MainActivity extends Activity {
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         if (request == SAVE_DATABASE) { saveDatabaseTo(data.getData()); return; }
         if (request != PICK_DATABASE) return;
-        try (InputStream in = getContentResolver().openInputStream(data.getData());
-             OutputStream out = new FileOutputStream(databaseFile())) {
+        importFrom(data.getData());
+    }
+
+    /**
+     * Fold a chosen library into this one.
+     *
+     * This used to be a file copy: the chosen database was written straight
+     * over ours. Nothing was read, so nothing could be versioned by it, and
+     * everything that existed only here went with it — reading positions,
+     * kudos left from the app, works added by pasting a link.
+     *
+     * With no library yet there is nothing to merge and the file simply becomes
+     * the library. Otherwise it is attached and folded in by the same
+     * statements the tests exercise, inside a transaction: a merge that cannot
+     * finish leaves the library exactly as it was.
+     */
+    private void importFrom(Uri source) {
+        File staged = new File(getFilesDir(), "incoming.db");
+        try (InputStream in = getContentResolver().openInputStream(source);
+             OutputStream out = new FileOutputStream(staged)) {
             byte[] buf = new byte[1 << 16];
             int read;
             while ((read = in.read(buf)) > 0) out.write(buf, 0, read);
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            staged.delete();
+            toPage("window.__importFailed && window.__importFailed('could not read that file')");
             return;
         }
-        openDatabase();
+
+        boolean first = db == null || !databaseFile().exists();
+        if (first) {
+            staged.renameTo(databaseFile());
+            openDatabase();
+            web.reload();
+            return;
+        }
+
+        try {
+            /* An older export may predate columns this one has, and the merge
+               names them. Bringing the incoming copy up to the same shape first
+               is cheaper than discovering it halfway through. */
+            SQLiteDatabase incoming = SQLiteDatabase.openDatabase(staged.getPath(), null,
+                    SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.NO_LOCALIZED_COLLATORS);
+            migrate(incoming);
+            incoming.close();
+
+            String[] steps = readAsset("web/merge.sql").split("\n;;\n");
+            db.execSQL("ATTACH DATABASE '" + staged.getPath().replace("'", "''") + "' AS incoming");
+            db.beginTransaction();
+            try {
+                for (String step : steps) {
+                    String sql = step.trim();
+                    if (!sql.isEmpty()) db.execSQL(sql);
+                }
+                db.setTransactionSuccessful();
+            } finally {
+                db.endTransaction();
+                try { db.execSQL("DETACH DATABASE incoming"); } catch (Exception ignored) {}
+            }
+        } catch (Exception e) {
+            staged.delete();
+            toPage("window.__importFailed && window.__importFailed("
+                + org.json.JSONObject.quote(String.valueOf(e.getMessage())) + ")");
+            return;
+        }
+
+        staged.delete();
         web.reload();
+    }
+
+    private String readAsset(String path) throws IOException {
+        try (InputStream in = getAssets().open(path)) {
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[1 << 14];
+            int read;
+            while ((read = in.read(chunk)) > 0) buf.write(chunk, 0, read);
+            return buf.toString("UTF-8");
+        }
     }
 
     /* --------------------------------------------------------------- json */

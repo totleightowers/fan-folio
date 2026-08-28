@@ -33,6 +33,11 @@ rm -rf assets/web/vendor
 # generated from the tag on every build, and nothing can quietly override it.
 printf '%s' "$VERSION" > assets/web/version.txt
 
+# The merge steps, emitted from the module the tests exercise. The shell cannot
+# import JavaScript and a hand-copied second version would drift from the one
+# under test, so the tested statements travel with the app instead.
+node ../tools/emit-merge-sql.mjs > assets/web/merge.sql
+
 echo "2/7  compile resources"
 aapt2 compile --dir res -o build/compiled/res.zip
 
