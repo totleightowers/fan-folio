@@ -1684,3 +1684,73 @@ button:disabled, .opt:disabled {
   gap: 1rem; margin: .9rem 0 .3rem;
   font-size: .95rem;
 }
+
+/* ================================================================= work page
+ *
+ * Built by the app rather than borrowed from the archive, and the rules it
+ * sets are meant to hold everywhere else:
+ *
+ *   one primary action, filled; everything beside it outlined or plain text
+ *   labels above their content, never in a column beside it
+ *   prose in the reading face, chrome in the interface face
+ *   chips get the whole width to wrap into
+ */
+.work-head { margin: .2rem 0 1.1rem; }
+.work-title {
+  margin: 0;
+  font-family: var(--read-face);
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 650;
+}
+.work-by {
+  margin: .35rem 0 0;
+  font-family: var(--read-face);
+  font-size: 1rem;
+  color: var(--muted);
+}
+.work-facts {
+  margin: .5rem 0 0;
+  font-size: .82rem;
+  color: var(--muted);
+}
+
+#detail .actions { display: flex; align-items: center; gap: .9rem; margin: 0 0 1.2rem; }
+
+/* The author's words, set to read rather than to be scanned. */
+.work-summary {
+  font-family: var(--read-face);
+  font-size: calc(var(--read-size) * .95);
+  line-height: 1.55;
+  max-width: 38em;
+  margin: 0 0 1.4rem;
+  padding-left: .9rem;
+  border-left: 2px solid var(--rule);
+  color: var(--fg);
+}
+.work-summary p { margin: 0 0 .7rem; }
+.work-summary p:last-child { margin-bottom: 0; }
+
+/* Tags: a small label, then chips with the full width to wrap into. A single
+   relationship tag can be longer than the screen, and given a quarter of it
+   there is nowhere for it to go. */
+.work-tags { margin: 0 0 1.4rem; }
+.tag-group + .tag-group { margin-top: .9rem; }
+.tag-group .group { margin: 0 0 .45rem; }
+.chip-wrap { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip-wrap .chip { max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+
+/* What the archive reports, as pairs rather than a floated column. */
+.work-details {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .3rem 1.2rem;
+  margin: 0 0 1.4rem;
+  font-size: .84rem;
+}
+.work-details dt { color: var(--muted); }
+.work-details dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+@media (min-width: 44.01rem) {
+  .work-title { font-size: 1.9rem; }
+}

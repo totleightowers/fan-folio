@@ -1098,3 +1098,45 @@ test('a referer is carried between archive pages', () => {
   assert.match(java, /lastArchiveUrl/, 'the last archive page is remembered');
   assert.match(java, /setRequestProperty\("Referer", lastArchiveUrl\)/, 'and offered as the referer');
 });
+
+/**
+ * The work page is built by the app, not borrowed from the archive.
+ *
+ * The archive's markup lays a work out for a wide page: labels floated in a
+ * left-hand column a quarter of the width, values beside them. On a phone that
+ * column is most of the screen and the values pile into it. Its stylesheet is
+ * vendored to render an author's skin faithfully, which is a different job
+ * from laying out our own furniture.
+ */
+test('the work page no longer takes its markup from the archive', () => {
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  assert.ok(!api.includes('meta_html'), 'the payload does not carry a block of markup');
+  assert.ok(!api.includes('preface_html'), 'nor a preface');
+  assert.ok(!js.includes('preface.innerHTML'), 'and the page does not paste one in');
+});
+
+test('the page is assembled as elements, so escaping cannot be got wrong', () => {
+  const fn = js.slice(js.indexOf('async function openWork('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  /* A title, a summary and a tag are all somebody else's words. Set as
+     textContent they are text; assembled into a string of HTML they are a
+     question about escaping that has to be got right every time. */
+  assert.match(body, /title\.textContent = w\.title/, 'the title is text');
+  assert.match(body, /p\.textContent = para/, 'and so is the summary');
+  assert.ok(!/innerHTML\s*=\s*(w\.|`)/.test(body), 'nothing from the work becomes markup');
+});
+
+test('one primary action, and the rest are not', () => {
+  const fn = js.slice(js.indexOf('async function openWork('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  const primaries = [...body.matchAll(/className = 'primary'/g)].length;
+  assert.equal(primaries, 1, 'a screen with two primary actions has none');
+});
+
+test('tag groups label above, not beside', () => {
+  const fn = js.slice(js.indexOf('function tagGroup('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /section\.append\(head, chips\)/, 'the label comes first, then the chips');
+  assert.match(css, /\.chip-wrap\s*\{[^}]*flex-wrap: wrap/,
+    'and the chips have the whole width to wrap into');
+});

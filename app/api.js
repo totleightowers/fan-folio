@@ -8,7 +8,6 @@
  */
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
-import { workMetaHtml, workPrefaceHtml } from './core/ao3/markup.js';
 import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
@@ -150,8 +149,6 @@ const LOCAL = {
       at_chapter: progress?.chapter ?? null,
       chapters_read: progress?.chapters_read ?? 0,
       tags,
-      meta_html: workMetaHtml(work, tags),
-      preface_html: workPrefaceHtml(work, parseAuthors(work.authors)),
       end_notes_html: work.end_notes_html ? sanitiseHtml(work.end_notes_html) : null,
       chapters: sql('SELECT number, title, words FROM chapters WHERE work_id = ? ORDER BY number', [workId]),
       versions: one('SELECT count(*) AS n FROM chapter_versions WHERE work_id = ?', [workId])?.n ?? 0,
