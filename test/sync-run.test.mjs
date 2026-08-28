@@ -137,3 +137,30 @@ test('walking a listing can be stopped', async () => {
   });
   assert.equal(works.length, 3);
 });
+
+/* ------------------------------------------------- worth trying again? */
+const { isTransient, retryDelay } = await import('../app/core/sync/run.js');
+
+test('a server having a bad moment is worth trying again', () => {
+  for (const reason of [
+    'The archive answered 500', 'The archive answered 503',
+    'could not reach the archive', 'network error', 'timed out',
+  ]) assert.equal(isTransient(reason), true, reason);
+});
+
+test('a work that is gone is not worth trying again', () => {
+  /* Asking a second time for a deleted work is rude and pointless, and
+     counting a 500 alongside it writes off something that was probably fine a
+     minute later. */
+  for (const reason of [
+    'That work does not exist, or has been deleted',
+    'The archive answered 404', 'The archive answered 403',
+    'No chapters found. The work may be restricted, deleted, or need a login.',
+  ]) assert.equal(isTransient(reason), false, reason);
+});
+
+test('waiting longer after each failure', () => {
+  assert.ok(retryDelay(1) > retryDelay(0));
+  assert.ok(retryDelay(2) > retryDelay(1));
+  assert.equal(retryDelay(9), retryDelay(3), 'and it stops growing rather than waiting for ever');
+});

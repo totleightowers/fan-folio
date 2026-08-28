@@ -8,10 +8,10 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
-import { findNewBookmarks, fetchWorks, nextGap, walkListing, listingCost, shouldWalkWholeListing } from './core/sync/run.js';
+import { findNewBookmarks, fetchWorks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
-import { parseListing, signedInUser } from './core/ao3/parse.js';
-import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
+import { parseListing, signedInUser, parseUserCounts } from './core/ao3/parse.js';
+import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, userProfile as userProfileUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
@@ -1332,6 +1332,8 @@ const jobs = createQueue({
   runTask: (workId) => addWork(String(workId)),
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
   gap: () => nextGap(),
+  shouldRetry: isTransient,
+  retryWait: (attempt) => retryDelay(attempt),
   onEvent: (e) => {
     if (e.type === 'progress') {
       toast(`${e.job.author} · ${e.job.part}: ${e.job.added} of ${e.job.total}`
@@ -1339,6 +1341,9 @@ const jobs = createQueue({
     }
     if (e.type === 'finished' && e.job.state === 'done') {
       toast(`${e.job.author} · ${e.job.part}: finished, ${e.job.added} added`);
+      if (e.job.failed && e.job.lastError) {
+        jobError = `${e.job.author} · ${e.job.part}: ${e.job.failed} skipped — ${e.job.lastError}`;
+      }
       offset = 0;
       loadMore(true);
       buildHome().catch(() => {});
@@ -1386,8 +1391,13 @@ function paintJobs() {
     who.textContent = `${job.author} · ${job.part}`;
     const how = document.createElement('span');
     how.className = 'job-how';
+    /* "unavailable" said nothing about what happened or whether it would
+       happen again. A work only counts here once retrying has been given up
+       on, so what is left is deleted, locked to members, or an archive that
+       stayed broken — and the last reason is shown when the job ends. */
     how.textContent = `${job.added} of ${job.total}`
-      + (job.failed ? ` · ${job.failed} unavailable` : '')
+      + (job.retrying ? ' · archive busy, trying again'
+        : job.failed ? ` · ${job.failed} skipped (deleted or locked)` : '')
       + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
         : job.state === 'paused' ? ' · paused'
         : job.state === 'cancelled' ? ' · stopped' : ' · waiting');
@@ -1449,118 +1459,94 @@ function resumeJobs() {
 /* ------------------------------------------------------------------ author */
 
 /**
- * Everything by one person, and everything they liked.
+ * Opening a person queues what they have written and what they kept.
  *
- * Tapping a name used to filter the shelf to what was already held, which
- * answers a smaller question than the one being asked: not "what of theirs do
- * I have" but "what have they written".
+ * No buttons: choosing between "their works" and "their bookmarks" is a
+ * decision nobody wants to make on the way to reading something, and the
+ * answer is always both. Settings is where a download is stopped.
  *
- * An index page describes twenty works for a single request, so a whole
- * catalogue is cheap to know and expensive only to read. Under two hundred
- * works that is a handful of requests and waiting for a tap only adds a tap;
- * over it, the reader is spending minutes of their time and the archive's
- * patience, and is asked first.
+ * What each person had last time is remembered, so opening them again is not
+ * a reason to walk their whole index over. The archive prints the totals on
+ * their own page — one request answers "has anything changed", where finding
+ * out by walking is a page for every twenty works.
  */
-const AUTHOR_THRESHOLD = 200;
-let authorHalt = false;
-let authorBusy = false;
+const AUTHORS_KEY = 'fanfolio.authors';
+const seenAuthors = load(AUTHORS_KEY, {});
 
-function showAuthorBar(name) {
-  const bar = $('#author-bar');
-  bar.hidden = false;
-  $('#ab-who').textContent = name;
-  $('#ab-note').textContent = '';
-  $('#ab-works').textContent = 'Their works on the archive';
-  $('#ab-works').hidden = false;
-  $('#ab-halt').hidden = true;
-}
-
-const authorSay = (text) => { $('#ab-note').textContent = text; };
+let currentAuthor = null;
 
 function openAuthor(name) {
   currentAuthor = name;
   filterBy('author', name);
-  showAuthorBar(name);
-  /* Both halves. Asking about an author means what they wrote and what they
-     kept, and the second is as much a part of the answer as the first — it is
-     also how their taste is preserved, which is the point of doing this at
-     all. Sequential, so the listings do not race each other for the pacer. */
-  if (isNative && signedIn()) {
-    (async () => {
-      for (const listing of ['works', 'bookmarks']) {
-        if (currentAuthor !== name) return;
-        // one half failing is not a reason to skip the other
-        try { await walkAuthor(name, { onlyIfSmall: true, listing }); } catch { /* said above */ }
-        await wait(nextGap());
-      }
-    })();
+  if (isNative && signedIn()) catchUpOn(name);
+}
+
+async function catchUpOn(name) {
+  let counts;
+  try {
+    counts = parseUserCounts(await archivePage(userProfileUrl(name)));
+  } catch (e) {
+    jobError = `${name}: ${e.message}`;
+    return;
+  }
+
+  const seen = seenAuthors[name] ?? {};
+  for (const part of ['works', 'bookmarks']) {
+    if (currentAuthor !== name) return;
+    const total = counts[part];
+    // the page did not say, so there is nothing to compare and we walk
+    if (total != null && seen[part] === total) continue;
+
+    try {
+      await walkAuthor(name, { listing: part });
+      seenAuthors[name] = { ...(seenAuthors[name] ?? {}), [part]: total };
+      save(AUTHORS_KEY, seenAuthors);
+    } catch {
+      // recorded for settings; the other half still gets its turn
+    }
+    await wait(nextGap());
   }
 }
 
-let currentAuthor = null;
-
-async function walkAuthor(name, { onlyIfSmall = false, listing = 'works' } = {}) {
-  if (!isNative) { toast('Reading the archive needs the app'); return; }
-  if (!signedIn()) { toast('Sign in to the archive first'); return; }
-
-  authorHalt = false;
-  $('#ab-halt').hidden = false;
+/**
+ * Read one of a person's indexes and queue whatever is missing.
+ *
+ * Queued as each page lands rather than after the whole walk: an index is read
+ * a page at a time with a pause between, so waiting for the end means minutes
+ * of an app that looks like it has done nothing.
+ */
+async function walkAuthor(name, { listing = 'works' } = {}) {
   const url = listing === 'works' ? userWorksUrl : bookmarksUrl;
-  const part = listing;
   let jobId = null;
 
-  /* Queued as each page lands rather than after the whole walk. A listing is
-     read a page at a time with a pause between, so an author with five pages
-     is two minutes of an app that looks like it did nothing at all. */
   const keep = (works) => {
     saveStubs(asStubs(works));
     const missing = works.map((w) => String(w.workId)).filter((id) => !workIsHeld(id));
     if (!missing.length) return;
-    if (jobId === null) jobId = jobs.add({ author: name, part, workIds: missing });
+    if (jobId === null) jobId = jobs.add({ author: name, part: listing, workIds: missing });
     else jobs.append(jobId, missing);
   };
 
   try {
     const first = parseListing(await archivePage(url(name, 1)));
     const pages = first.pagination?.total ?? 1;
-    const cost = listingCost(pages);
     keep(first.works);
     offset = 0;
     await loadMore(true);
 
-    if (onlyIfSmall && !shouldWalkWholeListing(pages)) {
-      /* Too big to walk unasked. The first page is kept regardless — it is
-         already paid for — and the rest waits to be asked for. */
-      authorSay(`${name}: about ${cost.works} ${part}, ${cost.minutes} min to list`);
-      $('#ab-works').textContent = `List all ~${cost.works} ${part}`;
-      return;
-    }
-
     for (let page = 2; page <= pages; page++) {
-      if (authorHalt) break;
+      if (currentAuthor !== name) break;      // they have gone somewhere else
       await wait(nextGap());
-      if (authorHalt) break;
-      authorSay(`${part}: page ${page} of ${pages}`);
       keep(parseListing(await archivePage(url(name, page))).works);
     }
-
-    authorSay(`${part}: ${pages} page${pages === 1 ? '' : 's'} read`
-      + (authorHalt ? ' (stopped)' : '') + (jobId === null ? ' — all already here' : ''));
   } catch (e) {
-    /* The archive answers 503 when it is busy. That is not the reader's
-       problem to solve, and telling them about it over a shelf they are
-       reading gives them a sentence they cannot act on while doing something
-       else. It is kept for the settings screen, where the thing that failed
-       is also shown. Rethrown so the other half still gets its turn. */
-    jobError = `${name} · ${part}: ${e.message}`;
-    authorSay('stopped — see Settings');
+    /* Kept for settings. "The archive answered 500" over a shelf is a sentence
+       the reader cannot act on while doing something else. */
+    jobError = `${name} · ${listing}: ${e.message}`;
     throw e;
-  } finally {
-    $('#ab-halt').hidden = true;
   }
 }
 
-/** A listing blurb, in the shape the shell stores. */
 const asStubs = (works) => works.map((w) => ({
   workId: w.workId,
   title: w.title ?? null,
@@ -1582,9 +1568,7 @@ const asStubs = (works) => works.map((w) => ({
   },
 }));
 
-$('#ab-works').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'works' }).catch(() => {});
-$('#ab-bookmarks').onclick = () => currentAuthor && walkAuthor(currentAuthor, { listing: 'bookmarks' }).catch(() => {});
-$('#ab-halt').onclick = () => { authorHalt = true; authorSay('stopping…'); };
+
 
 /* -------------------------------------------------------------------- sync */
 
@@ -2012,7 +1996,8 @@ const FILTERS = {
 function filterBy(kind, value) {
   const apply = FILTERS[kind];
   if (!apply || !value) return;
-  if (kind !== 'author') { $('#author-bar').hidden = true; currentAuthor = null; }
+  // filtering by anything else means we are no longer looking at a person
+  if (kind !== 'author') currentAuthor = null;
   Object.assign(view, {
     state: 'all', include: [], exclude: [], rating: [], author: [],
     complete: '', language: '', wordsMin: '', wordsMax: '',

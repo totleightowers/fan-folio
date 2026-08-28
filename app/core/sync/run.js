@@ -153,3 +153,23 @@ export async function walkListing({
 
   return { works, totalPages: totalPages ?? 1 };
 }
+
+/**
+ * Is this worth trying again?
+ *
+ * A work that was deleted will be deleted next time too, and asking again is
+ * rude and pointless. A 500 is the archive having a bad moment; giving up on
+ * it and calling the work "unavailable" writes off something that was
+ * probably fine a minute later.
+ */
+export function isTransient(reason) {
+  const text = String(reason ?? '');
+  if (/answered 4\d\d/i.test(text)) return false;          // it answered, and said no
+  if (/deleted|does not exist|no chapters found/i.test(text)) return false;
+  return /answered 5\d\d|could not reach|timed out|timeout|network|failed to fetch/i.test(text);
+}
+
+/** How long to leave it before trying again: longer each time. */
+export function retryDelay(attempt, base = MIN_GAP_MS) {
+  return Math.round(base * Math.min(2 ** attempt, 8));
+}
