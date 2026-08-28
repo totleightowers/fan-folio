@@ -471,6 +471,20 @@ export function saveStubs(works) {
   return out;
 }
 
+/**
+ * Ask the shell to fetch the next picture this work is missing.
+ *
+ * No address crosses the bridge: the shell reads the next one out of the
+ * chapter text it already holds. Returns the url it dealt with and the hash it
+ * was stored under, or done when there is nothing left.
+ */
+export async function fetchNextImage(workId) {
+  if (!isNative) return { done: true };
+  const out = JSON.parse(native.fetchNextImage(String(workId)));
+  if (out.error) return { error: out.error };
+  return out;
+}
+
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }

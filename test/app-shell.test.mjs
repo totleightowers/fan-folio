@@ -1140,3 +1140,60 @@ test('tag groups label above, not beside', () => {
   assert.match(css, /\.chip-wrap\s*\{[^}]*flex-wrap: wrap/,
     'and the chips have the whole width to wrap into');
 });
+
+/**
+ * A work that came from an EPUB had its pictures stored. Refetched from the
+ * archive, its chapters point at remote hosts instead — and nothing fetched
+ * those, so the pictures vanished and left a column of empty boxes.
+ */
+test('a chapter collects the pictures it is missing', () => {
+  const fn = js.slice(js.indexOf('async function collectImages('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /img\[data-remote-src\]/, 'it looks for what did not load');
+  assert.match(body, /await fetchNextImage\(workId\)/,
+    'the shell is asked for the next one; no address crosses the bridge');
+  assert.match(body, /img\.src = `\/img\/\$\{out\.sha256\}`/,
+    'the picture arrives in place, without rebuilding the page under the reader');
+  assert.match(body, /current\.workId !== workId/, 'and stops if they have gone elsewhere');
+});
+
+test('the session never travels to an image host', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const open_ = java.slice(java.indexOf('private HttpURLConnection open('),
+    java.indexOf('private WebResourceResponse respond('));
+  /* Images may come from anywhere, which is a deliberate loosening. The rule
+     that does not bend is that the archive cookie goes to the archive only. */
+  assert.match(open_, /if \(archive\) \{/, 'cookies are gated on the host being the archive');
+  assert.ok(!/setRequestProperty\("Cookie"/.test(open_.split('if (archive) {')[0]),
+    'and nothing sets one before that gate');
+});
+
+test('only pictures are stored, and not enormous ones', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public String fetchNextImage('));
+  const body = fn.slice(0, fn.indexOf('\n        }\n'));
+  assert.match(body, /mime\.startsWith\("image\/"\)/,
+    'an error page stored where an image should be renders as a broken one for ever');
+  assert.match(body, /12 \* 1024 \* 1024/, 'and one picture cannot fill the library');
+  assert.match(body, /storeDead\(/, 'what cannot be had is remembered, not asked for for ever');
+});
+
+test('the page cannot say where an image request goes', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public String fetchNextImage('));
+  const signature = fn.slice(0, fn.indexOf('{'));
+  const body = fn.slice(0, fn.indexOf('\n        }\n'));
+
+  /* Images may come from anywhere, which is a deliberate loosening: an author
+     puts them where they like. What stops that being "the page may ask for any
+     address at all" is that no address crosses the bridge — the shell reads the
+     next one out of chapter text it already holds. Checking a caller-supplied
+     address and hoping the check holds is the weaker arrangement, and it is
+     the one CodeQL objected to on the write path for the same reason. */
+  assert.ok(!/String\s+\w*[Uu]rl/.test(signature), `the page passes no address: ${signature}`);
+  assert.match(body, /nextImageFor\(workId\)/, 'the shell chooses which picture');
+
+  const finder = java.slice(java.indexOf('private String nextImageFor('));
+  assert.match(finder.slice(0, finder.indexOf('\n    }\n')), /FROM chapters WHERE work_id = \?/,
+    'from the work itself, with the id bound rather than pasted');
+});
