@@ -9,6 +9,7 @@
 
 import { History, openingOffset } from './core/nav.js';
 import { findNewBookmarks, fetchWorks, nextGap, walkListing, listingCost, shouldWalkWholeListing } from './core/sync/run.js';
+import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser } from './core/ao3/parse.js';
 import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
@@ -959,6 +960,7 @@ async function buildSettings() {
     if (haptics.checked) tick('commit');    // show what was just turned on
   };
 
+  paintJobs();
   $('#version').textContent = `Fan Folio ${VERSION}`;
   paintAccount();
 }
@@ -1311,6 +1313,103 @@ function leaveArchive() {
 
 $('#ab-current').onclick = leaveArchive;
 
+/* -------------------------------------------------------------------- jobs */
+
+/**
+ * Work the app owes the archive, done in the background.
+ *
+ * Fetching an author's catalogue is hundreds of requests over an hour. It runs
+ * while the reader does something else, reports as it goes, and can be
+ * stopped or brought forward — which matters because the alternative to
+ * showing it is an app that is quietly busy for an hour and never says so.
+ */
+const JOBS_KEY = 'fanfolio.jobs';
+
+const jobs = createQueue({
+  runTask: (workId) => addWork(String(workId)),
+  wait: (ms) => new Promise((r) => setTimeout(r, ms)),
+  gap: () => nextGap(),
+  onEvent: (e) => {
+    if (e.type === 'progress') {
+      toast(`${e.job.author} · ${e.job.part}: ${e.job.added} of ${e.job.total}`
+        + (e.job.failed ? ` (${e.job.failed} unavailable)` : ''));
+    }
+    if (e.type === 'finished' && e.job.state === 'done') {
+      toast(`${e.job.author} · ${e.job.part}: finished, ${e.job.added} added`);
+      offset = 0;
+      loadMore(true);
+      buildHome().catch(() => {});
+    }
+    save(JOBS_KEY, jobs.save());
+    if (!$('#settings').hidden) paintJobs();
+  },
+});
+
+function paintJobs() {
+  const box = $('#job-list');
+  box.textContent = '';
+  const list = jobs.list().filter((j) => j.state !== 'done');
+  if (!list.length) {
+    const idle = document.createElement('p');
+    idle.className = 'setting-note';
+    idle.textContent = 'Nothing waiting.';
+    box.append(idle);
+    return;
+  }
+
+  for (const job of list) {
+    const row = document.createElement('div');
+    row.className = 'job-row';
+
+    const what = document.createElement('span');
+    what.className = 'job-what';
+    /* Whose, which half, and how far through — the three things somebody
+       looking at a queue actually wants to know. */
+    what.textContent = `${job.author} · ${job.part} · ${job.added} of ${job.total}`;
+    row.append(what);
+
+    const state = document.createElement('span');
+    state.className = 'job-state';
+    state.textContent = job.state === 'running' ? (job.parallel ? 'running now' : 'downloading')
+      : job.state === 'paused' ? 'paused'
+      : job.state === 'cancelled' ? 'stopped'
+      : 'waiting';
+    row.append(state);
+
+    const act = (label, fn) => {
+      const b = document.createElement('button');
+      b.className = 'linkish';
+      b.textContent = label;
+      b.onclick = () => { fn(); paintJobs(); };
+      row.append(b);
+    };
+
+    if (job.state === 'running') {
+      act('Pause', () => jobs.pause(job.id));
+      act('Stop', () => jobs.stop(job.id));
+    } else if (job.state === 'paused') {
+      act('Resume', () => jobs.resume(job.id));
+      act('Stop', () => jobs.stop(job.id));
+    } else if (job.state === 'queued') {
+      /* Runs alongside whatever is going rather than displacing it: a job
+         halfway through an author should not lose that to an impatient tap. */
+      act('Start now', () => jobs.startNow(job.id));
+      act('Up', () => jobs.moveUp(job.id));
+      act('Down', () => jobs.moveDown(job.id));
+    }
+    act('Delete', () => jobs.remove(job.id));
+    box.append(row);
+  }
+}
+
+/** Whatever was left when the app last closed, minus anything since fetched. */
+function resumeJobs() {
+  for (const job of load(JOBS_KEY, [])) {
+    const left = (job.workIds ?? []).filter((id) => !workIsHeld(String(id)));
+    if (left.length) jobs.add({ author: job.author, part: job.part, workIds: left });
+  }
+}
+
 /* ------------------------------------------------------------------ author */
 
 /**
@@ -1346,8 +1445,16 @@ function openAuthor(name) {
   currentAuthor = name;
   filterBy('author', name);
   showAuthorBar(name);
-  // a small catalogue is a few requests; asking permission for that is friction
-  if (isNative && signedIn()) walkAuthor(name, { onlyIfSmall: true });
+  /* Both halves. Asking about an author means what they wrote and what they
+     kept, and the second is as much a part of the answer as the first — it is
+     also how their taste is preserved, which is the point of doing this at
+     all. Sequential, so the listings do not race each other for the pacer. */
+  if (isNative && signedIn()) {
+    (async () => {
+      await walkAuthor(name, { onlyIfSmall: true, listing: 'works' });
+      if (currentAuthor === name) await walkAuthor(name, { onlyIfSmall: true, listing: 'bookmarks' });
+    })();
+  }
 }
 
 let currentAuthor = null;
@@ -1389,11 +1496,21 @@ async function walkAuthor(name, { onlyIfSmall = false, listing = 'works' } = {})
       all = rest.works.length ? rest.works : all;
     }
 
-    const { added } = saveStubs(asStubs(all));
+    saveStubs(asStubs(all));
     offset = 0;
     await loadMore(true);
-    authorSay(`${all.length} works listed, ${added} new`
-      + (authorHalt ? ' (stopped)' : '') + ' — open one to fetch it');
+
+    /* Listing them was the cheap half. The point of asking about an author is
+       to keep what they wrote, so what is not held is queued for download and
+       runs in the background from here. */
+    const missing = all.map((w) => String(w.workId)).filter((id) => !workIsHeld(id));
+    if (missing.length) {
+      jobs.add({ author: name, part: listing, workIds: missing });
+      authorSay(`${all.length} listed · ${missing.length} queued to download`
+        + (authorHalt ? ' (listing stopped)' : ''));
+    } else {
+      authorSay(`${all.length} listed — all of them already here`);
+    }
   } catch (e) {
     authorSay(e.message);
   } finally {
@@ -2727,6 +2844,7 @@ async function start() {
   }
   if (!status.search) toast('This device\'s SQLite cannot do full-text search');
   show('home');
+  resumeJobs();   // whatever was owed when the app last closed
   paintAccount();
 
   // an intent can arrive before this page exists, so the shell holds it
