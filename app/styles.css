@@ -434,12 +434,36 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   font-size: .74rem; font-weight: 650; margin: 0 0 .55rem;
   letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
 }
-.fandom-list { display: flex; flex-wrap: wrap; gap: .4rem; }
-.fandom-list button {
-  font: inherit; font-size: .78rem; background: var(--pane); color: inherit;
-  border: 1px solid var(--rule); border-radius: 999px; padding: .3rem .7rem; cursor: pointer;
+/*
+ * Browse sits above the shelves now rather than under all five of them,
+ * because it is the way most fic is actually looked for and its own note here
+ * has always said so — it was just placed last, where nobody scrolled to it.
+ * Earning that position means costing one row, not four, so the tags run
+ * along a rail like everything else on this screen instead of wrapping.
+ */
+.fandom-list {
+  display: flex; gap: .4rem; overflow-x: auto;
+  scrollbar-width: none; margin: 0 -.7rem; padding-inline: .7rem; padding-bottom: .2rem;
 }
-.fandom-list button .n { color: var(--muted); margin-left: .3rem; }
+.fandom-list::-webkit-scrollbar { display: none; }
+.fandom-list button {
+  flex: 0 0 auto; white-space: nowrap;
+  font: inherit; font-size: .78rem; color: inherit; cursor: pointer;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  border: 0; border-radius: 999px; padding: .32rem .75rem;
+}
+.fandom-list button:active { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.fandom-list button .n {
+  color: var(--muted); margin-left: .35rem; font-variant-numeric: tabular-nums;
+}
+.fandom-block { margin: 0 0 1.4rem; }
+
+/* How many works this filter leaves, said before the list rather than after
+   it. Tabular figures so it does not jitter as the number changes. */
+.count {
+  font-size: .78rem; color: var(--muted);
+  font-variant-numeric: tabular-nums; margin: .45rem 0 .1rem;
+}
 
 /* ------------------------------------------------------------ start here */
 
@@ -466,7 +490,6 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   color: var(--muted); cursor: pointer; padding: .25rem .1rem; border-bottom: 2px solid transparent;
 }
 .browse-tab.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
-.fandom-block { margin-bottom: 1rem; }
 
 /* -------------------------------------------------------------- work card */
 

@@ -462,11 +462,18 @@ async function loadMore(reset = false) {
     $('#more').textContent = offset < total
       ? `${fmt(offset)} of ${fmt(total)}`
       : (total ? `${fmt(total)} works` : 'Nothing here yet');
+    /* The same number, where it can be read before scrolling rather than
+       after: what a filter narrowed to is the first thing worth knowing
+       about it, and it was only ever written underneath the results. */
+    $('#count').textContent = total
+      ? `${fmt(total)} ${total === 1 ? 'work' : 'works'}`
+      : '';
     if (!total) {
       box.innerHTML = '<p class="empty">No works match this filter.</p>';
     }
   } catch (e) {
     $('#more').textContent = '';
+    $('#count').textContent = '';
     $('#works').innerHTML = '<p class="empty"></p>';
     $('#works .empty').textContent = e.message;
   } finally {
