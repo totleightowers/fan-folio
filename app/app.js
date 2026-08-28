@@ -2239,27 +2239,14 @@ async function openWork(workId) {
   actions.className = 'actions';
   const read = document.createElement('button');
   read.className = 'primary';
+  read.textContent = saved?.chapter ? `Continue chapter ${saved.chapter}` : 'Read';
+  read.onclick = () => openChapter(workId, saved?.chapter ?? 1);
   if (!w.has_text) {
-    /* The listings describe this work but its chapters have never been
-       fetched. One request, when the reader actually wants it — which is the
-       whole reason several thousand works could be described at no cost. */
-    read.textContent = 'Fetch this work';
-    read.onclick = async () => {
-      read.disabled = true;
-      read.textContent = 'Fetching…';
-      try {
-        await addWork(String(workId));
-        tick('commit');
-        openWork(workId);
-      } catch (e) {
-        toast(e.message);
-        read.disabled = false;
-        read.textContent = 'Fetch this work';
-      }
-    };
-  } else {
-    read.textContent = saved?.chapter ? `Continue chapter ${saved.chapter}` : 'Read';
-    read.onclick = () => openChapter(workId, saved?.chapter ?? 1);
+    /* Opening a work is the instruction to have it. There was a button here
+       asking again, which did exactly what Fetch again does two rows below —
+       the same call, a different label, for a work in a different state. */
+    read.disabled = true;
+    read.textContent = 'Fetching…';
   }
   actions.append(read);
   if (saved?.chapter && w.has_text) {
@@ -2298,6 +2285,37 @@ async function openWork(workId) {
   hint.className = 'swipe-hint';
   hint.textContent = 'Swipe left to start reading';
   box.append(hint);
+
+  if (!w.has_text) await fetchOnArrival(workId, token);
+}
+
+/**
+ * A work opened but not held fetches itself.
+ *
+ * Navigating to a work is the instruction to have it, the same way choosing
+ * this app for a link is. Asking again with a button was a second tap for a
+ * decision already made — and the button did exactly what Fetch again does,
+ * by the same call.
+ *
+ * Immediate rather than queued: a queue is for a catalogue running for an
+ * hour, and this is one work the reader is looking at now.
+ */
+async function fetchOnArrival(workId, token) {
+  if (!isNative) return;
+  try {
+    await addWork(String(workId));
+    if (token !== pending) return;      // they moved on while it was fetching
+    tick('commit');
+    openWork(workId);
+  } catch (e) {
+    if (token !== pending) return;
+    const read = $('#detail .actions .primary');
+    if (!read) return;
+    read.disabled = false;
+    read.textContent = 'Try fetching again';
+    read.onclick = () => openWork(workId);
+    toast(e.message);
+  }
 }
 
 /* ----------------------------------------------------------------- reader */
