@@ -1262,13 +1262,15 @@ button:disabled, .opt:disabled {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%);
   mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%);
 }
-.rail[data-overflow="start"] {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26px);
-  mask-image: linear-gradient(to right, transparent 0, #000 26px);
-}
+/* The fade only ever goes on the trailing edge now. A shelf fades where it
+   continues out of sight, and on the left that is behind you — the 26px it
+   dimmed sat exactly over the leading card's spine, so the one shelf you
+   could see all of was the one whose first fandom colour had been rubbed
+   out. A cue is not worth covering the thing it points at. */
+.rail[data-overflow="start"] { -webkit-mask-image: none; mask-image: none; }
 .rail[data-overflow="both"] {
-  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent 100%);
 }
 
 /* Room for more of the shelf, and a library that stops being one long
