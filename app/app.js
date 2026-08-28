@@ -1354,6 +1354,38 @@ const JOBS_KEY = 'fanfolio.jobs';
 /* The last thing that went wrong in the background, shown in settings. */
 let jobError = null;
 
+/*
+ * Redraw what the new work has changed, without pulling the rug.
+ *
+ * Rebuilding the home screen replaces its shelves, which resets where their
+ * rails were scrolled to; reloading the library sends its list back to the
+ * top. Neither is acceptable underneath somebody who is reading, so a screen
+ * being looked at is only rebuilt while it is still at the top, and one that
+ * is out of sight is rebuilt freely — it will be right when they return to it.
+ *
+ * Throttled because a work lands about every half minute and there is nothing
+ * to be gained by rebuilding twice for two that arrive together.
+ */
+const FRESHEN_EVERY_MS = 20000;
+let freshenAt = 0;
+let freshenTimer = null;
+
+function freshen() {
+  freshenAt = Date.now();
+  clearTimeout(freshenTimer);
+  freshenTimer = null;
+
+  const settled = (view_) => $(`#${view_}`).hidden || window.scrollY < 40;
+  if (settled('home')) buildHome().catch(() => {});
+  if (settled('library') && !loading) { offset = 0; loadMore(true).catch(() => {}); }
+}
+
+function freshenSoon() {
+  if (freshenTimer) return;
+  const due = Math.max(0, FRESHEN_EVERY_MS - (Date.now() - freshenAt));
+  freshenTimer = setTimeout(freshen, due);
+}
+
 const jobs = createQueue({
   runTask: (workId) => addWork(String(workId)),
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
@@ -1364,15 +1396,18 @@ const jobs = createQueue({
     if (e.type === 'progress') {
       toast(`${e.job.author} · ${e.job.part}: ${e.job.added} of ${e.job.total}`
         + (e.job.failed ? ` (${e.job.failed} unavailable)` : ''));
+      /* A download of an author's catalogue runs for an hour, and the shelves
+         it is filling were only redrawn when the whole thing ended — so the
+         library grew all afternoon while the home screen said what it had
+         said at breakfast. */
+      freshenSoon();
     }
-    if (e.type === 'finished' && e.job.state === 'done') {
+    if (e.type === 'finished') {
       toast(`${e.job.author} · ${e.job.part}: finished, ${e.job.added} added`);
       if (e.job.failed && e.job.lastError) {
         jobError = `${e.job.author} · ${e.job.part}: ${e.job.failed} skipped — ${e.job.lastError}`;
       }
-      offset = 0;
-      loadMore(true);
-      buildHome().catch(() => {});
+      freshen();
     }
     save(JOBS_KEY, jobs.save());
     if (!$('#settings').hidden) paintJobs();
