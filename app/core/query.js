@@ -42,6 +42,11 @@ export const STATES = {
   finished: 'r.chapters_read >= w.chapter_count AND w.chapter_count > 0',
   later: 'r.marked_later = 1',
   rec: 'w.rec = 1',
+  /* Whether the text is actually here. A listing describes thousands of works
+     we have never downloaded; being able to ask for only what can be read now,
+     or only what is still to fetch, is the point of keeping them apart. */
+  held: 'w.has_text = 1',
+  known: 'w.has_text = 0',
   bookmarked: 'w.in_bookmarks = 1',
   history: 'w.in_history = 1',
 };
@@ -151,7 +156,7 @@ export function buildWorksQuery(filters = {}) {
                  w.downloaded_at, w.language,
                  w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
                  w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
-                 w.kudos, w.bookmark_count, w.hits,
+                 w.kudos, w.bookmark_count, w.hits, w.has_text,
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship

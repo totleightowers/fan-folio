@@ -55,8 +55,8 @@ export async function addWorkByLink(db, input, { client: shared = null } = {}) {
     INSERT INTO works (work_id, title, authors, summary, rating, language, published, updated,
                        complete, words, chapter_count, chapters_planned, skin_css,
                        kudos, bookmark_count, hits,
-                       source, fetched_at, downloaded_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ao3',datetime('now'),date('now'))
+                       source, fetched_at, downloaded_at, has_text)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'ao3',datetime('now'),date('now'),1)
     ON CONFLICT(work_id) DO UPDATE SET
       title=excluded.title, authors=excluded.authors, summary=excluded.summary,
       rating=excluded.rating, language=excluded.language, published=excluded.published,
@@ -64,7 +64,7 @@ export async function addWorkByLink(db, input, { client: shared = null } = {}) {
       chapter_count=excluded.chapter_count, chapters_planned=excluded.chapters_planned,
       skin_css=excluded.skin_css,
       kudos=excluded.kudos, bookmark_count=excluded.bookmark_count, hits=excluded.hits,
-      source='ao3', fetched_at=datetime('now'), downloaded_at=date('now')`).run(
+      source='ao3', fetched_at=datetime('now'), downloaded_at=date('now'), has_text=1`).run(
     workId, w.title, JSON.stringify(w.authors ?? []), w.summary,
     meta.rating ?? null, meta.language ?? null, meta.published ?? null, meta.updated ?? null,
     meta.complete ? 1 : 0, meta.words ?? null, w.chapters.length,

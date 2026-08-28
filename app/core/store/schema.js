@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS works (
   kudos_given    INTEGER DEFAULT 0,
   -- what the archive reports about a work. Parsed all along and never kept,
   -- which left no way to ask for the best-liked thing in the library
+  -- Whether the text is actually here.
+  --
+  -- A work can be known without being held: the listings describe thousands of
+  -- works we have never downloaded, and describing one costs nothing while
+  -- fetching it costs a request. A row with this at 0 is a work the reader can
+  -- find, filter and read about, whose chapters arrive when they open it.
+  has_text       INTEGER DEFAULT 0,
   kudos          INTEGER,
   bookmark_count INTEGER,
   hits           INTEGER
