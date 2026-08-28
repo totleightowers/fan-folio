@@ -786,17 +786,52 @@ public class MainActivity extends Activity {
         return buf.toString("UTF-8");
     }
 
+    /* The last archive page asked for, used as the referer for the next.
+       Somebody on page seven got there from page six; arriving with no referer
+       at all, page after page, is not what browsing looks like. */
+    private String lastArchiveUrl = null;
+
+    /**
+     * Ask the way a browser asks.
+     *
+     * This sent a Chrome user agent and nothing else — no Accept, no
+     * Accept-Language, none of the Sec-Fetch headers every browser sends on a
+     * navigation. Claiming to be a browser and then not behaving like one is a
+     * plain bot signature, and the archive sits behind Cloudflare. The same
+     * account walking the same pages from a laptop, sending the full set, ran
+     * hundreds of requests without being throttled once; the app was getting
+     * 5xx almost immediately.
+     *
+     * Accept-Encoding is deliberately absent. Java adds gzip itself and
+     * decompresses transparently — but only while nothing has set the header
+     * by hand, and setting it means getting raw compressed bytes back.
+     */
+    private void browserHeaders(HttpURLConnection c, boolean sameOrigin) {
+        c.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(this));
+        c.setRequestProperty("Accept",
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
+        c.setRequestProperty("Accept-Language", "en-GB,en;q=0.9");
+        c.setRequestProperty("Upgrade-Insecure-Requests", "1");
+        c.setRequestProperty("Sec-Fetch-Dest", "document");
+        c.setRequestProperty("Sec-Fetch-Mode", "navigate");
+        c.setRequestProperty("Sec-Fetch-Site", sameOrigin ? "same-origin" : "none");
+        c.setRequestProperty("Sec-Fetch-User", "?1");
+    }
+
     private HttpURLConnection open(URL u) throws IOException {
         HttpURLConnection c = (HttpURLConnection) u.openConnection();
         c.setInstanceFollowRedirects(false);
         c.setConnectTimeout(20000);
         c.setReadTimeout(30000);
-        c.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(this));
+        boolean archive = isArchiveHost(u.getHost());
+        browserHeaders(c, archive && lastArchiveUrl != null);
+        if (archive && lastArchiveUrl != null) c.setRequestProperty("Referer", lastArchiveUrl);
         // the session travels only to the archive, never to the font host —
         // and never to a domain that merely ends with the archive's name
-        if (isArchiveHost(u.getHost())) {
+        if (archive) {
             String cookies = archiveCookies();
             if (!cookies.isEmpty()) c.setRequestProperty("Cookie", cookies);
+            lastArchiveUrl = u.toString();
         }
         return c;
     }
