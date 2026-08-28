@@ -148,3 +148,34 @@ test('a finished job is not carried across a restart', async () => {
   await settle(); await tick();
   assert.deepEqual(q.save(), []);
 });
+
+test('a job can grow while it is running', async () => {
+  const { q, order, tick } = harness();
+  const id = q.add(job('a', 'works', ['1', '2']));
+  await settle();
+  q.append(id, ['3', '4']);
+  await tick(); await tick(); await tick();
+  /* A listing is read a page at a time with a pause between. Waiting for the
+     whole walk before queueing anything is a minute of an app that looks like
+     it did nothing. */
+  assert.deepEqual(order, ['1', '2', '3', '4']);
+  assert.equal(q.list()[0].total, 4);
+});
+
+test('appending the same work twice does not fetch it twice', async () => {
+  const { q } = harness();
+  const id = q.add(job('a', 'works', ['1', '2']));
+  q.append(id, ['2', '3']);
+  assert.equal(q.list()[0].total, 3);
+});
+
+test('a job that had finished its list picks up what is added after', async () => {
+  const { q, order, tick } = harness();
+  const id = q.add(job('a', 'works', ['1']));
+  await settle(); await tick();
+  assert.equal(q.list()[0].state, 'done');
+
+  q.append(id, ['2']);
+  await settle(); await tick();
+  assert.deepEqual(order, ['1'], 'a finished job stays finished rather than silently reopening');
+});

@@ -1105,6 +1105,12 @@ public class MainActivity extends Activity {
                         v.put("complete", b.optBoolean("complete") ? 1 : 0);
                         v.put("words", b.optInt("words"));
                         v.put("chapter_count", b.optInt("chapters"));
+                        /* How many the author says there will be. Without it a
+                           finished one-chapter work reads "1/?", which says
+                           the archive does not know — when the listing had
+                           just told us. */
+                        if (b.isNull("chaptersPlanned")) v.putNull("chapters_planned");
+                        else v.put("chapters_planned", b.optInt("chaptersPlanned"));
                         v.put("kudos", b.optInt("kudos"));
                         v.put("bookmark_count", b.optInt("bookmarkCount"));
                         v.put("hits", b.optInt("hits"));
