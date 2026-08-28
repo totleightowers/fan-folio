@@ -945,7 +945,7 @@ test('a large catalogue asks before spending minutes on it', () => {
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /onlyIfSmall && !shouldWalkWholeListing\(pages\)/,
     'the threshold decides');
-  assert.match(body, /saveStubs\(asStubs\(first\.works\)\)/,
+  assert.match(body, /keep\(first\.works\)/,
     'and the page already fetched is kept rather than thrown away');
 });
 
@@ -1011,6 +1011,47 @@ test('a job row says whose it is, which half, and how far through', () => {
 test('asking about an author asks about both halves', () => {
   const fn = js.slice(js.indexOf('function openAuthor('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /listing: 'works'/, 'what they wrote');
-  assert.match(body, /listing: 'bookmarks'/, 'and what they kept');
+  /* Asserted as the pair it walks rather than as two literals in the source:
+     the loop that reads them is an implementation detail and has changed
+     twice, while "both halves" is the thing that must stay true. */
+  assert.match(body, /\['works', 'bookmarks'\]/, 'what they wrote and what they kept');
+  assert.match(body, /walkAuthor\(name, \{ onlyIfSmall: true, listing \}\)/,
+    'each half walked on its own terms');
+});
+
+/**
+ * A row of jobs is a list, and it should read like one.
+ *
+ * The controls repeat on every row, so they are icons: six words of buttons
+ * would make each row three times as wide as the thing it describes. Progress
+ * is a bar rather than a badge — a pill saying "downloading" spends a third of
+ * the row restating a word already in the line above it and shows nothing
+ * about how far along anything is.
+ */
+test('queue controls are icons with names, not words', () => {
+  const fn = js.slice(js.indexOf('function paintJobs('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /setAttribute\('aria-label', label\)/, 'each icon keeps its name');
+  assert.match(body, /icon\(icon_, 'ic'\)/, 'and is drawn from the sprite');
+  for (const name of ['pause', 'play', 'stop', 'trash', 'bolt']) {
+    assert.ok(html.includes(`id="i-${name}"`), `i-${name} is missing from the sprite`);
+  }
+});
+
+test('progress is a bar, not a badge', () => {
+  const fn = js.slice(js.indexOf('function paintJobs('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /job-bar/, 'the row shows how far along it is');
+  assert.match(body, /job\.done \/ job\.total/, 'from the actual counts');
+  assert.match(css, /\.job-bar\s*\{/, 'and it is styled');
+});
+
+test('background failures are shown in settings and nowhere else', () => {
+  /* "the archive answered 503" over a shelf tells the reader something they
+     cannot act on, while they are doing something else. */
+  const walk = js.slice(js.indexOf('async function walkAuthor('));
+  const body = walk.slice(0, walk.indexOf('\n}\n'));
+  assert.match(body, /jobError =/, 'the failure is recorded for settings');
+  assert.ok(!/authorSay\(e\.message\)/.test(body), 'and not printed over the library');
+  assert.match(js, /jobError\b[\s\S]{0,400}job-error/, 'settings is where it appears');
 });

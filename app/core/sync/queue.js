@@ -45,6 +45,26 @@ export function createQueue({
     return job.id;
   }
 
+  /**
+   * Add more work to a job already going.
+   *
+   * A listing is walked a page at a time with a pause between, so waiting for
+   * the whole walk before queueing anything means a minute or two of an app
+   * that looks like it did nothing. The first page is queued the moment it
+   * lands and the rest arrives as it is read.
+   */
+  function append(id, workIds) {
+    const job = find(id);
+    if (!job || job.state === 'done' || job.state === 'cancelled') return false;
+    const known = new Set(job.workIds);
+    const fresh = workIds.filter((w) => !known.has(w));
+    if (!fresh.length) return false;
+    job.workIds.push(...fresh);
+    announce('grew', job);
+    pump();                       // a job that had finished its list resumes
+    return true;
+  }
+
   /* --------------------------------------------------------------- control */
 
   function pause(id) {
@@ -158,7 +178,7 @@ export function createQueue({
   }
 
   return {
-    add, pause, resume, stop, remove, startNow, moveUp, moveDown,
+    add, append, pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
     /** What is left, so a restart resumes rather than starting over. */
     save: () => jobs
