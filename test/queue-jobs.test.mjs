@@ -229,3 +229,55 @@ test('it gives up eventually rather than trying for ever', async () => {
   assert.equal(tries.length, 3, 'the first go and two more');
   assert.equal(q.list()[0].failed, 1);
 });
+
+/*
+ * A job exists before its work does.
+ *
+ * Reading an author's index costs two paced requests before the first work is
+ * named. The queue used to be created by the page that landed, so for a minute
+ * or two after tapping an author there was nothing on the screen to say the tap
+ * had done anything, and it read as broken.
+ */
+test('a job asked for is on the list before its list is known', () => {
+  const seen = [];
+  const q = createQueue({
+    runTask: async () => {}, wait: async () => {}, gap: () => 0,
+    onEvent: (e) => seen.push(e.type),
+  });
+  const id = q.add({ author: 'Anna (pineconepickers)', part: 'works', open: true });
+  const [job] = q.list();
+  assert.equal(job.state, 'listing', 'it stands there saying it is reading');
+  assert.equal(job.total, 0, 'with nothing to count towards yet');
+  assert.ok(job.open, 'and says the list is still coming');
+  assert.ok(seen.includes('queued'), 'the screen is told at once');
+  assert.equal(id, job.id);
+});
+
+test('an open job does not report itself finished when it runs dry', async () => {
+  const done = [];
+  const q = createQueue({
+    runTask: async (w) => { done.push(w); }, wait: async () => {}, gap: () => 0,
+  });
+  const id = q.add({ author: 'a', part: 'works', open: true });
+  q.append(id, ['1', '2']);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual(done, ['1', '2']);
+  assert.equal(q.list()[0].state, 'listing',
+    'out of work is not out of list; the next page wakes it');
+
+  q.append(id, ['3']);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.deepEqual(done, ['1', '2', '3'], 'and a later page is still fetched');
+
+  q.seal(id);
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(q.list()[0].state, 'done', 'sealing is what ends it');
+});
+
+test('sealing a job that never found anything ends it rather than stranding it', () => {
+  const q = createQueue({ runTask: async () => {}, wait: async () => {}, gap: () => 0 });
+  const id = q.add({ author: 'a', part: 'bookmarks', open: true });
+  q.seal(id);
+  assert.equal(q.list()[0].state, 'done',
+    'a walk that failed must not leave a job reading its list for ever');
+});
