@@ -1452,9 +1452,35 @@ function paintJobs() {
 }
 
 /** Whatever was left when the app last closed, minus anything since fetched. */
+/**
+ * Which of these are already downloaded, in one question rather than many.
+ *
+ * Every call across the bridge is a round trip to Java and back, and asking
+ * once per work meant a resumed job of five hundred put five hundred of them
+ * in a row on the thread that draws the screen. SQLite has a ceiling on how
+ * many values one statement can bind, so the ids go over in blocks.
+ */
+function heldAmong(ids) {
+  const held = new Set();
+  if (!nativeStatus().hasDatabase) return held;
+  for (let i = 0; i < ids.length; i += 400) {
+    const block = ids.slice(i, i + 400);
+    const marks = block.map(() => '?').join(',');
+    try {
+      const out = JSON.parse(window.ArchiveNative.query(
+        `SELECT work_id FROM works WHERE work_id IN (${marks})`,
+        JSON.stringify(block.map(String))));
+      for (const r of out.rows ?? []) held.add(String(r.work_id));
+    } catch { /* treated as not held, which only costs a re-check later */ }
+  }
+  return held;
+}
+
 function resumeJobs() {
   for (const job of load(JOBS_KEY, [])) {
-    const left = (job.workIds ?? []).filter((id) => !workIsHeld(String(id)));
+    const ids = (job.workIds ?? []).map(String);
+    const held = heldAmong(ids);
+    const left = ids.filter((id) => !held.has(id));
     if (left.length) jobs.add({ author: job.author, part: job.part, workIds: left });
   }
 }
@@ -3057,15 +3083,35 @@ async function start() {
   }
   if (!status.search) toast('This device\'s SQLite cannot do full-text search');
   show('home');
-  resumeJobs();   // whatever was owed when the app last closed
-  paintAccount();
 
-  // an intent can arrive before this page exists, so the shell holds it
-  const opened = pendingLink();
-  if (opened) setTimeout(() => window.__openLink(opened), 0);
+  /*
+   * The home screen is built before anything else is seen to.
+   *
+   * It used to come last, after the queue had been resumed, the account
+   * painted and the imported theme awaited — so the first thing the app did
+   * with the reader watching was everything except the screen they were
+   * looking at. Any one of those being slow, and a resumed queue asking after
+   * hundreds of works was, left a blank page until something else happened to
+   * redraw it. None of that housekeeping is worth a moment of empty screen,
+   * and none of it needs to have finished for home to be right.
+   */
+  const painted = Promise.all([buildHome(), buildStartHere()]);
+
+  /* Each chore stands on its own: one of them failing is not a reason for the
+     rest not to run, and never a reason to take the screen down with it. */
+  for (const chore of [
+    () => resumeJobs(),        // whatever was owed when the app last closed
+    () => paintAccount(),
+    () => paintActiveFilters(),
+    // an intent can arrive before this page exists, so the shell holds it
+    () => { const opened = pendingLink();
+            if (opened) setTimeout(() => window.__openLink(opened), 0); },
+  ]) {
+    try { chore(); } catch (e) { console.warn('startup', e); }
+  }
+
   await adoptImportedTheme();
-  paintActiveFilters();
-  await Promise.all([buildHome(), buildStartHere()]);
+  await painted;
 }
 
 start();

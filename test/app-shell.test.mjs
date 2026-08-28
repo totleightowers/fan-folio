@@ -969,8 +969,33 @@ test('progress is reported as it happens', () => {
 test('what is owed is picked up again after a restart', () => {
   const fn = js.slice(js.indexOf('function resumeJobs('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /!workIsHeld\(String\(id\)\)/,
+  assert.match(body, /!held\.has\(id\)/,
     'anything fetched in the meantime is dropped rather than fetched twice');
+});
+
+/*
+ * Resuming used to ask the bridge about one work at a time, and it ran before
+ * the home screen was built — so a queue of a few hundred put a few hundred
+ * round trips to Java in front of the first thing the reader looks at, and
+ * the app opened on an empty page.
+ */
+test('resuming asks about a whole job at once', () => {
+  const fn = js.slice(js.indexOf('function heldAmong('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /work_id IN \(\$\{marks\}\)/, 'one statement, not one per work');
+  assert.match(body, /i \+= 400/, 'in blocks, because a statement can only bind so many');
+});
+
+test('the home screen is not built last', () => {
+  const fn = js.slice(js.indexOf('async function start('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  const home = body.indexOf('buildHome()');
+  const chores = body.indexOf('resumeJobs()');
+  assert.ok(home > -1 && chores > -1);
+  assert.ok(home < chores,
+    'the screen the reader is looking at comes before the housekeeping');
+  assert.match(body, /try \{ chore\(\); \} catch/,
+    'and one chore failing does not take the rest of the startup with it');
 });
 
 test('a queued job can be started, reordered or deleted; a running one paused', () => {
