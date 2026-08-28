@@ -1578,3 +1578,18 @@ button:disabled, .opt:disabled {
 #ab-who { font-weight: 650; }
 #ab-note { color: var(--muted); font-size: .8rem; flex: 1 1 100%; }
 .author-acts { display: flex; flex-wrap: wrap; gap: .9rem; }
+
+/* Work the app owes the archive. Shown because the alternative is an app that
+   is quietly busy for an hour and never says so. */
+.job-row {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .8rem;
+  padding: .55rem 0; border-bottom: 1px solid var(--rule);
+}
+.job-what { flex: 1 1 12rem; font-size: .86rem; }
+
+/* The state of a job, beside what it is. */
+.job-state {
+  font-size: .74rem; color: var(--muted);
+  padding: .05rem .45rem;
+  border: 1px solid var(--rule); border-radius: 999px;
+}
