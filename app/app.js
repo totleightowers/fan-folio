@@ -8,6 +8,9 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
+import { findNewBookmarks, fetchWorks, nextGap } from './core/sync/run.js';
+import { parseListing, signedInUser } from './core/ao3/parse.js';
+import { bookmarks as bookmarksUrl, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
@@ -1296,6 +1299,126 @@ function leaveArchive() {
 }
 
 $('#ab-current').onclick = leaveArchive;
+
+/* -------------------------------------------------------------------- sync */
+
+/**
+ * Bring the library up to date with the archive, from here.
+ *
+ * This only ever existed as a script on a laptop, so a bookmark made on the
+ * archive stayed invisible until somebody ran a tool and carried a database
+ * across. It walks the bookmark pages until they stop saying anything new —
+ * they are listed newest first, so that is usually one page — and fetches
+ * whatever is missing.
+ *
+ * Slow on purpose. Everything goes through one pacer, because an app that
+ * walks somebody's bookmarks impatiently gets their account limited and they
+ * will not know why.
+ */
+let syncing = false;
+let stopRequested = false;
+
+const syncSay = (text) => {
+  const el = $('#sync-status');
+  el.hidden = false;
+  el.textContent = text;
+};
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function archivePage(url) {
+  const res = await fetch(`/__net/?url=${encodeURIComponent(url)}`);
+  const body = await res.text();
+  if (!res.ok) throw new Error(`the archive answered ${res.status}`);
+  return body;
+}
+
+/** Whose bookmarks. Read from the archive rather than asked for. */
+async function whoAmI() {
+  if (prefs.archiveUser) return prefs.archiveUser;
+  const name = signedInUser(await archivePage(`${AO3}/`));
+  if (!name) throw new Error('the archive did not say who is signed in — sign in again');
+  prefs.archiveUser = name;
+  save(PREFS_KEY, prefs);
+  return name;
+}
+
+async function syncBookmarks() {
+  if (syncing) return;
+  if (!isNative) { toast('Syncing needs the app'); return; }
+  if (!signedIn()) { toast('Sign in to the archive first'); return; }
+
+  syncing = true;
+  stopRequested = false;
+  $('#sync-now').disabled = true;
+  $('#sync-stop').hidden = false;
+  syncSay('Asking the archive who you are…');
+
+  try {
+    const user = await whoAmI();
+    const held = new Set(
+      (await api('/api/works?limit=200&sort=added')).works?.map((w) => String(w.work_id)) ?? []
+    );
+    /* The page list is capped, so held-ness is asked of the database per work
+       rather than trusted to that first page. */
+    const isHeld = (id) => held.has(String(id)) || Boolean(workIsHeld(String(id)));
+
+    let first = true;
+    const { workIds } = await findNewBookmarks({
+      fetchPage: async (page) => {
+        if (!first) await wait(nextGap());
+        first = false;
+        return parseListing(await archivePage(bookmarksUrl(user, page)));
+      },
+      isHeld,
+      shouldStop: () => stopRequested,
+      onProgress: ({ page, found }) =>
+        syncSay(`Page ${page} — ${found} new bookmark${found === 1 ? '' : 's'} so far`),
+    });
+
+    if (!workIds.length) {
+      syncSay('Nothing new. The library already has everything you have bookmarked.');
+      return;
+    }
+
+    syncSay(`${workIds.length} to fetch. About ${Math.ceil(workIds.length / 2)} minutes.`);
+    const { added, failed } = await fetchWorks({
+      workIds,
+      fetchWork: (workId) => addWork(String(workId)),
+      wait,
+      shouldStop: () => stopRequested,
+      onProgress: ({ done, total, added: n }) =>
+        syncSay(`Fetched ${n} of ${total}${done < total ? '…' : ''}`),
+    });
+
+    offset = 0;
+    await Promise.all([loadMore(true), buildHome().catch(() => {})]);
+    tick('commit');
+    syncSay(`Added ${added.length}`
+      + (failed.length ? `, ${failed.length} could not be fetched — deleted or locked.` : '.')
+      + (stopRequested ? ' Stopped early.' : ''));
+  } catch (e) {
+    syncSay(e.message);
+  } finally {
+    syncing = false;
+    $('#sync-now').disabled = false;
+    $('#sync-stop').hidden = true;
+  }
+}
+
+/** One work, straight from the database — cheaper than holding the whole library. */
+function workIsHeld(workId) {
+  try {
+    return Boolean(nativeStatus().hasDatabase
+      && JSON.parse(window.ArchiveNative.query(
+        'SELECT 1 FROM works WHERE work_id = ?', JSON.stringify([workId]))).length);
+  } catch {
+    return false;
+  }
+}
+
+$('#sync-now').onclick = syncBookmarks;
+$('#sync-stop').onclick = () => { stopRequested = true; syncSay('Stopping after this one…'); };
 
 /* ------------------------------------------------------------------ sheets */
 

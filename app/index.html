@@ -125,6 +125,16 @@
     </div>
 
     <div class="setting-group">
+      <h3 class="group">Sync</h3>
+      <p class="setting-note">Looks for bookmarks made on the archive since the last time, and
+        fetches the works. It asks for one thing at a time with a pause between, so it is slow
+        on purpose — the archive limits an account that asks too quickly.</p>
+      <button id="sync-now" class="primary">Sync bookmarks</button>
+      <button id="sync-stop" class="linkish" hidden>Stop</button>
+      <p id="sync-status" class="setting-note" hidden></p>
+    </div>
+
+    <div class="setting-group">
       <h3 class="group">Feedback</h3>
       <p class="setting-note">A small tick when a page turns, refuses to turn, or a sheet is
         pushed away. Your phone's own haptic setting still has the last word.</p>

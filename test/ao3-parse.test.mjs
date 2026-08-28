@@ -167,3 +167,16 @@ test('something that is not a work gives null rather than a guess', async () => 
     assert.equal(workIdFrom(bad), null, `should not have found an id in ${bad}`);
   }
 });
+
+test('the signed-in name is read from the page the session returns', async () => {
+  const { signedInUser } = await import('../app/core/ao3/parse.js');
+  const page = `<div id="greeting"><ul class="menu">
+      <li><a href="/users/Githaw">My Dashboard</a></li></ul></div>`;
+  assert.equal(signedInUser(page), 'Githaw');
+});
+
+test('a signed-out page names nobody', async () => {
+  const { signedInUser } = await import('../app/core/ao3/parse.js');
+  assert.equal(signedInUser('<div id="greeting"><a href="/users/login">Log In</a></div>'), null);
+  assert.equal(signedInUser(''), null);
+});
