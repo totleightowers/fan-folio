@@ -710,6 +710,26 @@ public class MainActivity extends Activity {
         return archived;
     }
 
+    /** Remember that a picture cannot be had, so it is not asked for for ever. */
+    private String storeDead(String workId, String url, String why) {
+        try {
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put("work_id", workId);
+            v.put("url", url);
+            v.put("status", "dead");
+            v.put("fetched_at", nowIso());
+            db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+        } catch (Exception ignored) {}
+        return errorJson(why);
+    }
+
+    private static String sha256Hex(byte[] bytes) throws Exception {
+        java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+        StringBuilder hex = new StringBuilder();
+        for (byte b : md.digest(bytes)) hex.append(String.format("%02x", b));
+        return hex.toString();
+    }
+
     private static String errorJson(String message) {
         return "{\"error\":" + org.json.JSONObject.quote(String.valueOf(message)) + "}";
     }
@@ -1179,6 +1199,73 @@ public class MainActivity extends Activity {
                 return errorJson(String.valueOf(e.getMessage()));
             }
             return "{\"added\":" + added + "}";
+        }
+
+        /**
+         * Fetch an image a work points at, and keep it.
+         *
+         * Works arrive from the archive referring to images on other hosts —
+         * a fake tweet, a piece of art, a chat screenshot. Nothing fetched
+         * them, so a work refetched from the archive lost the pictures it had
+         * when it came from an EPUB: the chapter now points at a remote URL
+         * where it used to point at something stored.
+         *
+         * The host rules are looser here than anywhere else in the app, which
+         * is the reader's call and a reasonable one. The rule that does not
+         * bend is the cookie: open() attaches the session only to the archive,
+         * so relaxing where images may come from cannot leak it.
+         */
+        @JavascriptInterface
+        public String fetchImage(String workId, String rawUrl) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            HttpURLConnection c = null;
+            try {
+                URL u = new URL(rawUrl);
+                if (!"https".equalsIgnoreCase(u.getProtocol())) return errorJson("https only");
+
+                c = open(u);
+                c.setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8");
+                c.setRequestProperty("Sec-Fetch-Dest", "image");
+                c.setRequestProperty("Sec-Fetch-Mode", "no-cors");
+                int status = c.getResponseCode();
+                if (status != 200) return storeDead(workId, rawUrl, "answered " + status);
+
+                String mime = c.getContentType();
+                mime = mime == null ? "" : mime.split(";")[0].trim().toLowerCase(Locale.ROOT);
+                /* Only pictures. Without this an error page comes back as a
+                   blob of HTML stored where an image should be, and renders as
+                   a broken one for ever. */
+                if (!mime.startsWith("image/")) return storeDead(workId, rawUrl, "not an image");
+
+                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[1 << 15];
+                int read;
+                try (InputStream in = c.getInputStream()) {
+                    while ((read = in.read(chunk)) > 0) {
+                        buf.write(chunk, 0, read);
+                        // one picture should not be able to fill the library
+                        if (buf.size() > 12 * 1024 * 1024) return storeDead(workId, rawUrl, "too large");
+                    }
+                }
+                byte[] bytes = buf.toByteArray();
+                if (bytes.length == 0) return storeDead(workId, rawUrl, "empty");
+
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put("work_id", workId);
+                v.put("url", rawUrl);
+                v.put("sha256", sha256Hex(bytes));
+                v.put("mime", mime);
+                v.put("bytes", bytes);
+                v.put("status", "stored");
+                v.put("fetched_at", nowIso());
+                db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+                return "{\"sha256\":\"" + v.getAsString("sha256") + "\",\"bytes\":" + bytes.length + "}";
+            } catch (Exception e) {
+                return storeDead(workId, rawUrl, String.valueOf(e.getMessage()));
+            } finally {
+                if (c != null) c.disconnect();
+            }
         }
 
         @JavascriptInterface

@@ -471,6 +471,19 @@ export function saveStubs(works) {
   return out;
 }
 
+/**
+ * Fetch one image a work points at, and keep it.
+ *
+ * Returns the hash it was stored under, which is where the page can then point
+ * the picture — no re-render, the image simply arrives.
+ */
+export async function fetchImage(workId, url) {
+  if (!isNative) return null;
+  const out = JSON.parse(native.fetchImage(String(workId), String(url)));
+  if (out.error) throw new Error(out.error);
+  return out.sha256;
+}
+
 export function importDatabase() {
   if (isNative) native.importDatabase();
 }

@@ -16,7 +16,7 @@ import { bookmarks as bookmarksUrl, userWorks as userWorksUrl, userProfile as us
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchImage } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -1457,6 +1457,40 @@ function resumeJobs() {
   }
 }
 
+/**
+ * Collect the pictures a chapter is missing, while it is being read.
+ *
+ * A work fetched from the archive points at images on other hosts, and nothing
+ * was fetching them — so a work that came from an EPUB with its pictures
+ * stored lost them the moment it was refetched, and showed a column of empty
+ * boxes instead.
+ *
+ * Fetched as the chapter is looked at rather than in a sweep: only the works
+ * actually read cost anything, and the picture arrives in place without the
+ * page being rebuilt underneath the reader.
+ */
+async function collectImages(workId) {
+  if (!isNative) return;
+  const missing = $$('#workskin img[data-remote-src]');
+  for (const img of missing) {
+    if (current.workId !== workId) return;      // they have gone elsewhere
+    const url = img.dataset.remoteSrc;
+    if (!url) continue;
+    try {
+      const sha = await fetchImage(workId, url);
+      if (!sha) continue;
+      img.src = `/img/${sha}`;
+      img.removeAttribute('data-remote-src');
+      img.classList.remove('ar-missing-image');
+      img.removeAttribute('alt');
+    } catch {
+      /* Recorded as unavailable by the shell so it is not asked for again;
+         the placeholder stays, which is the honest thing to show. */
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 /* ------------------------------------------------------------------ author */
 
 /**
@@ -2564,6 +2598,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
     updateProgress();
   });
   updateProgress();
+  collectImages(workId);
 }
 
 // moving by hand is deliberate, so the bookmark starts following again
