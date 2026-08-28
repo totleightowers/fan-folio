@@ -1550,3 +1550,15 @@ button:disabled, .opt:disabled {
 [data-dark] .ao3page table, [data-dark] .ao3page th, [data-dark] .ao3page td {
   border-color: var(--rule);
 }
+
+/* A work the listings describe but whose text has never been fetched. Said
+   plainly on the row, because otherwise it opens into an empty reader and
+   looks like the app has lost it. */
+.not-held {
+  margin-left: .5rem;
+  padding: .05rem .4rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: .72rem;
+  color: var(--muted);
+}

@@ -292,6 +292,7 @@ public class MainActivity extends Activity {
         {"last_visited", "TEXT"}, {"visits", "INTEGER"},
         {"kudos_given", "INTEGER DEFAULT 0"},
         {"kudos", "INTEGER"}, {"bookmark_count", "INTEGER"}, {"hits", "INTEGER"},
+        {"has_text", "INTEGER DEFAULT 0"},
     };
 
     /**
@@ -1235,6 +1236,7 @@ public class MainActivity extends Activity {
            how current our copy is, and "recently added" cannot see the work
            at all. */
         work.put("downloaded_at", nowIso().substring(0, 10));
+        work.put("has_text", 1);   // chapters follow, below
         db.insertWithOnConflict("works", null, work, SQLiteDatabase.CONFLICT_REPLACE);
 
         db.delete("tags", "work_id = ?", new String[]{ id });

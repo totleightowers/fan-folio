@@ -392,6 +392,15 @@ function workRow(w) {
   const heading = node.querySelector('h3');
   heading.textContent = w.title ?? '(untitled)';
   heading.prepend(...marks(w));
+  /* Known, but not here. Saying so on the row matters more than it looks:
+     otherwise a work opens into an empty reader and the reader assumes the app
+     has lost it. */
+  if (!w.has_text) {
+    const ghost = document.createElement('span');
+    ghost.className = 'not-held';
+    ghost.textContent = 'not downloaded';
+    node.querySelector('.statline')?.append(ghost);
+  }
   node.querySelector('.by').textContent = 'by ' + (authorsOf(w.authors).join(', ') || 'Anonymous');
   node.querySelector('.statline').textContent = stats;
   if (w.summary) node.querySelector('.sum').textContent = w.summary;
@@ -494,6 +503,8 @@ function cycleTag(name) {
 const STATE_LABELS = {
   all: 'All',
   rec: '\u2605 Recs',
+  held: 'Downloaded',
+  known: 'Not downloaded',
   reading: 'Reading',
   unread: 'Unread',
   finished: 'Finished',
@@ -1993,10 +2004,30 @@ async function openWork(workId) {
   actions.className = 'actions';
   const read = document.createElement('button');
   read.className = 'primary';
-  read.textContent = saved?.chapter ? `Continue chapter ${saved.chapter}` : 'Read';
-  read.onclick = () => openChapter(workId, saved?.chapter ?? 1);
+  if (!w.has_text) {
+    /* The listings describe this work but its chapters have never been
+       fetched. One request, when the reader actually wants it — which is the
+       whole reason several thousand works could be described at no cost. */
+    read.textContent = 'Fetch this work';
+    read.onclick = async () => {
+      read.disabled = true;
+      read.textContent = 'Fetching…';
+      try {
+        await addWork(String(workId));
+        tick('commit');
+        openWork(workId);
+      } catch (e) {
+        toast(e.message);
+        read.disabled = false;
+        read.textContent = 'Fetch this work';
+      }
+    };
+  } else {
+    read.textContent = saved?.chapter ? `Continue chapter ${saved.chapter}` : 'Read';
+    read.onclick = () => openChapter(workId, saved?.chapter ?? 1);
+  }
   actions.append(read);
-  if (saved?.chapter) {
+  if (saved?.chapter && w.has_text) {
     const restart = document.createElement('button');
     restart.textContent = 'Start again';
     restart.onclick = () => openChapter(workId, 1);
