@@ -1707,6 +1707,26 @@ button:disabled, .opt:disabled {
   transition: width var(--dur) var(--ease-out);
 }
 .job-bar > .idle { background: var(--muted); }
+
+/*
+ * A job whose list is still being read has no fraction to show, so the bar
+ * shows that it is working instead of sitting empty at zero looking stalled.
+ * Reduced motion gets a still, dimmed track: the row's own words already say
+ * what is happening, so nothing is lost by holding it still.
+ */
+.job-bar-waiting {
+  background: linear-gradient(90deg,
+    var(--rule) 0 40%, var(--accent) 50%, var(--rule) 60% 100%);
+  background-size: 250% 100%;
+  animation: job-scan var(--dur-sweep) linear infinite;
+}
+@keyframes job-scan {
+  from { background-position: 100% 0; }
+  to   { background-position: -50% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-bar-waiting { animation: none; background: var(--rule); }
+}
 .job-text { flex: 1 1 auto; min-width: 0; }
 .job-who {
   display: block; font-size: .9rem;

@@ -15,7 +15,16 @@
 
 let nextId = 1;
 
-export const STATES = ['queued', 'running', 'paused', 'cancelled', 'done'];
+/*
+ * `listing` is a job that exists before its work does.
+ *
+ * Reading an author's index takes two paced requests before the first work is
+ * even named, and a queue that shows nothing until then is a queue that looks
+ * broken at exactly the moment somebody is watching it to see whether their
+ * tap did anything. A job is put up the instant it is asked for and stays in
+ * `listing` until the walk tells it what is in it.
+ */
+export const STATES = ['listing', 'queued', 'running', 'paused', 'cancelled', 'done'];
 
 export function createQueue({
   runTask,
@@ -34,6 +43,10 @@ export function createQueue({
   const view = (j) => ({
     id: j.id, author: j.author, part: j.part, state: j.state,
     total: j.workIds.length, done: j.done, added: j.added, failed: j.failed,
+    /* Open means the list is still being read, so `total` is what is known so
+       far rather than what there will be — the difference between a bar that
+       can be trusted and one that slides backwards. */
+    open: Boolean(j.open),
     parallel: j.parallel, retrying: j.retrying ?? null, lastError: j.lastError ?? null,
   });
   const snapshot = () => jobs.map(view);
@@ -46,16 +59,18 @@ export function createQueue({
    * Opening an author twice should not start a second download of the same
    * catalogue. A job for the same author and the same half is the same job.
    */
-  function add({ author, part, workIds }) {
+  function add({ author, part, workIds = [], open = false }) {
     const existing = jobs.find((j) => j.author === author && j.part === part
       && j.state !== 'done' && j.state !== 'cancelled');
     if (existing) {
+      if (open) existing.open = true;
       append(existing.id, workIds);
       return existing.id;
     }
     const job = {
       id: nextId++, author, part, workIds: [...workIds],
-      done: 0, added: 0, failed: 0, state: 'queued', parallel: false,
+      done: 0, added: 0, failed: 0, open,
+      state: open && !workIds.length ? 'listing' : 'queued', parallel: false,
       attempt: 0, retrying: null, lastError: null,
     };
     jobs.push(job);
@@ -79,6 +94,7 @@ export function createQueue({
     const fresh = workIds.filter((w) => !known.has(w));
     if (!fresh.length) return false;
     job.workIds.push(...fresh);
+    if (job.state === 'listing') job.state = 'queued';   // it has something to do now
     announce('grew', job);
     pump();                       // a job that had finished its list resumes
     return true;
@@ -207,13 +223,33 @@ export function createQueue({
     }
 
     if (job.state === 'pausing') job.state = 'paused';
-    else if (job.state === 'running') job.state = 'done';
-    announce('finished', job);
+    /* Out of work but not out of list: it goes back to waiting rather than
+       reporting itself finished, and the next page to land wakes it. */
+    else if (job.state === 'running') job.state = job.open ? 'listing' : 'done';
+    announce(job.state === 'listing' ? 'waiting' : 'finished', job);
     pump();
   }
 
+  /**
+   * The list is complete: whatever is in the job now is all of it.
+   *
+   * Called when a walk ends, however it ended. A job left open by a walk that
+   * failed would sit saying it was still reading for ever.
+   */
+  function seal(id) {
+    const job = find(id);
+    if (!job) return false;
+    job.open = false;
+    if (job.state === 'listing') {
+      job.state = job.done >= job.workIds.length ? 'done' : 'queued';
+      announce(job.state === 'done' ? 'finished' : 'sealed', job);
+      pump();
+    }
+    return true;
+  }
+
   return {
-    add, append, pause, resume, stop, remove, startNow, moveUp, moveDown,
+    add, append, seal, pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
     /** What is left, so a restart resumes rather than starting over. */
     save: () => jobs

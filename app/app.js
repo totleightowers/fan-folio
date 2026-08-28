@@ -1421,12 +1421,20 @@ function paintJobs() {
        happen again. A work only counts here once retrying has been given up
        on, so what is left is deleted, locked to members, or an archive that
        stayed broken — and the last reason is shown when the job ends. */
-    how.textContent = `${job.added} of ${job.total}`
-      + (job.retrying ? ' · archive busy, trying again'
-        : job.failed ? ` · ${job.failed} skipped` : '')
-      + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
-        : job.state === 'paused' ? ' · paused'
-        : job.state === 'cancelled' ? ' · stopped' : ' · waiting');
+    /* Until the index has been read there is no total to count towards, and
+       inventing one — "0 of 0", or a number that grows as pages land and makes
+       the bar slide backwards — is worse than saying plainly that the list is
+       still being read. */
+    const counting = job.state === 'listing' && !job.total;
+    how.textContent = counting
+      ? (job.part === 'works' ? 'reading their works…' : 'reading their bookmarks…')
+      : `${job.added} of ${job.total}${job.open ? '+' : ''}`
+        + (job.retrying ? ' · archive busy, trying again'
+          : job.failed ? ` · ${job.failed} skipped` : '')
+        + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
+          : job.state === 'paused' ? ' · paused'
+          : job.state === 'cancelled' ? ' · stopped'
+          : job.state === 'listing' ? ' · still reading the list' : ' · waiting');
 
     /* How far along, as a bar rather than a badge. A pill saying "downloading"
        spends a third of the row restating a word already in the line above it
@@ -1435,8 +1443,14 @@ function paintJobs() {
     const track = document.createElement('div');
     track.className = 'job-bar';
     const fill = document.createElement('div');
-    fill.style.width = `${job.total ? Math.round((job.done / job.total) * 100) : 0}%`;
-    if (job.state !== 'running') fill.classList.add('idle');
+    if (counting) {
+      /* Nothing is known about how far along this is, so the bar says that
+         rather than sitting at zero looking stalled. */
+      track.classList.add('job-bar-waiting');
+    } else {
+      fill.style.width = `${job.total ? Math.round((job.done / job.total) * 100) : 0}%`;
+      if (job.state !== 'running') fill.classList.add('idle');
+    }
     track.append(fill);
 
     text.append(who, how, track);
@@ -1577,28 +1591,46 @@ async function catchUpOn(name) {
     paintJobs();
     return;
   }
+
+  /*
+   * Both jobs go up before anything is asked of the archive.
+   *
+   * Knowing what is in them takes two paced requests — the profile, then the
+   * first page of the index — and a queue that shows nothing until then looks
+   * like a tap that did not register, at exactly the moment somebody is
+   * watching to see whether it did. They stand there saying they are reading
+   * the list, and fill in as it is read.
+   */
+  const opened = {};
+  for (const part of ['works', 'bookmarks']) {
+    opened[part] = jobs.add({ author: name, part, workIds: [], open: true });
+  }
+  const closeAll = () => { for (const id of Object.values(opened)) jobs.seal(id); };
+
   let counts;
   try {
     counts = parseUserCounts(await archivePage(authorProfileUrl(name)));
   } catch (e) {
     jobError = `${name}: ${e.message}`;
+    closeAll();
     return;
   }
 
   const seen = seenAuthors[name] ?? {};
   for (const part of ['works', 'bookmarks']) {
-    if (currentAuthor !== name) return;
+    if (currentAuthor !== name) { closeAll(); return; }
     const total = counts[part];
     // the page did not say, so there is nothing to compare and we walk
-    if (total != null && seen[part] === total) continue;
+    if (total != null && seen[part] === total) { jobs.seal(opened[part]); continue; }
 
     try {
-      await walkAuthor(name, { listing: part });
+      await walkAuthor(name, { listing: part, jobId: opened[part] });
       seenAuthors[name] = { ...(seenAuthors[name] ?? {}), [part]: total };
       save(AUTHORS_KEY, seenAuthors);
     } catch {
       // recorded for settings; the other half still gets its turn
     }
+    jobs.seal(opened[part]);
     await wait(nextGap());
   }
 }
@@ -1610,9 +1642,8 @@ async function catchUpOn(name) {
  * a page at a time with a pause between, so waiting for the end means minutes
  * of an app that looks like it has done nothing.
  */
-async function walkAuthor(name, { listing = 'works' } = {}) {
+async function walkAuthor(name, { listing = 'works', jobId = null } = {}) {
   const url = listing === 'works' ? authorWorksUrl : authorBookmarksUrl;
-  let jobId = null;
 
   const keep = (works) => {
     saveStubs(asStubs(works));
