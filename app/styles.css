@@ -420,7 +420,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   font: inherit; font-size: .78rem; background: none; border: 0; color: var(--accent); cursor: pointer;
 }
 .rail {
-  display: grid; grid-auto-flow: column; grid-auto-columns: 10.5rem; gap: .6rem;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 12rem; gap: .6rem;
   overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: .3rem;
   scrollbar-width: none; margin: 0 -.7rem; padding-inline: .7rem;
 }
@@ -430,7 +430,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   scroll-snap-align: start; text-align: left; font: inherit; cursor: pointer;
   background: none; border: 1px solid var(--rule); border-radius: 12px;
   padding: .7rem .7rem .6rem .85rem; color: inherit; display: flex; flex-direction: column;
-  min-height: 9.5rem; position: relative; overflow: hidden;
+  min-height: 11.5rem; position: relative; overflow: hidden;
 }
 /* fics have no covers, so each card gets a coloured spine derived from its
    fandom — enough visual difference to find a work by eye on a shelf */
@@ -444,7 +444,17 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 }
 .card .card-by {
   font-family: var(--read-face);
-  font-size: .78rem; color: var(--muted); margin-bottom: .35rem;
+  font-size: .78rem; color: var(--muted); margin-bottom: .4rem;
+}
+/* The card had a gap in the middle of it holding nothing, and a title and an
+   author are not much to go on for a work you have never opened. The summary
+   takes the space that was already there, clamped so every card on a shelf
+   still ends at the same height. */
+.card .card-sum {
+  margin: 0 0 .4rem;
+  font-size: .74rem; line-height: 1.42; color: var(--fg); opacity: .78;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .card .card-fandom {
   font-size: .68rem; color: var(--muted); margin-top: auto;

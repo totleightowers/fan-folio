@@ -2137,7 +2137,11 @@ function workCard(w) {
   card.className = 'card';
   card.style.setProperty('--spine', spineColour(w.fandom || w.title));
   const p = progressOf(w);
+  /* A title and an author name are not much to go on when a shelf is mostly
+     works you have never opened. The space was already there — the card had a
+     gap in the middle of it holding nothing. */
   card.innerHTML = `<div class="card-title"></div><div class="card-by"></div>
+    ${w.summary ? '<p class="card-sum"></p>' : ''}
     <div class="card-fandom"></div>
     <div class="card-foot">${fmt(w.words)} words${w.complete ? '' : ' · WIP'}</div>
     ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>` : ''}`;
@@ -2145,6 +2149,8 @@ function workCard(w) {
   cardTitle.textContent = w.title ?? '(untitled)';
   cardTitle.prepend(...marks(w));
   card.querySelector('.card-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
+  // author-written, so textContent rather than innerHTML, as everywhere else
+  if (w.summary) card.querySelector('.card-sum').textContent = w.summary;
   card.querySelector('.card-fandom').textContent = w.fandom ?? '';
   /*
    * Tapping a work shows the work.
