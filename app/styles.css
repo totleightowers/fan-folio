@@ -1834,6 +1834,15 @@ button:disabled, .opt:disabled {
 }
 .work-summary p { margin: 0 0 .7rem; }
 .work-summary p:last-child { margin-bottom: 0; }
+/* A summary is the author's own HTML, and the archive's stylesheet used to be
+   what tidied it. It is not applied to this page any more, so the few things
+   an author actually puts in one are covered here. */
+.work-summary ul, .work-summary ol { margin: 0 0 .7rem; padding-left: 1.3rem; }
+.work-summary li { margin: 0 0 .2rem; }
+.work-summary a { color: var(--link, var(--accent)); }
+.work-summary blockquote {
+  margin: 0 0 .7rem; padding-left: .8rem; border-left: 2px solid var(--rule);
+}
 
 /* Tags: a small label, then chips with the full width to wrap into. A single
    relationship tag can be longer than the screen, and given a quarter of it
