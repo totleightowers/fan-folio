@@ -912,7 +912,7 @@ function watchRails(root = document) {
 /* Shelves are built after their data arrives, so watching once at startup
    would miss all of them. */
 new MutationObserver(() => watchRails()).observe(document.body, { childList: true, subtree: true });
-addEventListener('resize', () => { for (const r of $$('.rail')) markOverflow(r); }, { passive: true });
+addEventListener('resize', () => onScreenResized(), { passive: true });
 
 /* --------------------------------------------------------------- settings */
 
@@ -2756,8 +2756,17 @@ async function openChapter(workId, number, { transient = false } = {}) {
   requestAnimationFrame(() => {
     if (current.workId === workId && current.chapter === number) window.scrollTo(0, offset);
     updateProgress();
+    readerAnchor = blockAtTop();
   });
   updateProgress();
+
+  /* Opening a work is the thing that puts it on the Continue reading shelf.
+     Nothing recorded that before: the position was written by the scroll
+     handler, so a work opened and read without scrolling — or opened from a
+     shelf and read at the top of a short chapter — left no trace, and the
+     shelf stayed as it was. Written with the offset it is opening at, never
+     zero, so this cannot cost somebody their place. */
+  if (!transient) saveProgress(workId, number, offset);
   collectImages(workId);
 }
 
@@ -2846,8 +2855,57 @@ addEventListener('scroll', () => {
     };
     save(POS_KEY, positions);
     saveProgress(current.workId, current.chapter, window.scrollY);
+    readerAnchor = blockAtTop();     // in case the screen changes shape next
   }, 400);
 }, { passive: true });
+
+/*
+ * Keeping your place when the screen changes shape.
+ *
+ * A phone that folds changes the width of the column mid-chapter, and the
+ * text reflows to a different height — so the pixel offset the reader was
+ * saved at now points somewhere else entirely, usually a screenful or two
+ * out. A paragraph does not move: it is the same paragraph at either width.
+ * So the place is remembered as a paragraph and how far into it you had got,
+ * and that survives a fold, an unfold and a change of type size alike.
+ */
+function blockAtTop() {
+  const blocks = $$('#workskin .userstuff > *');
+  for (let i = 0; i < blocks.length; i++) {
+    const box = blocks[i].getBoundingClientRect();
+    if (box.bottom > 0) {
+      return { index: i, within: box.height ? -box.top / box.height : 0 };
+    }
+  }
+  return null;
+}
+
+function returnToAnchor(anchor) {
+  if (!anchor) return;
+  const block = $$('#workskin .userstuff > *')[anchor.index];
+  if (!block) return;
+  const box = block.getBoundingClientRect();
+  window.scrollTo(0, Math.max(0, window.scrollY + box.top + anchor.within * box.height));
+}
+
+/*
+ * The manifest claims screenSize and screenLayout, so folding does not
+ * recreate the activity — which is what keeps a chapter open and a download
+ * running across a fold. The shell calls this to say the shape changed.
+ */
+function onScreenResized() {
+  for (const r of $$('.rail')) markOverflow(r);
+  if ($('#reader').hidden || !current.workId) return;
+  const anchor = readerAnchor;
+  // after the reflow, not during it
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    returnToAnchor(anchor);
+    updateProgress();
+  }));
+}
+
+let readerAnchor = null;
+window.__resized = onScreenResized;
 
 /* ------------------------------------------------------- feeling like an app */
 
