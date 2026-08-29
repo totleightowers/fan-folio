@@ -1402,6 +1402,32 @@ test('arriving at home rebuilds it', () => {
  * depending on whether you had read it — and a different thing again from the
  * same work in the library, which has always shown the summary.
  */
+/*
+ * A shelf is mostly works you have never opened, and a title with an author
+ * under it does not say what one is. The card already had a gap in the middle
+ * holding nothing.
+ */
+test('a shelf card says what the work is about', () => {
+  const fn = js.slice(js.indexOf('function workCard('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /class="card-sum"/, 'the summary is on the card');
+  assert.match(body, /card\.querySelector\('\.card-sum'\)\.textContent = w\.summary/,
+    'and set as text, because an author wrote it');
+
+  const rule = css.slice(css.indexOf('.card .card-sum {'));
+  assert.match(rule.slice(0, rule.indexOf('}')), /-webkit-line-clamp: 4/,
+    'clamped, so every card on a shelf still ends at the same height');
+});
+
+test('both backends fetch what the card needs', () => {
+  for (const [name, path] of [['native', '../app/api.js'], ['dev server', '../tools/serve.mjs']]) {
+    const src = readFileSync(new URL(path, import.meta.url), 'utf8');
+    const at = src.indexOf('const shelf = (where');
+    const query = src.slice(at, src.indexOf('FROM works w', at));
+    assert.match(query, /w\.summary/, `${name} must select the summary the card shows`);
+  }
+});
+
 test('tapping a work shows the work, wherever it is tapped', () => {
   const card = js.slice(js.indexOf('function workCard('));
   assert.match(card.slice(0, card.indexOf('\n}\n')),
