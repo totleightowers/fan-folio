@@ -45,6 +45,22 @@
 }
 
 * { box-sizing: border-box; }
+
+/*
+ * The page never scrolls sideways.
+ *
+ * A chapter is author-written HTML with an author-written stylesheet applied
+ * unscoped beside it, so anything in it — a table, a wide float, a skin that
+ * sets a width in pixels — can make the document wider than the screen. When
+ * that happens the reading column is centred inside that wider document, and
+ * every line is cut off at both edges with no way to read one without panning
+ * back and forth.
+ *
+ * `clip` rather than `hidden`: hidden makes the element a scroll container,
+ * which breaks the sticky header and the fixed chapter bar. Wide content is
+ * not thrown away — it is given its own scrollbar below.
+ */
+html, body { overflow-x: clip; max-width: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--fg);
   font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -153,6 +169,16 @@ body {
 /* AO3 fics lean on centred and right-aligned text for chat and letters —
    never override alignment the author set */
 #workskin img { max-width: 100%; height: auto; }
+
+/* What is genuinely wider than a phone scrolls within the column instead of
+   taking the page with it: chat logs, ASCII art, newspaper-clipping tables
+   and code blocks are all things authors really do put in fic. */
+#workskin table, #workskin pre, #endnotes table, #endnotes pre {
+  display: block; max-width: 100%; overflow-x: auto;
+}
+/* A URL with no spaces in it is one word, and one word can be wider than a
+   phone. */
+#workskin, #endnotes { overflow-wrap: break-word; }
 #workskin .ar-missing-image {
   display: inline-block; min-width: 8rem; min-height: 2rem; border: 1px dashed var(--rule);
   border-radius: 4px; background: var(--pane);

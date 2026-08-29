@@ -161,6 +161,31 @@ public class MainActivity extends Activity {
         if (web != null) web.evaluateJavascript(js, null);
     }
 
+    /**
+     * The screen changed shape underneath us.
+     *
+     * The manifest claims screenSize, smallestScreenSize and screenLayout, so
+     * folding this phone does not recreate the activity — which is what keeps
+     * the chapter open and the download queue running across a fold. The cost
+     * is that nothing tells the page, so it keeps the width it was laid out
+     * for: a work measured for the unfolded screen stays that wide on the
+     * folded one, and every line is cut off at both edges.
+     */
+    @Override
+    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (web == null) return;
+        web.requestLayout();
+        /* After the view has been measured at its new size, not during: the
+           page is asked to put the reader back where it was, which it can only
+           do once the text has reflowed. */
+        web.post(new Runnable() {
+            @Override public void run() {
+                toPage("window.__resized && window.__resized()");
+            }
+        });
+    }
+
     /** Ask the page to go back; close the app only when it has nowhere left. */
     private void handleBack() {
         if (web == null) { finish(); return; }
@@ -295,6 +320,20 @@ public class MainActivity extends Activity {
         {"has_text", "INTEGER DEFAULT 0"},
     };
 
+    /*
+     * When this app last had the work open.
+     *
+     * A `reading` row is not proof anybody read anything: an import from
+     * Archive Reader writes one for every work marked for later, chapter 1,
+     * offset 0. Without a column that only this app writes there is no way to
+     * tell those from a work actually being read, and "Continue reading" has
+     * to guess — which it did, by asking for chapter 2 or later, so a work
+     * you were partway through the first chapter of never appeared at all.
+     */
+    private static final String[][] READING_COLUMNS = {
+        {"opened_at", "TEXT"},
+    };
+
     /**
      * Bring an older database up to the shape the app queries.
      *
@@ -307,10 +346,15 @@ public class MainActivity extends Activity {
     private void migrate() { migrate(db); }
 
     private void migrate(SQLiteDatabase db) {
+        migrateTable(db, "works", WORKS_COLUMNS);
+        migrateTable(db, "reading", READING_COLUMNS);
+    }
+
+    private void migrateTable(SQLiteDatabase db, String table, String[][] columns) {
         java.util.Set<String> have = new java.util.HashSet<>();
         android.database.Cursor c = null;
         try {
-            c = db.rawQuery("PRAGMA table_info(works)", null);
+            c = db.rawQuery("PRAGMA table_info(" + table + ")", null);
             int name = c.getColumnIndex("name");
             while (c.moveToNext()) have.add(c.getString(name));
         } catch (Exception e) {
@@ -318,12 +362,12 @@ public class MainActivity extends Activity {
         } finally {
             if (c != null) c.close();
         }
-        if (have.isEmpty()) return;              // no works table: an import will make one
+        if (have.isEmpty()) return;              // no such table: an import will make one
 
-        for (String[] col : WORKS_COLUMNS) {
+        for (String[] col : columns) {
             if (have.contains(col[0])) continue;
             try {
-                db.execSQL("ALTER TABLE works ADD COLUMN " + col[0] + " " + col[1]);
+                db.execSQL("ALTER TABLE " + table + " ADD COLUMN " + col[0] + " " + col[1]);
             } catch (Exception e) {
                 // a column that cannot be added must not stop the ones that can
             }
@@ -1354,13 +1398,14 @@ public class MainActivity extends Activity {
             if (db == null) return "{\"error\":\"no database\"}";
             try {
                 db.execSQL(
-                    "INSERT INTO reading (work_id, chapter, offset, chapters_read, updated_at) "
-                  + "VALUES (?,?,?,?,datetime('now')) "
+                    "INSERT INTO reading (work_id, chapter, offset, chapters_read, updated_at, opened_at) "
+                  + "VALUES (?,?,?,?,datetime('now'),datetime('now')) "
                   + "ON CONFLICT(work_id) DO UPDATE SET "
                   + "  chapter = excluded.chapter, "
                   + "  offset = excluded.offset, "
                   + "  chapters_read = max(COALESCE(reading.chapters_read, 0), excluded.chapters_read), "
-                  + "  updated_at = excluded.updated_at",
+                  + "  updated_at = excluded.updated_at, "
+                  + "  opened_at = excluded.opened_at",
                     new Object[]{ workId, chapter, offset, Math.max(0, chapter - 1) });
                 return "{\"ok\":true}";
             } catch (Exception e) {
