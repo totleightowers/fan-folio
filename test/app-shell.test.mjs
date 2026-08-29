@@ -1149,7 +1149,7 @@ test('a page the archive fumbled is asked for again', () => {
 test('one bad page does not lose the pages after it', () => {
   const fn = js.slice(js.indexOf('async function walkAuthor('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  const loop = body.slice(body.indexOf('for (let page = 2'));
+  const loop = body.slice(body.indexOf('for (let page = Math.max(2'));
   assert.match(loop, /try \{[\s\S]*catch \(e\) \{[\s\S]*missed\+\+/,
     'an author with 44 works is three pages, and page two throwing took two of them');
   assert.match(body, /if \(missed\) throw/,
@@ -1374,6 +1374,43 @@ test('one primary action, and the rest are not', () => {
  * with nothing to pop on Library or Search, and it closed the app — one tap
  * to get there, and losing the app to get out.
  */
+/*
+ * Views are kept in the DOM rather than torn down, which is what makes going
+ * back instant and what left Home frozen at whatever it showed when you left
+ * it. Only the Home tab button rebuilt it, so reading a work and coming back
+ * the way you came showed the shelves from before you read it.
+ */
+test('arriving at home rebuilds it', () => {
+  const fn = js.slice(js.indexOf('function show(name, motion'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(name === 'home' && changing\)/,
+    'on arriving, not on every redraw');
+  assert.match(body, /buildHome\(\)/);
+  assert.match(body, /buildStartHere\(\)/);
+});
+
+/*
+ * A job still reading an author's index was dropped on the way out: the list
+ * it had was finished, the pages it had not reached were written down
+ * nowhere, and the whole thing — walk included — was gone on restart.
+ */
+test('a queue still reading its index survives a restart', () => {
+  const src = readFileSync(new URL('../app/core/sync/queue.js', import.meta.url), 'utf8');
+  const save = src.slice(src.indexOf('save: () => jobs'));
+  const body = save.slice(0, save.indexOf('\n  };'));
+  assert.match(body, /open: Boolean\(j\.open\), page: j\.page \?\? 0/,
+    'how far the walk got is part of what is saved');
+  assert.match(body, /\.filter\(\(j\) => j\.workIds\.length \|\| j\.open\)/,
+    'a job with nothing left to fetch but more index to read is still a job');
+
+  const resume = js.slice(js.indexOf('function resumeJobs('));
+  const rbody = resume.slice(0, resume.indexOf('\n}\n'));
+  assert.match(rbody, /fromPage: Math\.max\(1, Number\(job\.page\) \|\| 0\)/,
+    'and it carries on from the page after the last one it finished');
+  assert.match(rbody, /finally\(\(\) => jobs\.seal\(id\)\)/,
+    'however that walk ends, the job is closed rather than left reading for ever');
+});
+
 test('back out of a tab goes home, not out of the app', () => {
   const fn = js.slice(js.indexOf('window.__onBack = () => {'));
   const body = fn.slice(0, fn.indexOf('\n};'));

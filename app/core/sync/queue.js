@@ -70,6 +70,9 @@ export function createQueue({
     const job = {
       id: nextId++, author, part, workIds: [...workIds],
       done: 0, added: 0, failed: 0, open,
+      /* How far through the index the walk had read, so a restart carries on
+         from the next page rather than reading the whole thing again. */
+      page: 0, pages: null,
       state: open && !workIds.length ? 'listing' : 'queued', parallel: false,
       attempt: 0, retrying: null, lastError: null,
     };
@@ -236,6 +239,16 @@ export function createQueue({
    * Called when a walk ends, however it ended. A job left open by a walk that
    * failed would sit saying it was still reading for ever.
    */
+  /** The walk reporting where it has got to, so a restart can pick it up. */
+  function note(id, { page, pages } = {}) {
+    const job = find(id);
+    if (!job) return false;
+    if (page != null) job.page = page;
+    if (pages != null) job.pages = pages;
+    announce('noted', job);
+    return true;
+  }
+
   function seal(id) {
     const job = find(id);
     if (!job) return false;
@@ -249,11 +262,23 @@ export function createQueue({
   }
 
   return {
-    add, append, seal, pause, resume, stop, remove, startNow, moveUp, moveDown,
+    add, append, note, seal, pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
-    /** What is left, so a restart resumes rather than starting over. */
+    /**
+     * What is left, so a restart resumes rather than starting over.
+     *
+     * A job still reading its index is kept even with nothing left to fetch.
+     * It used to be dropped: the list it had was finished, the pages it had
+     * not read yet were not written down anywhere, and the whole job — walk
+     * included — disappeared when the app was closed.
+     */
     save: () => jobs
       .filter((j) => j.state !== 'done' && j.state !== 'cancelled')
-      .map((j) => ({ author: j.author, part: j.part, workIds: j.workIds.slice(j.done) })),
+      .map((j) => ({
+        author: j.author, part: j.part,
+        workIds: j.workIds.slice(j.done),
+        open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
+      }))
+      .filter((j) => j.workIds.length || j.open),
   };
 }
