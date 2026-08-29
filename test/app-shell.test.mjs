@@ -1358,6 +1358,33 @@ test('one primary action, and the rest are not', () => {
  * page is meant to hold to everywhere, and each is one a later edit could
  * quietly undo without breaking anything that would show up in a test run.
  */
+/*
+ * The work page is built by this app and dressed by this app's stylesheet.
+ *
+ * It used to be the archive's markup shown under the archive's stylesheet,
+ * and the class that allowed that stayed behind after the page was rebuilt.
+ * The vendored sheet sets `.ao3page h3` to Georgia at 1.286em, which outranks
+ * a plain class selector, so every section label on the page came out as a
+ * large serif headline instead of the small quiet label it is meant to be —
+ * and no amount of adjusting `.group` could have changed that, because
+ * `.group` was never the rule that won.
+ */
+test('the work page is not dressed by the archive', () => {
+  const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
+  const detail = html.match(/<section id="detail"[^>]*>/)[0];
+  assert.ok(!/ao3page/.test(detail),
+    'the vendored stylesheet outranks the app\'s own labels on this page');
+
+  const reader = html.match(/<section id="reader"[^>]*>/)[0];
+  assert.match(reader, /ao3page/,
+    'the reader keeps it: that is where the archive\'s words and an author skin go');
+
+  /* The guard is only worth having while the rule it guards against exists. */
+  const vendored = readFileSync(new URL('../app/ao3-work.css', import.meta.url), 'utf8');
+  assert.match(vendored, /\.ao3page h3 \{[^}]*font-size/,
+    'if this ever stops setting a heading size, this test is measuring nothing');
+});
+
 test('a work\'s tags are not fenced', () => {
   const rule = css.slice(css.indexOf('.work-tags .chip {'));
   const body = rule.slice(0, rule.indexOf('}'));
