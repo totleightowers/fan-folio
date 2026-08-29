@@ -248,6 +248,24 @@ export function parseWorkMeta(html) {
   const chapters = stat('chapters') ?? '';
   const [done, planned] = chapters.split('/');
 
+  /*
+   * A work is finished when it has as many chapters as it said it would.
+   *
+   * Going by the word "Completed" alone was wrong for a whole class of work.
+   * The archive prints a Completed date only where there is one to print —
+   * that is, where the work was updated after it was posted. A one-shot
+   * posted finished has only a Published date, so every single-chapter work
+   * in the library was being called a work in progress. It was a third of
+   * mine.
+   *
+   * Chapters: 1/1 is the archive's own statement that a work is done, and it
+   * is the one it puts on its listings.
+   */
+  const chaptersDone = num(done);
+  const chaptersPlanned = planned && planned.trim() !== '?' ? num(planned) : null;
+  const allChaptersPosted = chaptersPlanned != null && chaptersDone != null
+    && chaptersDone >= chaptersPlanned;
+
   return {
     rating: tagsOf('rating')[0] ?? null,
     warnings: tagsOf('warning'),
@@ -261,10 +279,10 @@ export function parseWorkMeta(html) {
     published: stat('published'),
     // a finished work says Completed; one in progress says Updated
     updated: stat('status') ?? stat('published'),
-    complete: /Completed/i.test(stats),
+    complete: /Completed/i.test(stats) || allChaptersPosted,
     words: num(stat('words')),
-    chapters: num(done),
-    chaptersPlanned: planned && planned.trim() !== '?' ? num(planned) : null,
+    chapters: chaptersDone,
+    chaptersPlanned,
     kudos: num(stat('kudos')),
     hits: num(stat('hits')),
     bookmarkCount: num(stat('bookmarks')),
