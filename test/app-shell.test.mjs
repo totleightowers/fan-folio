@@ -1002,6 +1002,80 @@ test('a list comes back a list', () => {
  * were redrawn only when the whole job ended — so the library grew all
  * afternoon while the home screen showed what it had shown at the start.
  */
+/*
+ * A chapter is author-written HTML with an author-written stylesheet applied
+ * unscoped beside it. 195 works in my library carry a skin. Any of them can
+ * make the document wider than the screen, and when that happens the reading
+ * column centres inside the wider document and every line is cut at both
+ * edges.
+ */
+/*
+ * A phone that folds changes the width of the column mid-chapter. The
+ * manifest claims screenSize and screenLayout so the activity is not
+ * recreated — which is what keeps the chapter open and the queue running —
+ * and the cost is that nothing told the page, so it kept the width it was
+ * laid out for and every line was cut at both edges.
+ */
+test('the page is told when the screen changes shape', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.match(java, /public void onConfigurationChanged\(/,
+    'the manifest claims the config change, so the activity has to handle it');
+  const fn = java.slice(java.indexOf('public void onConfigurationChanged('));
+  const body = fn.slice(0, fn.indexOf('\n    }\n'));
+  assert.match(body, /super\.onConfigurationChanged/);
+  assert.match(body, /window\.__resized/, 'and tell the page, which is what reflows');
+  assert.match(js, /window\.__resized = onScreenResized/, 'which the page answers to');
+});
+
+test('a fold does not lose your place', () => {
+  const fn = js.slice(js.indexOf('function blockAtTop('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /getBoundingClientRect/);
+  assert.match(body, /index: i, within/,
+    'a pixel offset means nothing at a different width; a paragraph is the same paragraph');
+});
+
+/*
+ * A `reading` row is not proof anybody read anything — an import writes one
+ * for every work marked for later. So "Continue reading" asked for chapter 2
+ * or later, and a work you were partway through the first chapter of never
+ * appeared: most of them, and every single-chapter work there is.
+ */
+test('opening a work is what puts it on the continue shelf', () => {
+  const fn = js.slice(js.indexOf('async function openChapter('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(!transient\) saveProgress\(workId, number, offset\)/,
+    'nothing recorded an open before; only a scroll did');
+  assert.ok(!/saveProgress\(workId, number, 0\)/.test(body),
+    'and it is written at the offset it opens to, so it cannot cost somebody their place');
+});
+
+test('both backends agree on what continue reading means', () => {
+  const shelfOf = (src_) => {
+    const at = src_.indexOf("key: 'reading', title: 'Continue reading'");
+    return src_.slice(at, src_.indexOf('},', at)).replace(/\s+/g, ' ');
+  };
+  const native = shelfOf(readFileSync(new URL('../app/api.js', import.meta.url), 'utf8'));
+  const server = shelfOf(readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8'));
+  assert.match(native, /r\.opened_at IS NOT NULL/, 'opened here counts');
+  assert.match(native, /COALESCE\(r\.opened_at, r\.updated_at\) DESC/,
+    'most recently opened first, whichever shelf it was opened from');
+  assert.equal(native, server, 'the two backends must not drift on this');
+});
+
+test('nothing in a chapter can make the page scroll sideways', () => {
+  const rule = css.slice(css.indexOf('html, body {'));
+  const body_ = rule.slice(0, rule.indexOf('}'));
+  assert.match(body_, /overflow-x: clip/,
+    'clip, not hidden: hidden makes a scroll container and the sticky header stops sticking');
+
+  const wide = css.slice(css.indexOf('#workskin table, #workskin pre'));
+  assert.match(wide.slice(0, wide.indexOf('}')), /overflow-x: auto/,
+    'and what is genuinely wide scrolls in its own box rather than being thrown away');
+  assert.match(css, /#workskin, #endnotes \{ overflow-wrap: break-word; \}/,
+    'a URL is one word and one word can be wider than a phone');
+});
+
 test('the shelves keep up with what is arriving', () => {
   const fn = js.slice(js.indexOf('function freshen('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));

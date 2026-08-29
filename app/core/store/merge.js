@@ -94,8 +94,13 @@ export const MERGE_STEPS = [
   /* Reading positions only where the device has none. Somewhere in a work beats
      a record of never having opened it, and the device is where the reading
      actually happened. */
-  `INSERT INTO reading (work_id, chapter, chapters_read, marked_later, updated_at)
-     SELECT r.work_id, r.chapter, r.chapters_read, r.marked_later, r.updated_at
+  /* offset and opened_at travel with the rest: without the first, restoring a
+     backup puts you at the top of a chapter you were halfway down, and without
+     the second every work falls off the Continue reading shelf. */
+  `INSERT INTO reading (work_id, chapter, offset, chapters_read, marked_later,
+                        updated_at, opened_at)
+     SELECT r.work_id, r.chapter, r.offset, r.chapters_read, r.marked_later,
+            r.updated_at, r.opened_at
        FROM incoming.reading r
       WHERE NOT EXISTS (SELECT 1 FROM reading m WHERE m.work_id = r.work_id)`,
 ];

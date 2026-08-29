@@ -135,8 +135,17 @@ function home() {
     },
     shelves: [
       { key: 'reading', title: 'Continue reading',
-        works: shelf('(COALESCE(r.chapters_read,0) > 0 OR COALESCE(r.chapter,0) > 1) '
-          + 'AND COALESCE(r.chapters_read,0) < w.chapter_count', 'r.updated_at DESC') },
+        works: shelf(
+          /* Anything this app has had open, plus whatever an import said was
+             already part-read, minus what is finished. Asking for chapter 2 or
+             later — as this did — meant a work you were halfway through the
+             first chapter of never reached the shelf, which is most of them
+             and every one-chapter work there is. */
+          '(r.opened_at IS NOT NULL OR COALESCE(r.chapters_read,0) > 0 '
+          + 'OR COALESCE(r.chapter,0) > 1) '
+          + 'AND COALESCE(r.chapters_read,0) < w.chapter_count',
+          /* Most recently opened first, whichever shelf it was opened from. */
+          'COALESCE(r.opened_at, r.updated_at) DESC') },
       { key: 'later', title: 'Marked for later',
         works: shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
       { key: 'added', title: 'Recently added',

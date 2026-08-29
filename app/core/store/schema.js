@@ -150,7 +150,11 @@ CREATE TABLE IF NOT EXISTS reading (
   chapter_count  INTEGER,
   marked_later   INTEGER DEFAULT 0,
   imported_from  TEXT,
-  updated_at     TEXT
+  updated_at     TEXT,
+  -- when this app last had it open. A row here is not proof of reading: an
+  -- import writes one for every work marked for later. This column is only
+  -- ever written by opening a chapter, so it is what tells the two apart.
+  opened_at      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
