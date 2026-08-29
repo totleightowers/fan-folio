@@ -461,7 +461,7 @@ function workRow(w) {
   }
 
   const act = {
-    open: () => (p ? openChapter(w.work_id, w.at_chapter ?? 1) : openChapter(w.work_id, 1)),
+    open: () => openChapter(w.work_id, p ? (w.at_chapter ?? 1) : 1),
     details: () => openWork(w.work_id),
     // the one place the app leaves itself: the work as AO3 has it now
     ao3: () => window.open(`https://archiveofourown.org/works/${w.work_id}`, '_blank', 'noopener'),
@@ -2146,7 +2146,16 @@ function workCard(w) {
   cardTitle.prepend(...marks(w));
   card.querySelector('.card-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
   card.querySelector('.card-fandom').textContent = w.fandom ?? '';
-  card.onclick = () => (p ? openChapter(w.work_id, w.at_chapter ?? 1) : openWork(w.work_id));
+  /*
+   * Tapping a work shows the work.
+   *
+   * This card used to go straight into the reader when there was progress and
+   * to the summary when there was not, so the same tap did two different
+   * things depending on whether you had read it — and a different thing again
+   * from tapping the same work in the library, which has always shown the
+   * summary. Continue and Read are the ways into the reader, and they say so.
+   */
+  card.onclick = () => openWork(w.work_id);
   return card;
 }
 
