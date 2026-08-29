@@ -1392,6 +1392,32 @@ public class MainActivity extends Activity {
          * Chapters before the current one count as read, which is monotonic
          * and cannot go backwards if somebody flicks to an earlier chapter.
          */
+        /**
+         * This app had the work open. Nothing else.
+         *
+         * Kept apart from saveProgress deliberately. Opening a work from a
+         * search result is a peek: it must not move the bookmark, because
+         * jumping to a passage two chapters back and then leaving should not
+         * cost somebody the place they had reached. But it is still reading,
+         * and it still belongs at the front of Continue reading. Being opened
+         * and being positioned are two facts, so they are two calls, and only
+         * the second is skipped for a peek.
+         */
+        @JavascriptInterface
+        public String markOpened(String workId) {
+            mustBeOurPage();
+            if (db == null) return "{\"error\":\"no database\"}";
+            try {
+                db.execSQL(
+                    "INSERT INTO reading (work_id, opened_at) VALUES (?, datetime('now')) "
+                  + "ON CONFLICT(work_id) DO UPDATE SET opened_at = excluded.opened_at",
+                    new Object[]{ workId });
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
         @JavascriptInterface
         public String saveProgress(String workId, int chapter, double offset) {
             mustBeOurPage();

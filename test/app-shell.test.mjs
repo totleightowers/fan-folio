@@ -1041,6 +1041,30 @@ test('a fold does not lose your place', () => {
  * or later, and a work you were partway through the first chapter of never
  * appeared: most of them, and every single-chapter work there is.
  */
+/*
+ * Opened is opened. Where you are and whether you have it open are two
+ * different facts, and only the first is worth protecting from a glance.
+ */
+test('a peek from a search still counts as having opened the work', () => {
+  const fn = js.slice(js.indexOf('async function openChapter('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  const opened = body.indexOf('markOpened(workId)');
+  assert.ok(opened > -1, 'the open is recorded however the reader arrived');
+  assert.ok(!/if \(!transient\) markOpened/.test(body),
+    'only the position is skipped for a peek, never the fact of opening');
+});
+
+test('a glance expires into reading', () => {
+  const start = js.indexOf('posTimer = setTimeout(');
+  const body = js.slice(start, js.indexOf('}, 400);', start));
+  assert.match(body, /Math\.abs\(window\.scrollY - transientFrom\) > window\.innerHeight/,
+    'arriving from a search and then reading for an hour saved nothing at all');
+  assert.match(body, /!transientForever/,
+    'except an archived version, whose offsets point at words you no longer have');
+  const archive = js.slice(js.indexOf('viewingArchive = true;'));
+  assert.match(archive.slice(0, 400), /transientForever = true/);
+});
+
 test('opening a work is what puts it on the continue shelf', () => {
   const fn = js.slice(js.indexOf('async function openChapter('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));

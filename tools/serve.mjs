@@ -234,12 +234,24 @@ createServer(async (req, res) => {
       const offset = Number(url.searchParams.get('offset') || 0);
       if (!workId) return json(res, { error: 'no work' }, 400);
       db.prepare(`
-        INSERT INTO reading (work_id, chapter, offset, chapters_read, updated_at)
-        VALUES (?,?,?,?,datetime('now'))
+        INSERT INTO reading (work_id, chapter, offset, chapters_read, updated_at, opened_at)
+        VALUES (?,?,?,?,datetime('now'),datetime('now'))
         ON CONFLICT(work_id) DO UPDATE SET
           chapter = excluded.chapter, offset = excluded.offset,
           chapters_read = max(COALESCE(reading.chapters_read, 0), excluded.chapters_read),
-          updated_at = excluded.updated_at`).run(workId, chapter, offset, Math.max(0, chapter - 1));
+          updated_at = excluded.updated_at,
+          opened_at = excluded.opened_at`).run(workId, chapter, offset, Math.max(0, chapter - 1));
+      return json(res, { ok: true });
+    }
+
+    /* Opened, without saying where in it — a peek from a search result must
+       not move the bookmark, but it is still reading. */
+    if (p === '/api/opened' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId');
+      if (!workId) return json(res, { error: 'no work' }, 400);
+      db.prepare(`
+        INSERT INTO reading (work_id, opened_at) VALUES (?, datetime('now'))
+        ON CONFLICT(work_id) DO UPDATE SET opened_at = excluded.opened_at`).run(workId);
       return json(res, { ok: true });
     }
 
