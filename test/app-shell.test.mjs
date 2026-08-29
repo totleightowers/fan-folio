@@ -1113,12 +1113,14 @@ test('nothing in a chapter can make the page scroll sideways', () => {
 });
 
 test('the shelves keep up with what is arriving', () => {
-  const fn = js.slice(js.indexOf('function freshen('));
+  const fn = js.slice(js.indexOf('async function refresh('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /hidden \|\| window\.scrollY < 40/,
+  assert.match(body, /force \|\| \$\(`#\$\{view_\}`\)\.hidden \|\| window\.scrollY < 40/,
     'a screen being read is not rebuilt under the reader; a hidden one is rebuilt freely');
-  assert.match(body, /buildHome\(\)/);
-  assert.match(body, /loadMore\(true\)/);
+  assert.match(body, /buildHome\(\), buildStartHere\(\)/,
+    'the tiles are rebuilt with the shelves — forgetting them is what made this inconsistent');
+  assert.match(body, /works && settled\('library'\)/,
+    'and the list only when the set of works has actually changed');
 
   const soon = js.slice(js.indexOf('function freshenSoon('));
   assert.match(soon.slice(0, soon.indexOf('\n}\n')), /if \(freshenTimer\) return/,
@@ -1184,10 +1186,10 @@ test('resuming asks about a whole job at once', () => {
 test('the home screen is not built last', () => {
   const fn = js.slice(js.indexOf('async function start('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  const home = body.indexOf('buildHome()');
+  const painted = body.indexOf('refresh(');
   const chores = body.indexOf('resumeJobs()');
-  assert.ok(home > -1 && chores > -1);
-  assert.ok(home < chores,
+  assert.ok(painted > -1 && chores > -1);
+  assert.ok(painted < chores,
     'the screen the reader is looking at comes before the housekeeping');
   assert.match(body, /try \{ chore\(\); \} catch/,
     'and one chore failing does not take the rest of the startup with it');
@@ -1383,10 +1385,23 @@ test('one primary action, and the rest are not', () => {
 test('arriving at home rebuilds it', () => {
   const fn = js.slice(js.indexOf('function show(name, motion'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /if \(name === 'home' && changing\)/,
-    'on arriving, not on every redraw');
-  assert.match(body, /buildHome\(\)/);
-  assert.match(body, /buildStartHere\(\)/);
+  assert.match(body, /if \(name === 'home' && changing\) refresh\(\{ force: true \}\)/,
+    'on arriving, not on every redraw, and by the same route as everything else');
+});
+
+/*
+ * Six functions used to put the screens back in step with the library, each
+ * written when it was needed and no two agreeing: three rebuilt the shelves
+ * and forgot the tiles above them, so Surprise me and Never opened went stale
+ * on some routes and not others. That is why the app felt different depending
+ * on how you got somewhere.
+ */
+test('there is one way to put the screens back in step', () => {
+  const calls = [...js.matchAll(/buildHome\(\)/g)].length;
+  assert.equal(calls, 2,
+    'its definition and the one function that calls it, and nothing else');
+  const startHere = [...js.matchAll(/buildStartHere\(\)/g)].length;
+  assert.equal(startHere, 2, 'and the tiles are never rebuilt on their own');
 });
 
 /*
