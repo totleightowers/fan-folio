@@ -1369,6 +1369,29 @@ test('one primary action, and the rest are not', () => {
  * and no amount of adjusting `.group` could have changed that, because
  * `.group` was never the rule that won.
  */
+/*
+ * The three tabs are peers, so opening one empties the stack. That left Back
+ * with nothing to pop on Library or Search, and it closed the app — one tap
+ * to get there, and losing the app to get out.
+ */
+test('back out of a tab goes home, not out of the app', () => {
+  const fn = js.slice(js.indexOf('window.__onBack = () => {'));
+  const body = fn.slice(0, fn.indexOf('\n};'));
+  assert.match(body, /if \(goBack\(\)\) return true/, 'a real stack entry still wins');
+  assert.match(body, /if \(backLeavesTab\(\)\) \{ show\('home', 'back'\); return true; \}/,
+    'and a tab with nothing behind it falls back to Home');
+  assert.match(body, /return false;/, 'Home with nothing behind it still leaves');
+
+  const test_ = js.slice(js.indexOf('const backLeavesTab ='));
+  assert.match(test_.slice(0, test_.indexOf(';')),
+    /TABBED\.has\(showing\(\)\) && showing\(\) !== 'home'/,
+    'only the tabs, and never Home itself');
+
+  const start = js.slice(js.indexOf('window.__onBackStart = () => {'));
+  assert.match(start.slice(0, start.indexOf('\n};')), /!backLeavesTab\(\)/,
+    'the gesture previews the move home rather than previewing a close');
+});
+
 test('the work page is not dressed by the archive', () => {
   const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
   const detail = html.match(/<section id="detail"[^>]*>/)[0];
