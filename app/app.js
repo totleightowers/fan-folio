@@ -19,7 +19,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, pendingLink } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1308,7 +1308,10 @@ async function openVersion(workId, versionId) {
   if (token !== pending) return;
 
   viewingArchive = true;
-  readingIsTransient = true;          // an old copy must not move the bookmark
+  /* An old copy of the text: an offset into it does not point at the same
+     words in the copy you have now, so this one never expires. */
+  readingIsTransient = true;
+  transientForever = true;
   current = { workId, chapter: v.number, count: v.number };
 
   $('#workskin-css').textContent = v.css || '';
@@ -2603,7 +2606,19 @@ async function openWork(workId) {
   detail('Language', w.language ? languageName(w.language) : null);
   detail('Published', w.published);
   detail('Updated', w.updated && w.updated !== w.published ? w.updated : null);
-  if (details.children.length) box.append(details);
+  if (details.children.length) {
+    /* Every other block on this page announces itself with a small label
+       above it. This one never did, so five numbers in a bare grid butted
+       straight up against the last row of tag chips and read as something
+       the page had forgotten to finish. */
+    const head = document.createElement('h3');
+    head.className = 'group';
+    head.textContent = 'On the archive';
+    const section = document.createElement('section');
+    section.className = 'work-detail-block';
+    section.append(head, details);
+    box.append(section);
+  }
 
   /*
    * One control, not a chapter per row.
@@ -2665,12 +2680,32 @@ async function fetchOnArrival(workId, token) {
 
 let current = { workId: null, chapter: 1, count: 1 };
 
-/* True while reading somewhere the reader jumped to from a search result.
-   Their bookmark stays where it was until they navigate deliberately. */
+/*
+ * A glance stays a glance; reading becomes reading.
+ *
+ * Jumping to a passage from a search result should not move the bookmark. You
+ * are at chapter eleven, you search for a line, you land in chapter three,
+ * you read the paragraph and leave — and you should still be at chapter
+ * eleven. That much was right.
+ *
+ * What was wrong is that the flag was set when the chapter opened and cleared
+ * only by opening another one deliberately, so it was a statement about how
+ * you arrived rather than about what you did next. Arrive from a search and
+ * then read the work for an hour, and nothing was written down all hour.
+ *
+ * So it expires. Once you have read about a screenful past where you landed,
+ * this is not a glance any more and the place starts being kept. Viewing an
+ * archived version never expires: that is an older copy of the text, and an
+ * offset into it does not mean anything in the copy you have now.
+ */
 let readingIsTransient = false;
+let transientFrom = 0;
+let transientForever = false;
 
 async function openChapter(workId, number, { transient = false } = {}) {
   readingIsTransient = transient;
+  transientFrom = window.scrollY;
+  transientForever = false;
   viewingArchive = false;
   $('#archive-banner').hidden = true;
   const token = ++pending;
@@ -2760,12 +2795,18 @@ async function openChapter(workId, number, { transient = false } = {}) {
   });
   updateProgress();
 
-  /* Opening a work is the thing that puts it on the Continue reading shelf.
-     Nothing recorded that before: the position was written by the scroll
-     handler, so a work opened and read without scrolling — or opened from a
-     shelf and read at the top of a short chapter — left no trace, and the
-     shelf stayed as it was. Written with the offset it is opening at, never
-     zero, so this cannot cost somebody their place. */
+  /*
+   * Opening a work is the thing that puts it on the Continue reading shelf,
+   * and nothing recorded it before: only the scroll handler wrote anything,
+   * so a work opened and read without scrolling left no trace.
+   *
+   * Being opened and being positioned are two different facts, so they are
+   * two different calls. A peek from a search result must not move the
+   * bookmark — jumping to a passage two chapters back and leaving should not
+   * cost somebody the place they had reached — but it is still reading, and
+   * it still belongs at the front of the shelf. Only the position is skipped.
+   */
+  markOpened(workId);
   if (!transient) saveProgress(workId, number, offset);
   collectImages(workId);
 }
@@ -2848,7 +2889,12 @@ addEventListener('scroll', () => {
   updateProgress();
   clearTimeout(posTimer);
   posTimer = setTimeout(() => {
-    // a search excursion must not move the reader's bookmark
+    /* Far enough past where the search dropped you that this is no longer a
+       glance at a passage but reading the work. */
+    if (readingIsTransient && !transientForever
+        && Math.abs(window.scrollY - transientFrom) > window.innerHeight) {
+      readingIsTransient = false;
+    }
     if (readingIsTransient) return;
     positions[current.workId] = {
       chapter: current.chapter, y: Math.round(window.scrollY), at: Date.now(),
