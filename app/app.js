@@ -219,10 +219,7 @@ function show(name, motion = 'none') {
    * The queries behind it are a handful of indexed reads, and this only fires
    * on actually arriving, not on every redraw.
    */
-  if (name === 'home' && changing) {
-    buildHome().catch(() => {});
-    buildStartHere().catch(() => {});
-  }
+  if (name === 'home' && changing) refresh({ force: true });
   for (const b of $$('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === (name === 'results' ? 'search' : name));
   }
@@ -1402,14 +1399,38 @@ const FRESHEN_EVERY_MS = 20000;
 let freshenAt = 0;
 let freshenTimer = null;
 
+/**
+ * Put the screens back in step with the library. One way to do it.
+ *
+ * There were six of these, written one at a time as each was needed, and no
+ * two of them agreed. Three rebuilt the shelves and forgot the tiles above
+ * them, so Surprise me and Never opened went stale on some routes and not
+ * others. Two reloaded the library list unconditionally and one would not.
+ * Every one of them was individually reasonable and together they are why the
+ * app behaves differently depending on how you got somewhere.
+ *
+ *   works  the set of works has changed, so the library list is stale too
+ *   force  redraw even a screen being looked at, because what is on it is
+ *          now wrong — a filter changed, or a work was just added
+ *
+ * Without `force` a screen is only rebuilt while it is still at the top or
+ * out of sight: replacing shelves resets where their rails were scrolled to,
+ * and reloading the list sends it back to its first row, neither of which is
+ * worth doing underneath somebody mid-scroll.
+ */
+async function refresh({ works = false, force = false } = {}) {
+  const settled = (view_) => force || $(`#${view_}`).hidden || window.scrollY < 40;
+  const painting = [];
+  if (settled('home')) painting.push(buildHome(), buildStartHere());
+  if (works && settled('library') && !loading) { offset = 0; painting.push(loadMore(true)); }
+  await Promise.allSettled(painting);
+}
+
 function freshen() {
   freshenAt = Date.now();
   clearTimeout(freshenTimer);
   freshenTimer = null;
-
-  const settled = (view_) => $(`#${view_}`).hidden || window.scrollY < 40;
-  if (settled('home')) buildHome().catch(() => {});
-  if (settled('library') && !loading) { offset = 0; loadMore(true).catch(() => {}); }
+  refresh({ works: true });
 }
 
 function freshenSoon() {
@@ -1923,8 +1944,7 @@ async function syncBookmarks() {
         syncSay(`Fetched ${n} of ${total}${done < total ? '…' : ''}`),
     });
 
-    offset = 0;
-    await Promise.all([loadMore(true), buildHome().catch(() => {})]);
+    await refresh({ works: true, force: true });
     tick('commit');
     syncSay(`Added ${added.length}`
       + (failed.length ? `, ${failed.length} could not be fetched.` : '.')
@@ -3207,7 +3227,7 @@ for (const b of $$('#tabs button')) {
     if (tab === 'search') { show('results', 'lateral'); $('#q').focus(); return; }
     show(tab, 'lateral');
     if (tab === 'library' && !offset) loadMore(true);
-    if (tab === 'home') { buildHome(); buildStartHere(); }
+    // Home is refreshed by show(), the same way arriving at it any other way is
   };
 }
 
@@ -3276,8 +3296,7 @@ async function submitAddWork() {
     }
 
     // the library and home shelves are both stale now
-    offset = 0;
-    await Promise.all([loadMore(true), buildHome().catch(() => {})]);
+    await refresh({ works: true, force: true });
     setTimeout(() => {
       closeSheet(addDialog);
       if (out.workId) openWork(out.workId);
@@ -3313,8 +3332,7 @@ window.__openLink = async (link) => {
   toast('Fetching from the archive…');
   try {
     const out = await addWork(link);
-    offset = 0;
-    await Promise.all([loadMore(true), buildHome().catch(() => {})]);
+    await refresh({ works: true, force: true });
     tick('commit');
 
     if (out.kind === 'series') {
@@ -3386,7 +3404,7 @@ async function start() {
    * redraw it. None of that housekeeping is worth a moment of empty screen,
    * and none of it needs to have finished for home to be right.
    */
-  const painted = Promise.all([buildHome(), buildStartHere()]);
+  const painted = refresh({ force: true });
 
   /* Each chore stands on its own: one of them failing is not a reason for the
      rest not to run, and never a reason to take the screen down with it. */
