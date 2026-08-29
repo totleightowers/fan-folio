@@ -203,7 +203,21 @@
   </section>
 
   <section id="results" class="view" hidden></section>
-  <section id="detail" class="view ao3page" hidden></section>
+  <!--
+      No ao3page here.
+
+      The work page used to be the archive's own markup, dressed by the
+      archive's own stylesheet, and this class is what let that in. It has been
+      built by the app since it was rebuilt, and the vendored sheet was still
+      being applied over the top of it: .ao3page h3 sets Georgia at 1.286em,
+      which outranks a plain class, so every section label on the page — the
+      tag headings, the archive's numbers — came out as large serif headlines
+      instead of the small quiet labels they are meant to be.
+
+      The reader below still carries it, and should: that is where the
+      archive's own words and an author's own skin are shown.
+  -->
+  <section id="detail" class="view" hidden></section>
 
   <section id="reader" class="view ao3page" hidden>
     <style id="workskin-css"></style>
