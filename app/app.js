@@ -206,6 +206,23 @@ function show(name, motion = 'none') {
   }
   $('#back').hidden = stack.depth === 0;
   $('#tabs').hidden = !TABBED.has(name);
+
+  /*
+   * Arriving at Home rebuilds it.
+   *
+   * Views are kept in the DOM rather than torn down, which is what makes
+   * going back instant — and what left Home showing whatever it showed when
+   * you left it. Only the Home tab button rebuilt it, so reading a work and
+   * coming back the way you came showed shelves from before you read it, and
+   * the only way to see the change was to leave the app and return.
+   *
+   * The queries behind it are a handful of indexed reads, and this only fires
+   * on actually arriving, not on every redraw.
+   */
+  if (name === 'home' && changing) {
+    buildHome().catch(() => {});
+    buildStartHere().catch(() => {});
+  }
   for (const b of $$('#tabs button')) {
     b.classList.toggle('on', b.dataset.tab === (name === 'results' ? 'search' : name));
   }
@@ -1566,9 +1583,36 @@ function heldAmong(ids) {
 function resumeJobs() {
   for (const job of load(JOBS_KEY, [])) {
     const ids = (job.workIds ?? []).map(String);
-    const held = heldAmong(ids);
-    const left = ids.filter((id) => !held.has(id));
-    if (left.length) jobs.add({ author: job.author, part: job.part, workIds: left });
+    let left = ids;
+    try {
+      const held = heldAmong(ids);
+      left = ids.filter((id) => !held.has(id));
+    } catch {
+      /* Asking what is already downloaded is an optimisation. Failing at it
+         is not a reason to abandon somebody's queue — the worst it costs is
+         fetching something twice. */
+    }
+    if (!left.length && !job.open) continue;
+
+    const id = jobs.add({
+      author: job.author, part: job.part, workIds: left, open: Boolean(job.open),
+    });
+
+    /*
+     * A job that was still reading an index goes back to reading it, from the
+     * page after the last one it finished. Closing the app used to lose the
+     * walk entirely: what it had already queued was kept, and the pages it
+     * had not reached yet were simply forgotten.
+     */
+    if (job.open && isNative && signedIn()) {
+      walkAuthor(job.author, {
+        listing: job.part, jobId: id,
+        fromPage: Math.max(1, Number(job.page) || 0),
+        knownPages: job.pages ?? null,
+      }).catch(() => {}).finally(() => jobs.seal(id));
+    } else if (job.open) {
+      jobs.seal(id);          // nothing can carry the walk on, so close it
+    }
   }
 }
 
@@ -1692,7 +1736,8 @@ async function catchUpOn(name) {
  * a page at a time with a pause between, so waiting for the end means minutes
  * of an app that looks like it has done nothing.
  */
-async function walkAuthor(name, { listing = 'works', jobId = null } = {}) {
+async function walkAuthor(name, { listing = 'works', jobId = null,
+                                  fromPage = 1, knownPages = null } = {}) {
   const url = listing === 'works' ? authorWorksUrl : authorBookmarksUrl;
 
   const keep = (works) => {
@@ -1704,22 +1749,29 @@ async function walkAuthor(name, { listing = 'works', jobId = null } = {}) {
   };
 
   try {
-    const first = parseListing(await archivePage(url(name, 1)));
-    const pages = first.pagination?.total ?? 1;
-    keep(first.works);
-    offset = 0;
-    await loadMore(true);
+    /* Resuming: the total was written down last time, so the first page does
+       not have to be read again just to learn it. */
+    let pages = knownPages;
+    if (fromPage <= 1 || pages == null) {
+      const first = parseListing(await archivePage(url(name, fromPage)));
+      pages = first.pagination?.total ?? 1;
+      keep(first.works);
+      if (jobId !== null) jobs.note(jobId, { page: fromPage, pages });
+      offset = 0;
+      await loadMore(true);
+    }
 
     /* A page that will not come after several tries is one page. Carrying on
        collects the rest, and the author's totals are deliberately not recorded
        unless every page was read, so opening them again finishes the job
        rather than believing it is already done. */
     let missed = 0;
-    for (let page = 2; page <= pages; page++) {
+    for (let page = Math.max(2, fromPage + 1); page <= pages; page++) {
       if (currentAuthor !== name) break;      // they have gone somewhere else
       await wait(nextGap());
       try {
         keep(parseListing(await archivePage(url(name, page))).works);
+        if (jobId !== null) jobs.note(jobId, { page, pages });
       } catch (e) {
         missed++;
         jobError = `${name} · ${listing}: page ${page} of ${pages} — ${e.message}`;
