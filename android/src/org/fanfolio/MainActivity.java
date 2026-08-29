@@ -348,6 +348,32 @@ public class MainActivity extends Activity {
     private void migrate(SQLiteDatabase db) {
         migrateTable(db, "works", WORKS_COLUMNS);
         migrateTable(db, "reading", READING_COLUMNS);
+        repairCompleteness(db);
+    }
+
+    /**
+     * Works that were called unfinished because the archive had nothing to say.
+     *
+     * A Completed date is only printed where there is one — where the work was
+     * updated after it was posted. A one-shot posted finished has only a
+     * Published date, so reading completeness from that word alone marked every
+     * single-chapter work in the library as in progress. That was 1,569 of
+     * mine, a third of them.
+     *
+     * Chapters: n/n is the archive's own statement that a work is done, and it
+     * is already stored. Nothing needs fetching again to put this right, and a
+     * row that already says it is finished is left alone.
+     */
+    private void repairCompleteness(SQLiteDatabase db) {
+        try {
+            db.execSQL("UPDATE works SET complete = 1 "
+                     + "WHERE COALESCE(complete, 0) = 0 "
+                     + "  AND chapters_planned IS NOT NULL "
+                     + "  AND chapter_count IS NOT NULL "
+                     + "  AND chapter_count >= chapters_planned");
+        } catch (Exception e) {
+            // an older database without these columns is simply left as it is
+        }
     }
 
     private void migrateTable(SQLiteDatabase db, String table, String[][] columns) {

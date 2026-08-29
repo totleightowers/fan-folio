@@ -1045,6 +1045,18 @@ test('a fold does not lose your place', () => {
  * Opened is opened. Where you are and whether you have it open are two
  * different facts, and only the first is worth protecting from a glance.
  */
+test('a library already full of works called unfinished is put right', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('private void repairCompleteness('));
+  const body = fn.slice(0, fn.indexOf('\n    }\n'));
+  assert.match(body, /chapter_count >= chapters_planned/,
+    'what the archive already said is on disk; nothing needs fetching again');
+  assert.match(body, /COALESCE\(complete, 0\) = 0/,
+    'and a work already marked finished is left alone');
+  assert.match(java, /migrateTable\(db, "reading"[\s\S]{0,120}repairCompleteness\(db\)/,
+    'it runs where every other repair does, on opening the library');
+});
+
 test('a peek from a search still counts as having opened the work', () => {
   const fn = js.slice(js.indexOf('async function openChapter('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
