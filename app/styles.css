@@ -1860,11 +1860,15 @@ button:disabled, .opt:disabled {
 .work-tags .chip:active { background: color-mix(in srgb, var(--fg) 14%, transparent); }
 
 /* What the archive reports, as pairs rather than a floated column. */
+.work-detail-block { margin: 1.4rem 0 1.4rem; }
+.work-detail-block .group { margin: 0 0 .45rem; }
 .work-details {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: .3rem 1.2rem;
-  margin: 0 0 1.4rem;
+  /* A fixed label column so the numbers line up with each other rather than
+     with the longest word above them. */
+  grid-template-columns: 7.5rem 1fr;
+  gap: .35rem 1rem;
+  margin: 0;
   font-size: .84rem;
 }
 .work-details dt { color: var(--muted); }

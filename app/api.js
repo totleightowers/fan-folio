@@ -511,6 +511,19 @@ export function pendingLink() {
  * Failures are swallowed — losing a scroll position is not worth interrupting
  * somebody's reading with an error.
  */
+/**
+ * Say the work was opened, without saying where in it you are.
+ *
+ * A peek from a search result must not move the bookmark, but it is still
+ * reading and still belongs at the front of Continue reading.
+ */
+export async function markOpened(workId) {
+  try {
+    if (isNative) { native.markOpened(String(workId)); return; }
+    await fetch(`/api/opened?workId=${encodeURIComponent(workId)}`, { method: 'POST' });
+  } catch { /* the reader carries on regardless */ }
+}
+
 export async function saveProgress(workId, chapter, offset) {
   try {
     if (isNative) {
