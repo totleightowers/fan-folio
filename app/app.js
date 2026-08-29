@@ -264,7 +264,7 @@ $('#back').onclick = () => goBack();
  */
 window.__onBackStart = () => {
   // nothing to preview when Back will close the app: let the system show that
-  if (stack.depth === 0) return;
+  if (stack.depth === 0 && !backLeavesTab()) return;
   const view = $(`#${showing()}`);
   view?.classList.add('backing');
 };
@@ -297,9 +297,21 @@ function clearBackPreview() {
 }
 
 /* The shell asks this before it closes the app; true means we handled it. */
+/*
+ * Back out of a tab goes home, not out of the app.
+ *
+ * The three tabs are peers, so opening one empties the stack — which left
+ * Back with nothing to pop and closed the app instead. That is right on Home,
+ * which is where you started; it is not right on Library or Search, where the
+ * way you got there was one tap and the way back out was losing the app.
+ */
+const backLeavesTab = () => TABBED.has(showing()) && showing() !== 'home';
+
 window.__onBack = () => {
   for (const d of $$('dialog[open]')) { closeSheet(d); return true; }
-  return goBack();
+  if (goBack()) return true;
+  if (backLeavesTab()) { show('home', 'back'); return true; }
+  return false;              // on Home with nothing behind it: leave
 };
 
 function toast(message) {
