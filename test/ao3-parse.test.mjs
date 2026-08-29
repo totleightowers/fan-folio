@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   parseListing, parseBlurb, splitBlurbs, parseWorkPage, parseWorkSkin, imageUrls,
+  parseWorkMeta,
 } from '../app/core/ao3/parse.js';
 import { workPage, readings, bookmarks, PER_PAGE } from '../app/core/ao3/urls.js';
 
@@ -198,4 +199,39 @@ test('a count the page does not give is not zero', async () => {
   const page = '<ul class="navigation actions"><li><a href="/users/x/works">Works (4)</a></li></ul>';
   assert.deepEqual(parseUserCounts(page), { works: 4, bookmarks: null });
   assert.deepEqual(parseUserCounts(''), { works: null, bookmarks: null });
+});
+
+/*
+ * The archive prints a Completed date only where there is one — that is,
+ * where the work was updated after it was posted. A one-shot posted finished
+ * has only a Published date, so reading completeness from that word alone
+ * called every single-chapter work a work in progress: 1,569 of mine.
+ */
+test('a work with all its chapters posted is finished, said or not', () => {
+  const page = (stats) => `<dl class="work meta group">
+    <dd class="stats"><dl class="stats">${stats}</dl></dd></dl>`;
+
+  const oneShot = parseWorkMeta(page(
+    '<dt>Published:</dt><dd class="published">2020-11-25</dd>'
+    + '<dt>Words:</dt><dd class="words">40292</dd>'
+    + '<dt>Chapters:</dt><dd class="chapters">1/1</dd>'));
+  assert.equal(oneShot.complete, true,
+    'Chapters: 1/1 is the archive saying the work is done');
+  assert.equal(oneShot.chapters, 1);
+  assert.equal(oneShot.chaptersPlanned, 1);
+
+  const wip = parseWorkMeta(page(
+    '<dt>Published:</dt><dd class="published">2020-11-25</dd>'
+    + '<dt>Chapters:</dt><dd class="chapters">3/?</dd>'));
+  assert.equal(wip.complete, false, 'an unknown total is still in progress');
+  assert.equal(wip.chaptersPlanned, null);
+
+  const partway = parseWorkMeta(page(
+    '<dt>Chapters:</dt><dd class="chapters">4/12</dd>'));
+  assert.equal(partway.complete, false, 'four of twelve is not finished');
+
+  const said = parseWorkMeta(page(
+    '<dt>Completed:</dt><dd class="status">2021-01-02</dd>'
+    + '<dt>Chapters:</dt><dd class="chapters">12/12</dd>'));
+  assert.equal(said.complete, true, 'and the word still counts when it is there');
 });
