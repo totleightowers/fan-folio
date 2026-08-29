@@ -1396,6 +1396,26 @@ test('arriving at home rebuilds it', () => {
  * on some routes and not others. That is why the app felt different depending
  * on how you got somewhere.
  */
+/*
+ * The shelf card used to go into the reader when there was progress and to
+ * the summary when there was not, so the same tap did two different things
+ * depending on whether you had read it — and a different thing again from the
+ * same work in the library, which has always shown the summary.
+ */
+test('tapping a work shows the work, wherever it is tapped', () => {
+  const card = js.slice(js.indexOf('function workCard('));
+  assert.match(card.slice(0, card.indexOf('\n}\n')),
+    /card\.onclick = \(\) => openWork\(w\.work_id\);/,
+    'a shelf card shows the summary whether or not it has been read');
+
+  const row = js.slice(js.indexOf('function workRow('));
+  const body = row.slice(0, row.indexOf('\n}\n'));
+  assert.match(body, /node\.onclick = \(\) => openWork\(w\.work_id\);/,
+    'and so does the library row');
+  assert.match(body, /open: \(\) => openChapter\(w\.work_id, p \? \(w\.at_chapter \?\? 1\) : 1\)/,
+    'while Read and Continue are the ways into the reader, and say so');
+});
+
 test('there is one way to put the screens back in step', () => {
   const calls = [...js.matchAll(/buildHome\(\)/g)].length;
   assert.equal(calls, 2,
