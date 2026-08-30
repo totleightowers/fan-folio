@@ -2253,6 +2253,15 @@ function buildBrowse(browse) {
       b.innerHTML = '<span class="name"></span><span class="n"></span>';
       b.querySelector('.name').textContent = item.name;
       b.querySelector('.n').textContent = item.n;
+      /* A card's spine is a hash of its fandom, so the same name is the same
+         colour wherever it appears. Tinting the fandom chip with it makes the
+         row above the shelves a key to them: the blue pill and the blue
+         spines are the same thing said twice. Only fandoms — a pairing or a
+         rating has no spine of its own to agree with. */
+      if (browseKind === 'fandom') {
+        b.dataset.spine = '';
+        b.style.setProperty('--spine', spineColour(item.name));
+      }
       b.onclick = () => openTag(browseKind === 'rating' ? null : item.name,
         browseKind === 'rating' ? item.name : null);
       list.append(b);
