@@ -406,6 +406,38 @@ function marks(w) {
   return out;
 }
 
+/**
+ * When a work last changed, and what the archive calls that.
+ *
+ * One date, three names. The archive stamps a finished work Completed and one
+ * still going Updated, and keeps both in the same column — so the word is as
+ * much of the answer as the number is. A work that has never been updated
+ * falls back to when it was posted, rather than claiming an update that never
+ * happened.
+ *
+ * A work is the same work wherever it is shown, so this is answered once and
+ * the rows and the shelf cards both read it. Two renderers working it out
+ * separately is how they come to disagree.
+ */
+function whenOf(w) {
+  const date = w.updated ?? w.published;
+  if (!date) return null;
+  const label = !w.updated ? 'Published' : w.complete ? 'Completed' : 'Updated';
+  return { label, date: String(date) };
+}
+
+/** The same pair, as elements: a small label and a machine-readable date. */
+function whenParts({ label, date }) {
+  const name = document.createElement('span');
+  name.className = 'when-label';
+  name.textContent = label;
+  const time = document.createElement('time');
+  time.className = 'when-date';
+  time.dateTime = date;
+  time.textContent = date;
+  return [name, time];
+}
+
 function workRow(w) {
   const node = document.createElement('div');
   node.className = 'work-card';
@@ -421,6 +453,7 @@ function workRow(w) {
   ].filter(Boolean).join('  ·  ');
 
   node.innerHTML = `
+    <div class="work-when"></div>
     <h3></h3>
     <div class="by"></div>
     <div class="tagrow"></div>
@@ -448,6 +481,9 @@ function workRow(w) {
     node.querySelector('.statline')?.append(ghost);
   }
   node.querySelector('.by').textContent = 'by ' + (authorsOf(w.authors).join(', ') || 'Anonymous');
+
+  const when = whenOf(w);
+  if (when) node.querySelector('.work-when').append(...whenParts(when));
   node.querySelector('.statline').textContent = stats;
   if (w.summary) node.querySelector('.sum').textContent = w.summary;
 
@@ -2144,6 +2180,7 @@ function workCard(w) {
     ${w.summary ? '<p class="card-sum"></p>' : ''}
     <div class="card-fandom"></div>
     <div class="card-foot">${fmt(w.words)} words${w.complete ? '' : ' · WIP'}</div>
+    <div class="card-when"></div>
     ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>` : ''}`;
   const cardTitle = card.querySelector('.card-title');
   cardTitle.textContent = w.title ?? '(untitled)';
@@ -2151,6 +2188,8 @@ function workCard(w) {
   card.querySelector('.card-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
   // author-written, so textContent rather than innerHTML, as everywhere else
   if (w.summary) card.querySelector('.card-sum').textContent = w.summary;
+  const cardWhen = whenOf(w);
+  if (cardWhen) card.querySelector('.card-when').append(...whenParts(cardWhen));
   card.querySelector('.card-fandom').textContent = w.fandom ?? '';
   /*
    * Tapping a work shows the work.
