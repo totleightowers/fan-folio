@@ -1407,6 +1407,25 @@ test('arriving at home rebuilds it', () => {
  * under it does not say what one is. The card already had a gap in the middle
  * holding nothing.
  */
+/*
+ * A card's spine is a hash of its fandom name, so the same fandom is the same
+ * colour on every shelf. Tinting the browse chip with it makes that row a key
+ * to what is underneath it rather than a separate decoration.
+ */
+test('a fandom chip is the colour of that fandom\'s spines', () => {
+  const fn = js.slice(js.indexOf('function buildBrowse('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /spineColour\(item\.name\)/,
+    'the same function the cards use, so the two cannot drift apart');
+  assert.match(body, /if \(browseKind === 'fandom'\)/,
+    'only fandoms: a pairing or a rating has no spine of its own to agree with');
+
+  const card = js.slice(js.indexOf('function workCard('));
+  assert.match(card.slice(0, card.indexOf('\n}\n')),
+    /spineColour\(w\.fandom \|\| w\.title\)/,
+    'and this is the side of the agreement the chip is matching');
+});
+
 test('a shelf card says what the work is about', () => {
   const fn = js.slice(js.indexOf('function workCard('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
