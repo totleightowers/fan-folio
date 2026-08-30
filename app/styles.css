@@ -489,6 +489,17 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   border: 0; border-radius: 999px; padding: .32rem .75rem;
 }
 .fandom-list button:active { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+/* Tinted with the colour the shelves give that fandom's spines, so the browse
+   row reads as a key to what is under it. Kept weak on purpose: eight
+   saturated pills in a row would be a paint chart, and the names still have to
+   be the thing you read. */
+.fandom-list button[data-spine] {
+  background: color-mix(in srgb, var(--spine) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--spine) 28%, transparent);
+}
+.fandom-list button[data-spine]:active {
+  background: color-mix(in srgb, var(--spine) 26%, transparent);
+}
 .fandom-list button .n {
   color: var(--muted); margin-left: .35rem; font-variant-numeric: tabular-nums;
 }
