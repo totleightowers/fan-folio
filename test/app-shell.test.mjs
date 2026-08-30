@@ -1412,6 +1412,29 @@ test('arriving at home rebuilds it', () => {
  * colour on every shelf. Tinting the browse chip with it makes that row a key
  * to what is underneath it rather than a separate decoration.
  */
+/*
+ * The archive keeps one date and changes what it calls it — Completed on a
+ * finished work, Updated on one still going — so the word is as much of the
+ * answer as the number. A work is the same work wherever it is shown, and two
+ * renderers working that out separately is how they come to disagree.
+ */
+test('when a work last changed is answered in one place', () => {
+  const fn = js.slice(js.indexOf('function whenOf('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /w\.complete \? 'Completed' : 'Updated'/,
+    'the label is read off the work, not guessed');
+  assert.match(body, /!w\.updated \? 'Published'/,
+    'and a work never updated does not claim an update that never happened');
+
+  for (const render of ['function workRow(', 'function workCard(']) {
+    const part = js.slice(js.indexOf(render));
+    assert.match(part.slice(0, part.indexOf('\n}\n')), /whenOf\(w\)/,
+      `${render} asks the same question of the same function`);
+  }
+  assert.equal([...js.matchAll(/'Completed'/g)].length, 1,
+    'and only one place decides what to call it');
+});
+
 test('a fandom chip is the colour of that fandom\'s spines', () => {
   const fn = js.slice(js.indexOf('function buildBrowse('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
