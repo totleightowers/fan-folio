@@ -782,6 +782,11 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   color: var(--accent); border-radius: 999px; padding: .28rem .7rem; cursor: pointer;
 }
 .opts { display: flex; flex-wrap: wrap; gap: .4rem; }
+/* A choice about the chips rather than one of them, so it sits above with a
+   line under it rather than in the same row. */
+.sec-toggle {
+  margin: 0 0 .55rem; padding-bottom: .55rem; border-bottom: 1px solid var(--rule);
+}
 /*
  * A filter option is a control with an on state, so it keeps its pill shape —
  * but it wore a pane fill inside a full border, which is the heavy treatment

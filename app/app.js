@@ -74,6 +74,7 @@ const view = load(VIEW_KEY, {
   include: [], exclude: [], rating: [], author: [],
   complete: '', language: '', wordsMin: '', wordsMax: '',
   chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
+  otp: '',
 });
 let positions = load(POS_KEY, {});
 
@@ -565,7 +566,7 @@ function filterParams(extra = {}) {
   }
   for (const key of ['complete', 'language', 'wordsMin', 'wordsMax',
                      'chaptersMin', 'chaptersMax',
-                     'updatedAfter', 'updatedBefore', 'crossover']) {
+                     'updatedAfter', 'updatedBefore', 'crossover', 'otp']) {
     if (view[key]) p.set(key, view[key]);
   }
   return p;
@@ -577,7 +578,7 @@ const activeCount = () =>
   + (view.wordsMin || view.wordsMax ? 1 : 0)
   + (view.chaptersMin || view.chaptersMax ? 1 : 0)
   + (view.updatedAfter || view.updatedBefore ? 1 : 0)
-  + (view.crossover ? 1 : 0)
+  + (view.crossover ? 1 : 0) + (view.otp ? 1 : 0)
   + (view.state !== 'all' ? 1 : 0);
 
 /** Tri-state: off → include → exclude → off. */
@@ -819,6 +820,60 @@ async function buildFilterPanel() {
     });
   }
 
+  /*
+   * Authors, which could be applied but never chosen: tapping a name on a work
+   * set the filter and the pill for it appeared, and the panel had no section
+   * for it at all — so it could be removed and never added.
+   */
+  if (facets.tags?.author?.length) {
+    section('author', 'Authors', view.author ?? [], (box) => {
+      const items = facets.tags.author;
+      const needle = (sectionSearch.author ?? '').toLowerCase();
+      if (items.length > SHOW_AT_FIRST) {
+        const find = document.createElement('input');
+        find.type = 'search';
+        find.className = 'sec-find';
+        find.placeholder = 'Search authors…';
+        find.value = sectionSearch.author ?? '';
+        find.oninput = () => {
+          sectionSearch.author = find.value;
+          const at = find.selectionStart;
+          paint();
+          const again = box.querySelector('.sec-find');
+          again.focus();
+          again.setSelectionRange(at, at);
+        };
+        box.append(find);
+      }
+      const opts = document.createElement('div');
+      opts.className = 'opts';
+      box.append(opts);
+
+      let expanded = box.dataset.expanded === '1';
+      function paint() {
+        const list_ = needle ? items.filter((a) => a.name.toLowerCase().includes(needle)) : items;
+        const shown = expanded ? list_ : list_.slice(0, SHOW_AT_FIRST);
+        opts.textContent = '';
+        for (const a of shown) {
+          opts.append(chip(a.name, a.n, (view.author ?? []).includes(a.name) ? 'on' : '', () => {
+            const on = (view.author ?? []).includes(a.name);
+            view.author = on ? view.author.filter((x) => x !== a.name)
+                             : [...(view.author ?? []), a.name];
+            save(VIEW_KEY, view);
+          }));
+        }
+        if (list_.length > shown.length) {
+          const more = document.createElement('button');
+          more.className = 'show-more';
+          more.textContent = `Show all ${list_.length}`;
+          more.onclick = () => { expanded = true; box.dataset.expanded = '1'; paint(); };
+          opts.append(more);
+        }
+      }
+      paint();
+    });
+  }
+
   /* --- the long ones: searchable, and capped until asked otherwise --- */
 
   for (const [kind, title] of FILTER_SECTIONS) {
@@ -850,6 +905,26 @@ async function buildFilterPanel() {
           again.setSelectionRange(at, at);
         };
         box.append(find);
+      }
+
+      /*
+       * Only this pairing.
+       *
+       * Choosing a relationship gives every work that has it among others,
+       * which for a popular pair is most of the fandom. What is usually meant
+       * is the works that are about it — so this asks for the ones carrying no
+       * other relationship. It appears once there is a pairing to be exact
+       * about, because with nothing chosen it would mean works with no
+       * relationships at all.
+       */
+      if (kind === 'relationship' && items.some((t) => view.include.includes(t.name))) {
+        const only = document.createElement('div');
+        only.className = 'opts sec-toggle';
+        only.append(chip('Only this pairing', null, view.otp ? 'on' : '', () => {
+          view.otp = view.otp ? '' : '1';
+          save(VIEW_KEY, view);
+        }));
+        box.append(only);
       }
 
       const opts = document.createElement('div');
@@ -931,12 +1006,29 @@ function paintActiveFilters() {
     box.append(b);
   };
 
-  if (view.state !== 'all') pill(view.state, 'state', () => { view.state = 'all'; });
+  /* The label the panel uses, not the key it is stored under: the pill said
+     "known" while the section that set it said "Not downloaded", so the two
+     screens named the same filter differently. */
+  if (view.state !== 'all') {
+    pill(STATE_LABELS[view.state] ?? view.state, 'state', () => { view.state = 'all'; });
+  }
   for (const t of view.include) pill(t, 'in', () => { view.include = view.include.filter((x) => x !== t); });
   for (const t of view.exclude) pill(`not ${t}`, 'out', () => { view.exclude = view.exclude.filter((x) => x !== t); });
   for (const r of view.rating) pill(r, 'in', () => { view.rating = view.rating.filter((x) => x !== r); });
   for (const a of view.author ?? []) {
     pill(`by ${a}`, 'in', () => { view.author = view.author.filter((x) => x !== a); });
+  }
+  if (view.otp) pill('only this pairing', 'in', () => { view.otp = ''; });
+  if (view.crossover) {
+    pill(view.crossover === '1' ? 'crossovers' : 'no crossovers', 'in', () => { view.crossover = ''; });
+  }
+  if (view.updatedAfter) pill(`updated since ${view.updatedAfter}`, 'in', () => { view.updatedAfter = ''; });
+  if (view.language) pill(languageName(view.language) ?? view.language, 'in', () => { view.language = ''; });
+  if (view.chaptersMin || view.chaptersMax) {
+    const label = CHAPTER_PRESETS.find(([a, b]) => a === view.chaptersMin && b === view.chaptersMax)?.[2];
+    pill(label ? `${label} chapters` : 'chapters', 'in', () => {
+      view.chaptersMin = ''; view.chaptersMax = '';
+    });
   }
   if (view.complete) pill(view.complete === '1' ? 'complete' : 'WIP', 'in', () => { view.complete = ''; });
   if (view.wordsMin || view.wordsMax) {
@@ -962,7 +1054,7 @@ $('#clear-filters').onclick = async () => {
   Object.assign(view, {
     state: 'all', include: [], exclude: [], rating: [], author: [],
     complete: '', language: '', wordsMin: '', wordsMax: '',
-    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   });
   save(VIEW_KEY, view);
   await refreshAfterFilterChange();

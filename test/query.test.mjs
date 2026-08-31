@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, SORTS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, SORTS, STATES } from '../app/core/query.js';
 import { SCHEMA } from '../app/core/store/schema.js';
 
 /** A small library with known contents, so counts can be asserted exactly. */
@@ -259,4 +259,30 @@ test('the archive filters this library did not have', () => {
   const chapters = buildWorksQuery({ chaptersMin: 2, chaptersMax: 10 });
   assert.match(chapters.countSql, /w\.chapter_count >= \?/);
   assert.match(chapters.countSql, /w\.chapter_count <= \?/);
+});
+
+/*
+ * Choosing a relationship gives every work carrying it among others, which for
+ * a popular pair is most of a fandom. What is usually meant is the works that
+ * are about it.
+ */
+test('only this pairing means no other relationship on the work', () => {
+  const q = buildWorksQuery({ include: ['A/B'], otp: '1' });
+  assert.match(q.countSql, /NOT EXISTS[\s\S]*kind = 'relationship'[\s\S]*NOT IN/);
+  assert.ok(q.args.includes('A/B'), 'the chosen tags are what it is exact about');
+});
+
+test('only this pairing with nothing chosen does nothing', () => {
+  const bare = buildWorksQuery({ otp: '1' });
+  assert.ok(!/kind = 'relationship'/.test(bare.countSql),
+    'otherwise it asks for works with no relationships at all, which is not what anyone meant');
+  assert.deepEqual(bare.countSql, buildWorksQuery({}).countSql);
+});
+
+test('authors can be counted, so they can be chosen as well as removed', () => {
+  const q = buildAuthorFacet({ state: 'all' }, 12);
+  assert.match(q.sql, /json_each\(w\.authors\)/, 'authors are a JSON array, not tag rows');
+  assert.match(q.sql, /LIMIT 12/, 'a top handful, with the rest behind a button');
+  const chosen = buildAuthorFacet({ state: 'all', author: ['someone'] }, 12);
+  assert.equal(chosen.sql, q.sql, 'picking one author does not hide the others');
 });
