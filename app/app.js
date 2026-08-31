@@ -1740,6 +1740,20 @@ const jobs = createQueue({
   gap: () => nextGap(),
   shouldRetry: isTransient,
   retryWait: (attempt) => retryDelay(attempt),
+  /*
+   * What the database still does not hold, asked at the end of a run.
+   *
+   * A job used to call itself finished because the fetch did not throw, which
+   * is a different statement from the work being here — a fetch can end having
+   * stored a description and no text. So jobs reported themselves complete
+   * while the works they had queued were still stubs. This asks the only
+   * question that settles it, and whatever comes back is gone round again.
+   */
+  verify: async (workIds) => {
+    const ids = workIds.map(String);
+    const held = heldWithText(ids);
+    return ids.filter((id) => !held.has(id));
+  },
   onEvent: (e) => {
     if (e.type === 'progress') {
       toast(`${e.job.author} · ${e.job.part}: ${e.job.added} of ${e.job.total}`
@@ -1769,7 +1783,11 @@ function paintJobs() {
      finished with, whatever its state says. It used to leave the screen the
      moment it stopped — reporting nothing downloaded and then disappearing,
      with no sign that the works were still owed. */
-  const list = jobs.list().filter((j) => j.state !== 'done' || j.unfinished > 0);
+  /* Finished jobs stay on the list. A job that has been and gone is the only
+     record of what was asked for, and with nowhere to see it there was no way
+     to tell a job that got everything from one that quietly got none of it —
+     or to ask for it again. */
+  const list = jobs.list();
 
   if (jobError) {
     /* Failures from background work belong here, next to the thing that
@@ -1822,6 +1840,8 @@ function paintJobs() {
           : job.state === 'paused' ? ' · paused'
           : job.state === 'cancelled' ? ' · stopped'
           : job.state === 'listing' ? ' · still reading the list'
+          : job.state === 'done' && job.unfinished ? ` · ${job.unfinished} never arrived`
+          : job.state === 'done' ? ' · done'
           : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
           : ' · waiting');
 
@@ -1870,6 +1890,11 @@ function paintJobs() {
       act('bolt', 'Start now, alongside what is running', () => jobs.startNow(job.id));
       act('prev', 'Move up', () => jobs.moveUp(job.id));
       act('next', 'Move down', () => jobs.moveDown(job.id));
+    } else if (job.state === 'done' || job.state === 'cancelled') {
+      /* Ask again for what never arrived, or for the lot if it all did. */
+      act('play', job.unfinished ? `Try the ${job.unfinished} that never arrived again`
+                                 : 'Ask for all of these again',
+        () => jobs.rerun(job.id));
     }
     act('trash', 'Delete', () => jobs.remove(job.id), true);
     row.append(acts);
@@ -2302,6 +2327,33 @@ function needsFetching(works) {
     const listed = blurbDate(w);
     return Boolean(listed && held.updated && listed > held.updated);
   }).map((w) => String(w.workId));
+}
+
+/**
+ * Which of these are downloaded, text and all.
+ *
+ * Not "is there a row": a listing writes a row for every work it names, so a
+ * row is a description. This asks for the ones that actually have chapters
+ * behind them, which is what a job is for.
+ */
+function heldWithText(ids) {
+  const held = new Set();
+  if (!nativeStatus().hasDatabase) return new Set(ids);   // cannot tell: assume held
+  for (let i = 0; i < ids.length; i += 400) {
+    const block = ids.slice(i, i + 400);
+    const marks = block.map(() => '?').join(',');
+    try {
+      const out = JSON.parse(window.ArchiveNative.query(
+        `SELECT work_id FROM works WHERE has_text = 1 AND work_id IN (${marks})`,
+        JSON.stringify(block.map(String))));
+      for (const r of out.rows ?? []) held.add(String(r.work_id));
+    } catch {
+      /* If the question cannot be asked, do not answer it wrongly: treating
+         everything as missing would send a finished job round again for ever. */
+      for (const id of block) held.add(String(id));
+    }
+  }
+  return held;
 }
 
 function workIsHeld(workId) {

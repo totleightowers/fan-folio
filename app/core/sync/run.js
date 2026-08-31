@@ -164,6 +164,19 @@ export async function walkListing({
  */
 export function isTransient(reason) {
   const text = String(reason ?? '');
+  /*
+   * Being told to slow down is not being told no.
+   *
+   * 429 is the archive rate-limiting, which is the most retriable thing there
+   * is — and it was landing in the blanket 4xx rule below and being written
+   * off as a work that could not be had. During a long download that is the
+   * worst possible reading of it: the moment the archive starts throttling,
+   * every work in flight is permanently skipped, and the queue reports them
+   * as unavailable. 408 and 425 are the same kind of answer.
+   */
+  if (/answered (429|408|425)/i.test(text)) return true;
+  if (/rate limit|too many requests|retry.?after|slow down/i.test(text)) return true;
+
   if (/answered 4\d\d/i.test(text)) return false;          // it answered, and said no
   if (/deleted|does not exist|no chapters found/i.test(text)) return false;
 
