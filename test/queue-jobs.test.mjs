@@ -142,11 +142,24 @@ test('what is saved is what is left, not what was done', async () => {
   assert.equal(saved[0].author, 'a');
 });
 
-test('a finished job is not carried across a restart', async () => {
+test('a finished job is carried across a restart, as a record', async () => {
   const { q, tick } = harness();
   q.add(job('a', 'works', ['1']));
   await settle(); await tick();
-  assert.deepEqual(q.save(), []);
+  const [saved] = q.save();
+  assert.ok(saved, 'it used to be dropped for having nothing left to do, so a '
+    + 'restart could not say what the app had been doing');
+  assert.deepEqual(saved.workIds, [], 'with no work owed');
+  assert.equal(saved.state, 'done');
+  assert.equal(saved.added, 1, 'and what it managed');
+});
+
+test('a restored record does not run again by itself', () => {
+  const { q } = harness();
+  q.restore({ author: 'a', part: 'works', workIds: [], state: 'done', added: 3, failed: 0 });
+  const [j] = q.list();
+  assert.equal(j.state, 'done', 'a record is history, not an instruction');
+  assert.equal(j.added, 3);
 });
 
 test('a job can grow while it is running', async () => {
@@ -316,7 +329,7 @@ test('a work that is genuinely gone is not asked for for ever', async () => {
   await new Promise((r) => setTimeout(r, 20));
 
   assert.equal(q.list()[0].unfinished, 0, 'a refusal is an answer, not an outage');
-  assert.deepEqual(q.save(), [], 'so nothing is carried over');
+  assert.deepEqual(q.save()[0].workIds, [], 'so no work is carried over');
 });
 
 /*

@@ -1635,14 +1635,40 @@ test('there is one way to put the screens back in step', () => {
  * it had was finished, the pages it had not reached were written down
  * nowhere, and the whole thing — walk included — was gone on restart.
  */
+/*
+ * The queue could say what it was doing and never what it had done. A job that
+ * finished was dropped on the way out, so the app opened saying "Nothing
+ * waiting" with no account of the night before — and no way to tell a job that
+ * got everything from one that got none of it.
+ */
+test('what has already run can still be seen', () => {
+  const src = readFileSync(new URL('../app/core/sync/queue.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('function restore('));
+  const body = fn.slice(0, fn.indexOf('\n  }\n'));
+  assert.match(body, /if \(job\.workIds\.length\) job\.state = 'queued'/,
+    'work still owed goes back to waiting');
+  assert.match(body, /state: 'done'/, 'and the rest is history, not an instruction');
+
+  const resume = js.slice(js.indexOf('function resumeJobs('));
+  assert.match(resume.slice(0, resume.indexOf('\n}\n')), /jobs\.restore\(\{ \.\.\.job, workIds: \[\] \}\)/,
+    'a finished job comes back as a record rather than not at all');
+
+  const paint = js.slice(js.indexOf('function paintJobs('));
+  const pbody = paint.slice(0, paint.indexOf('\n}\n'));
+  assert.match(pbody, /RANK = \{ running: 0/,
+    'what is happening comes before what happened');
+});
+
 test('a queue still reading its index survives a restart', () => {
   const src = readFileSync(new URL('../app/core/sync/queue.js', import.meta.url), 'utf8');
   const save = src.slice(src.indexOf('save: () => jobs'));
   const body = save.slice(0, save.indexOf('\n  };'));
   assert.match(body, /open: Boolean\(j\.open\), page: j\.page \?\? 0/,
     'how far the walk got is part of what is saved');
-  assert.match(body, /\.filter\(\(j\) => j\.workIds\.length \|\| j\.open\)/,
-    'a job with nothing left to fetch but more index to read is still a job');
+  assert.match(body, /state: j\.state, total: j\.workIds\.length/,
+    'and so is how it went, so a restart can still say what was done');
+  assert.ok(!/\.filter\(\(j\) => j\.workIds\.length \|\| j\.open\)/.test(body),
+    'a finished job is no longer dropped for having nothing left to do');
 
   const resume = js.slice(js.indexOf('function resumeJobs('));
   const rbody = resume.slice(0, resume.indexOf('\n}\n'));

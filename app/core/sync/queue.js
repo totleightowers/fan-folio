@@ -62,6 +62,7 @@ export function createQueue({
        database says never arrived: still owed either way. */
     unfinished: j.unfinished?.length ?? 0,
     rounds: j.rounds ?? 0,
+    at: j.at ?? null,
     parallel: j.parallel, retrying: j.retrying ?? null, lastError: j.lastError ?? null,
   });
   const snapshot = () => jobs.map(view);
@@ -88,6 +89,7 @@ export function createQueue({
       /* How far through the index the walk had read, so a restart carries on
          from the next page rather than reading the whole thing again. */
       page: 0, pages: null,
+      at: Date.now(),
       state: open && !workIds.length ? 'listing' : 'queued', parallel: false,
       attempt: 0, retrying: null, lastError: null,
     };
@@ -286,6 +288,36 @@ export function createQueue({
   }
 
   /**
+   * Put a saved job back on the list without running it.
+   *
+   * What came back from a restart used to be only the work still owed, so a
+   * job that had finished came back as nothing at all. This restores the
+   * record — what was asked for and how it went — and only the ones with work
+   * left are handed to the runner.
+   */
+  function restore(saved) {
+    const job = {
+      id: nextId++, author: saved.author, part: saved.part,
+      workIds: [...(saved.workIds ?? [])],
+      done: 0, added: saved.added ?? 0, failed: saved.failed ?? 0,
+      open: Boolean(saved.open),
+      page: saved.page ?? 0, pages: saved.pages ?? null,
+      rounds: 0, parallel: false, attempt: 0, retrying: null,
+      lastError: saved.lastError ?? null,
+      at: saved.at ?? Date.now(),
+      unfinished: [],
+      state: 'done',
+    };
+    /* Anything still owed goes back to waiting; the rest is a record. */
+    if (job.workIds.length) job.state = 'queued';
+    else if (job.open) job.state = 'listing';
+    jobs.push(job);
+    announce('restored', job);
+    if (job.state === 'queued') pump();
+    return job.id;
+  }
+
+  /**
    * Do it again: what a finished job could not get, or the whole list if it
    * got everything. A job that reported itself done while leaving works
    * behind was the thing there was no way to act on.
@@ -334,7 +366,8 @@ export function createQueue({
   }
 
   return {
-    add, append, note, seal, rerun, pause, resume, stop, remove, startNow, moveUp, moveDown,
+    add, append, note, seal, rerun, restore,
+    pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
     /**
      * What is left, so a restart resumes rather than starting over.
@@ -347,18 +380,28 @@ export function createQueue({
     /* Finished jobs are kept too, so the list survives a restart and what
        never arrived can still be asked for again. Bounded: this is a record
        of recent work, not a log. */
+    /**
+     * Everything, finished or not.
+     *
+     * A job that got everything saved an empty list and was then dropped for
+     * having one, so it did not survive a restart — and with nothing kept,
+     * there was no answer to what the app had been doing yesterday, or
+     * whether a job had ended well or ended at all. What it did is worth
+     * keeping even when there is nothing left to do.
+     *
+     * Bounded: a record of recent work, not a log.
+     */
     save: () => jobs
       .filter((j) => j.state !== 'cancelled')
       .slice(-40)
       .map((j) => ({
         author: j.author, part: j.part,
-        /* What was never reached, and what could not be had this time for a
-           reason worth trying again. A job that ran to the end of its list
-           without downloading anything used to save an empty list and be
-           dropped — reporting nothing downloaded and then disappearing. */
         workIds: [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],
         open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
-      }))
-      .filter((j) => j.workIds.length || j.open),
+        state: j.state, total: j.workIds.length,
+        added: j.added, failed: j.failed,
+        lastError: j.lastError ?? null,
+        at: j.at ?? Date.now(),
+      })),
   };
 }
