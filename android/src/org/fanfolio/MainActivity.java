@@ -505,9 +505,18 @@ public class MainActivity extends Activity {
             if (path.startsWith("/img/")) return image(path.substring(5));
             return asset(path);
         } catch (Exception e) {
-            // the page shows this to the reader, so it has to say what happened
+            /*
+             * 502, not 500: this is the app failing to reach the archive, and
+             * the archive answering 500 is a different thing that arrives on
+             * the same path. Sharing a status made the two indistinguishable,
+             * and the one that is always worth trying again looked like the
+             * one that might not be.
+             *
+             * The page shows the reason to the reader, so it still says what
+             * actually happened.
+             */
             String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
-            return new WebResourceResponse("text/plain", "utf-8", 500, "Error",
+            return new WebResourceResponse("text/plain", "utf-8", 502, "Unreachable",
                     headers(), new ByteArrayInputStream(reason.getBytes()));
         }
     }
