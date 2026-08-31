@@ -956,7 +956,39 @@ test('asking about an author queues the works, not just their titles', () => {
   /* Listing them is the cheap half. The point of asking about an author is to
      keep what they wrote. */
   assert.match(body, /jobs\.add\(\{/, 'what is missing is queued for download');
-  assert.match(body, /!workIsHeld\(id\)/, 'and what is already here is not fetched twice');
+  assert.match(body, /needsFetching\(works\)/,
+    'and what is already here and current is not fetched again');
+});
+
+/*
+ * "Do we have a row for it" was the wrong question, and it was asked straight
+ * after writing the stubs for that very page — so every work in an index
+ * looked like one the app already had. It also stranded the 2,753 works
+ * described from listings and never downloaded: a description counts as a row,
+ * so opening their author could never fetch them.
+ */
+test('an index says what is worth asking the archive for', () => {
+  const fn = js.slice(js.indexOf('function needsFetching('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(!held\.has_text\) return true/,
+    'a work described but not held is worth a request');
+  assert.match(body, /listed && held\.updated && listed > held\.updated/,
+    'so is one the index says changed after the copy on disk');
+  assert.match(body, /work_id IN \(\$\{marks\}\)/,
+    'and the checking is one query, not one per work');
+  assert.ok(!/workIsHeld/.test(body),
+    'having a row is not the same as having the work');
+});
+
+test('a listing date can be compared with a stored one', async () => {
+  const { blurbDate } = await import('../app/core/ao3/parse.js');
+  assert.equal(blurbDate({ updatedAt: 1724630400 }), '2024-08-26',
+    'the epoch in the comment needs no parsing and cannot be ambiguous');
+  assert.equal(blurbDate({ datetime: '26 Aug 2025' }), '2025-08-26');
+  assert.equal(blurbDate({ datetime: '3 Jan 2021' }), '2021-01-03',
+    'single-digit days are padded, or string comparison stops working');
+  assert.equal(blurbDate({ datetime: 'sometime' }), null);
+  assert.equal(blurbDate(null), null);
 });
 
 test('progress is reported as it happens', () => {
@@ -1418,6 +1450,28 @@ test('arriving at home rebuilds it', () => {
  * answer as the number. A work is the same work wherever it is shown, and two
  * renderers working that out separately is how they come to disagree.
  */
+/*
+ * A modal dialog fills the window and paints its backdrop through a
+ * pseudo-element, so pressing what looks like the page behind is really
+ * pressing the dialog — which is why nothing happened.
+ */
+test('pressing the dimmed part of the screen puts a sheet away', () => {
+  const fn = js.slice(js.indexOf('function dismissOnBackdrop('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /e\.clientX < box\.left \|\| e\.clientX > box\.right/,
+    'what separates backdrop from sheet is where the press landed');
+  assert.match(body, /pointerdown/,
+    'measured where it started: a drag out of a sheet is a drag, not a dismissal');
+  assert.match(body, /startedOutside\) closeSheet\(d\)/,
+    'and it closes the way everything else closes, with the animation');
+
+  const open = js.slice(js.indexOf('function openSheet('));
+  assert.match(open.slice(0, open.indexOf('\n}\n')), /dismissOnBackdrop\(d\)/,
+    'wired in the one place every sheet is opened, so every sheet has it');
+  assert.equal([...js.matchAll(/showModal\(\)/g)].length, 1,
+    'and there is only one such place');
+});
+
 test('when a work last changed is answered in one place', () => {
   const fn = js.slice(js.indexOf('function whenOf('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
