@@ -13,7 +13,7 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, TAG_KINDS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, TAG_KINDS, STATES } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -79,6 +79,10 @@ function facets(filters = {}) {
     const q = buildColumnFacet(filters, column);
     tags[column] = db.prepare(q.sql).all(...q.args);
   }
+  try {
+    const q = buildAuthorFacet(filters, 40);
+    tags.author = db.prepare(q.sql).all(...q.args);
+  } catch { tags.author = []; }
   return { counts, tags, fandoms: tags.fandom, languages: tags.language };
 }
 

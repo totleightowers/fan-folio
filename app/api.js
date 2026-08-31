@@ -9,7 +9,7 @@
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, TAG_KINDS, STATES } from './core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
 import { workPage, linkTarget, chapterUrl, seriesPage, ORIGIN } from './core/ao3/urls.js';
 import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
@@ -145,6 +145,13 @@ const LOCAL = {
       const q = buildColumnFacet(filters, column);
       tags[column] = sql(q.sql, q.args);
     }
+    /* Authors need json_each, which the oldest SQLite this app supports does
+       not have. Worth offering where it works, not worth an error where it
+       does not. */
+    try {
+      const q = buildAuthorFacet(filters, 40);
+      tags.author = sql(q.sql, q.args);
+    } catch { tags.author = []; }
     return { counts, tags, fandoms: tags.fandom, languages: tags.language };
   },
 

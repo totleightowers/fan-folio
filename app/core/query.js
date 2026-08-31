@@ -77,6 +77,7 @@ const list = (value) => {
  *   wordsMin / wordsMax, chaptersMin / chaptersMax
  *   updatedAfter / updatedBefore   YYYY-MM-DD, inclusive
  *   crossover  '1' more than one fandom, '0' exactly one
+ *   otp        every relationship on the work is one of the included tags
  *   sort       one of SORTS
  */
 /** Escape what LIKE would otherwise treat as a wildcard. */
@@ -166,6 +167,26 @@ export function buildWorksQuery(filters = {}) {
    * fandoms gives works in both, and what you wanted was works in either that
    * are also in some second thing.
    */
+  /*
+   * Only this pairing.
+   *
+   * Choosing a relationship gives works that have it among others; what is
+   * usually wanted is the ones that are about it. So: no relationship tag on
+   * the work outside the ones asked for. Names that are not relationships are
+   * harmlessly in the list — a work's relationship tags simply have to fall
+   * within it.
+   *
+   * Meaningless with nothing chosen, where it would ask for works with no
+   * relationships at all, so it needs something to be exact about.
+   */
+  const wanted = list(filters.include);
+  if (filters.otp && wanted.length) {
+    where.push(`NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id
+                  AND t.kind = 'relationship'
+                  AND t.name NOT IN (${wanted.map(() => '?').join(',')}))`);
+    args.push(...wanted);
+  }
+
   if (filters.crossover === '1') {
     where.push("(SELECT count(DISTINCT t.name) FROM tags t "
              + "WHERE t.work_id = w.work_id AND t.kind = 'fandom') > 1");
@@ -231,6 +252,27 @@ export function buildColumnFacet(filters = {}, column) {
     sql: `SELECT ${col} AS name, count(*) AS n FROM works w
           WHERE ${col} IS NOT NULL AND ${col} <> '' AND w.work_id IN (${inner})
           GROUP BY ${col} ORDER BY n DESC, ${col}`,
+  };
+}
+
+/**
+ * Who wrote them, counted.
+ *
+ * Authors are a JSON array on the work rather than rows in the tags table, so
+ * counting them needs json_each. That is present in every SQLite this app is
+ * likely to meet and absent from the oldest it will run on, so the caller is
+ * expected to try it and do without the section if it fails — an Authors
+ * filter is worth having and not worth a blank screen.
+ */
+export function buildAuthorFacet(filters = {}, limit = 40) {
+  const base = buildWorksQuery({ ...filters, author: [], limit: 1, offset: 0 });
+  const inner = base.countSql.replace('SELECT count(*) AS n ', 'SELECT w.work_id ');
+  return {
+    args: base.args,
+    sql: `SELECT j.value AS name, count(*) AS n
+            FROM works w, json_each(w.authors) j
+           WHERE w.work_id IN (${inner})
+           GROUP BY j.value ORDER BY n DESC, j.value LIMIT ${int(limit, 40, 200)}`,
   };
 }
 
