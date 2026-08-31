@@ -1171,6 +1171,39 @@ test('progress redraws, not only completion', () => {
     'and a job that ends refreshes whatever state it ended in');
 });
 
+/*
+ * Five clocks. A walk, a download job, a bookmark sync and anything told to
+ * start now each waited its own half minute, so four things running together
+ * made a request every seven seconds while each believed it was making one
+ * every twenty-eight. The archive sees the total, not the intent — which is
+ * why a single fetch from a work page was never throttled and a queue always
+ * was. The headers were identical the whole time.
+ */
+test('everything asked of the archive shares one pace', () => {
+  const fn = js.slice(js.indexOf('function paced('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /await turn/, 'turns are taken, not taken simultaneously');
+  assert.match(body, /nextGap\(\) - \(now - lastArchiveAt\)/,
+    'measured from the last request anyone made, not from this caller last time');
+  assert.match(body, /coolUntil - now/, 'and a cool-off everything honours');
+
+  const page = js.slice(js.indexOf('async function archivePage('));
+  assert.match(page.slice(0, page.indexOf('\n}\n')), /paced\(\(\) => fetch\(/,
+    'index pages go through it');
+  assert.match(js, /runTask: \(workId\) => paced\(/, 'and so does every work a job fetches');
+});
+
+test('being told to slow down slows everything, not just whoever was told', () => {
+  const fn = js.slice(js.indexOf('function slowDown('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /coolUntil = Math\.max\(coolUntil/,
+    'a longer cool-off already running is not shortened by a later one');
+  assert.match(js, /if \(res\.status === 429\) slowDown\(\)/,
+    'a 429 on an index page slows the downloads too');
+  assert.match(js, /answered 429\|rate limit\|too many requests/i,
+    'and a 429 on a work slows the walks');
+});
+
 test('a page the archive fumbled is asked for again', () => {
   const fn = js.slice(js.indexOf('async function archivePage('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));

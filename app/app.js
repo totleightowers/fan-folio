@@ -1796,7 +1796,10 @@ function freshenSoon() {
 }
 
 const jobs = createQueue({
-  runTask: (workId) => addWork(String(workId)),
+  runTask: (workId) => paced(() => addWork(String(workId)).catch((e) => {
+    if (/answered 429|rate limit|too many requests/i.test(String(e?.message))) slowDown();
+    throw e;
+  })),
   wait: (ms) => new Promise((r) => setTimeout(r, ms)),
   gap: () => nextGap(),
   shouldRetry: isTransient,
@@ -2256,14 +2259,60 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
  *
  * A 4xx is the archive answering, and is not asked again.
  */
+/*
+ * One pace for everything the app asks of the archive.
+ *
+ * There were five clocks. A walk reading somebody's index, a job downloading
+ * works, a bookmark sync, and any job told to start now alongside the others
+ * each waited its own half minute — so four things running together made a
+ * request every seven seconds while every one of them believed it was making
+ * one every twenty-eight. Nothing coordinated them, and the archive sees the
+ * total, not the intent.
+ *
+ * A single request from a work page was never throttled because it is a
+ * single request. The headers are identical: both go through the same call,
+ * the same proxy and the same handful of browser headers. It was only ever
+ * the rate.
+ *
+ * So: one queue for turns, one memory of when the last request went, and a
+ * cool-off that everything honours when the archive says to slow down.
+ */
+let archiveTurn = Promise.resolve();
+let lastArchiveAt = 0;
+let coolUntil = 0;
+
+/** The archive asked for room. Everything waits, not just whoever was told. */
+function slowDown(ms = 5 * 60_000) {
+  coolUntil = Math.max(coolUntil, Date.now() + ms);
+}
+
+function paced(run) {
+  const turn = archiveTurn;
+  let release;
+  archiveTurn = new Promise((r) => { release = r; });
+  return (async () => {
+    await turn;
+    const now = Date.now();
+    const owed = Math.max(coolUntil - now, nextGap() - (now - lastArchiveAt), 0);
+    if (owed > 0) await wait(owed);
+    lastArchiveAt = Date.now();
+    try {
+      return await run();
+    } finally {
+      release();
+    }
+  })();
+}
+
 async function archivePage(url, { attempts = 4 } = {}) {
   let failure;
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt) await wait(retryDelay(attempt));
     try {
-      const res = await fetch(`/__net/?url=${encodeURIComponent(url)}`);
+      const res = await paced(() => fetch(`/__net/?url=${encodeURIComponent(url)}`));
       const body = await res.text();
       if (res.ok) return body;
+      if (res.status === 429) slowDown();
       failure = new Error(`the archive answered ${res.status}`);
     } catch (e) {
       failure = e;
