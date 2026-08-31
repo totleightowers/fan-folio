@@ -207,6 +207,33 @@ export function innerHtmlOf(html, openTagPattern) {
  * has other <style> blocks, and picking one of those up would apply site
  * chrome CSS to the story text.
  */
+/**
+ * When a listing says a work last changed, as a date you can compare.
+ *
+ * The index already carries this, which is the whole point: deciding whether
+ * a work needs fetching again should cost nothing beyond the page that named
+ * it. The blurb gives it twice and in two shapes — an epoch in an HTML
+ * comment where the archive bothers, and "26 Aug 2025" for people — while a
+ * work page stores it as 2025-08-26. The comment is preferred because it
+ * needs no parsing and cannot be ambiguous.
+ */
+const MONTHS = {
+  Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+  Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12',
+};
+
+export function blurbDate(blurb) {
+  const epoch = Number(blurb?.updatedAt);
+  if (Number.isFinite(epoch) && epoch > 0) {
+    return new Date(epoch * 1000).toISOString().slice(0, 10);
+  }
+  const parts = /^(\d{1,2})\s+([A-Za-z]{3})\w*\s+(\d{4})$/.exec(
+    String(blurb?.datetime ?? '').trim());
+  if (!parts) return null;
+  const month = MONTHS[parts[2][0].toUpperCase() + parts[2].slice(1, 3).toLowerCase()];
+  return month ? `${parts[3]}-${month}-${parts[1].padStart(2, '0')}` : null;
+}
+
 export function parseWorkSkin(html) {
   const start = html.search(/<div[^>]*id="work-skin"/i);
   if (start < 0) return null;
