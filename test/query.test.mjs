@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { buildWorksQuery, buildFacetQuery, SORTS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, SORTS, STATES } from '../app/core/query.js';
 import { SCHEMA } from '../app/core/store/schema.js';
 
 /** A small library with known contents, so counts can be asserted exactly. */
@@ -220,4 +220,43 @@ test('a work described from a listing still filters by its tags', () => {
   const db = library();
   db.prepare('UPDATE works SET has_text = 0').run();
   assert.deepEqual(run(db, { state: 'known', include: 'BTS' }), ['1', '2']);
+});
+
+/*
+ * A rating is one value per work, kept in a column rather than in the tags
+ * table. The filter panel builds its counts by looping over the tag kinds, so
+ * ratings were never counted — and a section that draws itself only when it
+ * has counts drew itself never. The filter behind it worked the whole time.
+ */
+test('rating and language can be counted, so their sections can appear', () => {
+  for (const column of ['rating', 'language']) {
+    const q = buildColumnFacet({ state: 'all' }, column);
+    assert.match(q.sql, new RegExp(`w\\.${column} AS name`));
+    assert.match(q.sql, /count\(\*\) AS n/);
+    assert.match(q.sql, new RegExp(`GROUP BY w\\.${column}`));
+  }
+  assert.throws(() => buildColumnFacet({}, 'summary'), /unknown column facet/,
+    'only the columns meant to be counted, never one spliced in by a caller');
+});
+
+test('choosing a rating does not hide the other ratings from the list', () => {
+  const all = buildColumnFacet({ state: 'all' }, 'rating');
+  const one = buildColumnFacet({ state: 'all', rating: ['Explicit'] }, 'rating');
+  assert.equal(one.sql, all.sql, 'the column being chosen is left out of its own counts');
+  assert.deepEqual(one.args, all.args);
+});
+
+test('the archive filters this library did not have', () => {
+  const since = buildWorksQuery({ updatedAfter: '2025-01-01' });
+  assert.match(since.countSql, /COALESCE\(w\.updated, w\.published\) >= \?/);
+  assert.ok(since.args.includes('2025-01-01'));
+
+  const cross = buildWorksQuery({ crossover: '1' });
+  assert.match(cross.countSql, /count\(DISTINCT t\.name\)[\s\S]*fandom'\) > 1/);
+  const single = buildWorksQuery({ crossover: '0' });
+  assert.match(single.countSql, /fandom'\) <= 1/);
+
+  const chapters = buildWorksQuery({ chaptersMin: 2, chaptersMax: 10 });
+  assert.match(chapters.countSql, /w\.chapter_count >= \?/);
+  assert.match(chapters.countSql, /w\.chapter_count <= \?/);
 });

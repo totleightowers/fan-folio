@@ -13,7 +13,7 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, TAG_KINDS, STATES } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -71,11 +71,15 @@ function facets(filters = {}) {
     const q = buildFacetQuery(filters, kind, 40);
     tags[kind] = db.prepare(q.sql).all(...q.args);
   }
-  return {
-    counts, tags, fandoms: tags.fandom,
-    languages: db.prepare(`SELECT language AS name, count(*) AS n FROM works
-      WHERE language IS NOT NULL AND language <> '' GROUP BY language ORDER BY n DESC`).all(),
-  };
+  /* Rating and language are counted from the work itself rather than from
+     its tags. The panel draws those sections only when it has counts for
+     them, and nothing was working them out — so they never appeared, and the
+     filters behind them could not be reached. */
+  for (const column of ['rating', 'language']) {
+    const q = buildColumnFacet(filters, column);
+    tags[column] = db.prepare(q.sql).all(...q.args);
+  }
+  return { counts, tags, fandoms: tags.fandom, languages: tags.language };
 }
 
 /** Filters as they arrive on the query string. Lists are tab-separated. */

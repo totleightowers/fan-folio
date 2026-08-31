@@ -75,6 +75,8 @@ const list = (value) => {
  *   language   exact match
  *   complete   '1' | '0'
  *   wordsMin / wordsMax, chaptersMin / chaptersMax
+ *   updatedAfter / updatedBefore   YYYY-MM-DD, inclusive
+ *   crossover  '1' more than one fandom, '0' exactly one
  *   sort       one of SORTS
  */
 /** Escape what LIKE would otherwise treat as a wildcard. */
@@ -141,6 +143,37 @@ export function buildWorksQuery(filters = {}) {
   if (filters.chaptersMin) { where.push('w.chapter_count >= ?'); args.push(int(filters.chaptersMin, 0)); }
   if (filters.chaptersMax) { where.push('w.chapter_count <= ?'); args.push(int(filters.chaptersMax, 0)); }
 
+  /*
+   * When it last changed, which is the filter the archive offers and this did
+   * not. The date is stored as the archive writes it — YYYY-MM-DD — so it
+   * sorts and compares as text without parsing anything, and a work with no
+   * updated date falls back to when it was posted, the same way the column
+   * that displays it does.
+   */
+  if (filters.updatedAfter) {
+    where.push('COALESCE(w.updated, w.published) >= ?');
+    args.push(String(filters.updatedAfter).slice(0, 10));
+  }
+  if (filters.updatedBefore) {
+    where.push('COALESCE(w.updated, w.published) <= ?');
+    args.push(String(filters.updatedBefore).slice(0, 10));
+  }
+
+  /*
+   * Crossovers: a work in more than one fandom. The archive treats this as a
+   * yes-or-no of its own rather than something you assemble out of fandom
+   * tags, because assembling it is the thing you cannot do — asking for two
+   * fandoms gives works in both, and what you wanted was works in either that
+   * are also in some second thing.
+   */
+  if (filters.crossover === '1') {
+    where.push("(SELECT count(DISTINCT t.name) FROM tags t "
+             + "WHERE t.work_id = w.work_id AND t.kind = 'fandom') > 1");
+  } else if (filters.crossover === '0') {
+    where.push("(SELECT count(DISTINCT t.name) FROM tags t "
+             + "WHERE t.work_id = w.work_id AND t.kind = 'fandom') <= 1");
+  }
+
   const order = SORTS[filters.sort] ?? SORTS.title;
   const limit = int(filters.limit, 50, 200);
   const offset = int(filters.offset, 0, 1_000_000);
@@ -171,6 +204,36 @@ export function buildWorksQuery(filters = {}) {
  * a filter panel usable: it shows what narrowing further would actually leave,
  * so no reader ever picks a combination that yields nothing.
  */
+/**
+ * Counting something a work holds in a column rather than in the tags table.
+ *
+ * A rating is not a tag here: the archive presents it as one, but it is one
+ * value per work and it is stored as a column. The facets were built by
+ * looping over the tag kinds, so ratings were never counted — and the panel
+ * draws its Rating section only when it has counts to draw, which is to say
+ * never. The filter behind it worked the whole time; there was simply no way
+ * to reach it. Language had the same shape of hole.
+ *
+ * The column being filtered on is dropped from the counts, so choosing
+ * Explicit does not make Mature disappear from the list you chose it from.
+ */
+const COLUMN_FACETS = { rating: 'w.rating', language: 'w.language' };
+
+export function buildColumnFacet(filters = {}, column) {
+  const col = COLUMN_FACETS[column];
+  if (!col) throw new Error(`unknown column facet: ${column}`);
+  const without = { ...filters, limit: 1, offset: 0 };
+  delete without[column];
+  const base = buildWorksQuery(without);
+  const inner = base.countSql.replace('SELECT count(*) AS n ', 'SELECT w.work_id ');
+  return {
+    args: base.args,
+    sql: `SELECT ${col} AS name, count(*) AS n FROM works w
+          WHERE ${col} IS NOT NULL AND ${col} <> '' AND w.work_id IN (${inner})
+          GROUP BY ${col} ORDER BY n DESC, ${col}`,
+  };
+}
+
 export function buildFacetQuery(filters = {}, kind, limit = 30) {
   if (!TAG_KINDS.includes(kind)) throw new Error(`unknown tag kind: ${kind}`);
   const base = buildWorksQuery({ ...filters, limit: 1, offset: 0 });
