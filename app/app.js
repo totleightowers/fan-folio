@@ -1506,7 +1506,11 @@ const jobs = createQueue({
 function paintJobs() {
   const box = $('#job-list');
   box.textContent = '';
-  const list = jobs.list().filter((j) => j.state !== 'done');
+  /* A job that reached the end of its list without getting everything is not
+     finished with, whatever its state says. It used to leave the screen the
+     moment it stopped — reporting nothing downloaded and then disappearing,
+     with no sign that the works were still owed. */
+  const list = jobs.list().filter((j) => j.state !== 'done' || j.unfinished > 0);
 
   if (jobError) {
     /* Failures from background work belong here, next to the thing that
@@ -1558,7 +1562,9 @@ function paintJobs() {
         + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
           : job.state === 'paused' ? ' · paused'
           : job.state === 'cancelled' ? ' · stopped'
-          : job.state === 'listing' ? ' · still reading the list' : ' · waiting');
+          : job.state === 'listing' ? ' · still reading the list'
+          : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
+          : ' · waiting');
 
     /* How far along, as a bar rather than a badge. A pill saying "downloading"
        spends a third of the row restating a word already in the line above it

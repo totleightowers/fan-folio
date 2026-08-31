@@ -281,3 +281,40 @@ test('sealing a job that never found anything ends it rather than stranding it',
   assert.equal(q.list()[0].state, 'done',
     'a walk that failed must not leave a job reading its list for ever');
 });
+
+/*
+ * A job whose works all failed reported nothing downloaded and then vanished.
+ * `done` counts a work that failed as dealt with, so what was saved for the
+ * restart was "what is left", which was nothing — and the job was dropped for
+ * being finished as well. Twice over.
+ */
+test('what ran out of retries is still owed', async () => {
+  const q = createQueue({
+    runTask: async () => { throw new Error('The app could not reach the archive'); },
+    wait: async () => {}, gap: () => 0, maxRetries: 1,
+    shouldRetry: (m) => /could not reach/i.test(m),
+  });
+  q.add({ author: 'beebalm', part: 'works', workIds: ['1', '2'] });
+  await new Promise((r) => setTimeout(r, 20));
+
+  const job = q.list()[0];
+  assert.equal(job.added, 0);
+  assert.equal(job.unfinished, 2, 'both are still owed, not written off');
+
+  const saved = q.save();
+  assert.equal(saved.length, 1, 'and the job survives to be picked up again');
+  assert.deepEqual(saved[0].workIds, ['1', '2']);
+});
+
+test('a work that is genuinely gone is not asked for for ever', async () => {
+  const q = createQueue({
+    runTask: async () => { throw new Error('That work does not exist, or has been deleted'); },
+    wait: async () => {}, gap: () => 0, maxRetries: 1,
+    shouldRetry: (m) => /could not reach/i.test(m),
+  });
+  q.add({ author: 'a', part: 'works', workIds: ['1', '2'] });
+  await new Promise((r) => setTimeout(r, 20));
+
+  assert.equal(q.list()[0].unfinished, 0, 'a refusal is an answer, not an outage');
+  assert.deepEqual(q.save(), [], 'so nothing is carried over');
+});
