@@ -13,7 +13,7 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, TAG_KINDS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -79,11 +79,14 @@ function facets(filters = {}) {
     const q = buildColumnFacet(filters, column);
     tags[column] = db.prepare(q.sql).all(...q.args);
   }
+  let authorTotal = 0;
   try {
     const q = buildAuthorFacet(filters, 40);
     tags.author = db.prepare(q.sql).all(...q.args);
+    const c = buildAuthorCount(filters);
+    authorTotal = db.prepare(c.sql).get(...c.args)?.n ?? 0;
   } catch { tags.author = []; }
-  return { counts, tags, fandoms: tags.fandom, languages: tags.language };
+  return { counts, tags, fandoms: tags.fandom, languages: tags.language, authorTotal };
 }
 
 /** Filters as they arrive on the query string. Lists are tab-separated. */
@@ -235,6 +238,20 @@ createServer(async (req, res) => {
     }
 
     if (p === '/api/facets') return json(res, facets(filtersFrom(url.searchParams)));
+
+    /* One section's options, searched across the whole library rather than
+       sifting the handful the panel happens to be showing. */
+    if (p === '/api/facet-search') {
+      const kind = url.searchParams.get('kind');
+      const needle = url.searchParams.get('q') ?? '';
+      const filters = filtersFrom(url.searchParams);
+      try {
+        const built = kind === 'author'
+          ? buildAuthorFacet(filters, 60, needle)
+          : buildFacetQuery(filters, kind, 60, needle);
+        return json(res, { items: db.prepare(built.sql).all(...built.args) });
+      } catch { return json(res, { items: [] }); }
+    }
 
     if (p === '/api/progress' && req.method === 'POST') {
       const workId = url.searchParams.get('workId');

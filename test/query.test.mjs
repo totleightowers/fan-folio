@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, SORTS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, SORTS, STATES } from '../app/core/query.js';
 import { SCHEMA } from '../app/core/store/schema.js';
 
 /** A small library with known contents, so counts can be asserted exactly. */
@@ -285,4 +285,34 @@ test('authors can be counted, so they can be chosen as well as removed', () => {
   assert.match(q.sql, /LIMIT 12/, 'a top handful, with the rest behind a button');
   const chosen = buildAuthorFacet({ state: 'all', author: ['someone'] }, 12);
   assert.equal(chosen.sql, q.sql, 'picking one author does not hide the others');
+});
+
+/*
+ * The panel shows the busiest handful of each kind — 40 of 1,534 authors in my
+ * library — and typing used to sift only that handful. So every author and
+ * every tag outside the top of the list could not be found at all, and the box
+ * returned nothing rather than saying it had not looked.
+ */
+test('a facet search reaches past the handful on screen', () => {
+  const browsing = buildAuthorFacet({}, 40);
+  const searching = buildAuthorFacet({}, 40, 'bee');
+  assert.ok(!/LIKE/.test(browsing.sql), 'browsing takes the top by count');
+  assert.match(searching.sql, /j\.value LIKE \? ESCAPE/, 'searching asks the database');
+  assert.ok(searching.args.includes('%bee%'));
+
+  const tags = buildFacetQuery({}, 'freeform', 40, 'slow');
+  assert.match(tags.sql, /t\.name LIKE \? ESCAPE/, 'and tags the same way');
+  assert.ok(tags.args.includes('%slow%'));
+});
+
+test('a search needle cannot smuggle in a wildcard', () => {
+  const q = buildAuthorFacet({}, 40, '100%_real');
+  assert.ok(q.args.some((a) => a === '%100\\%\\_real%'),
+    'per cent and underscore are literal to somebody typing a name');
+});
+
+test('how many authors there are is a different question from which to show', () => {
+  const count = buildAuthorCount({});
+  assert.match(count.sql, /count\(\*\) AS n FROM \(\s*SELECT DISTINCT/,
+    'so the panel can say 40 of 1,534 rather than implying 40 is all of them');
 });
