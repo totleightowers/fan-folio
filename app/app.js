@@ -1840,6 +1840,17 @@ const jobs = createQueue({
   },
 });
 
+/** "just now", "3h ago", "yesterday" — enough to place a finished job. */
+function whenShort(at) {
+  const mins = Math.max(0, Math.round((Date.now() - Number(at)) / 60000));
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? 'yesterday' : `${days}d ago`;
+}
+
 function paintJobs() {
   const box = $('#job-list');
   box.textContent = '';
@@ -1851,7 +1862,13 @@ function paintJobs() {
      record of what was asked for, and with nowhere to see it there was no way
      to tell a job that got everything from one that quietly got none of it —
      or to ask for it again. */
-  const list = jobs.list();
+  /* What is happening, then what happened. A finished job below the running
+     ones is a record; above them it is in the way. */
+  const RANK = { running: 0, queued: 1, listing: 1, paused: 2, done: 3, cancelled: 3 };
+  const list = jobs.list()
+    .map((j, i) => [j, i])
+    .sort((a, b) => (RANK[a[0].state] ?? 9) - (RANK[b[0].state] ?? 9) || a[1] - b[1])
+    .map(([j]) => j);
 
   if (jobError) {
     /* Failures from background work belong here, next to the thing that
@@ -1866,7 +1883,7 @@ function paintJobs() {
   if (!list.length) {
     const idle = document.createElement('p');
     idle.className = 'setting-note';
-    idle.textContent = 'Nothing waiting.';
+    idle.textContent = 'Nothing waiting, and nothing has run yet.';
     box.append(idle);
     return;
   }
@@ -1905,7 +1922,7 @@ function paintJobs() {
           : job.state === 'cancelled' ? ' · stopped'
           : job.state === 'listing' ? ' · still reading the list'
           : job.state === 'done' && job.unfinished ? ` · ${job.unfinished} never arrived`
-          : job.state === 'done' ? ' · done'
+          : job.state === 'done' ? ` · finished${job.at ? ` ${whenShort(job.at)}` : ''}`
           : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
           : ' · waiting');
 
@@ -2003,7 +2020,13 @@ function resumeJobs() {
          is not a reason to abandon somebody's queue — the worst it costs is
          fetching something twice. */
     }
-    if (!left.length && !job.open) continue;
+    /* A job with nothing left is a record of one that finished. It goes back
+       on the list so the app can still say what it did, rather than opening
+       with Nothing waiting and no account of yesterday. */
+    if (!left.length && !job.open) {
+      jobs.restore({ ...job, workIds: [] });
+      continue;
+    }
 
     const id = jobs.add({
       author: job.author, part: job.part, workIds: left, open: Boolean(job.open),
