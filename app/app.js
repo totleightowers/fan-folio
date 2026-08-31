@@ -1249,16 +1249,34 @@ async function buildSettings() {
  */
 const STUBS_JOB = { author: 'Your library', part: 'described but not held' };
 
-function stubIds(limit = 5000) {
+/* Newest first, because a run this long will not finish in one sitting and
+   the recent ones are the likelier want. Capped, because a queue is a list in
+   memory and a library can name more works than anyone will sit through —
+   pressing the button again picks up whatever the cap left behind. */
+const STUBS_AT_ONCE = 2000;
+
+function stubIds(limit = STUBS_AT_ONCE) {
   if (!nativeStatus().hasDatabase) return [];
   try {
     const out = JSON.parse(window.ArchiveNative.query(
       `SELECT work_id FROM works WHERE COALESCE(has_text, 0) = 0
-        ORDER BY COALESCE(updated, published) DESC LIMIT ${Number(limit) || 5000}`,
+        ORDER BY COALESCE(updated, published) DESC LIMIT ${Number(limit) || STUBS_AT_ONCE}`,
       JSON.stringify([])));
     return (out.rows ?? []).map((r) => String(r.work_id));
   } catch {
     return [];
+  }
+}
+
+/** How many there are altogether, which is not always how many can be queued. */
+function stubTotal() {
+  if (!nativeStatus().hasDatabase) return 0;
+  try {
+    const out = JSON.parse(window.ArchiveNative.query(
+      'SELECT count(*) AS n FROM works WHERE COALESCE(has_text, 0) = 0', JSON.stringify([])));
+    return Number(out.rows?.[0]?.n ?? 0);
+  } catch {
+    return 0;
   }
 }
 
@@ -1271,14 +1289,21 @@ function paintStubs() {
     button.hidden = true;
     return;
   }
-  const ids = stubIds();
-  button.hidden = ids.length === 0;
-  note.textContent = ids.length
-    ? `${fmt(ids.length)} work${ids.length === 1 ? '' : 's'} the library knows about `
-      + 'but has not downloaded. Newest first.'
+  const total = stubTotal();
+  button.hidden = total === 0;
+  /* Half a minute between requests is the whole cost of this, so it is said in
+     hours rather than left to be discovered. */
+  const hours = Math.round((total * 28) / 3600);
+  note.textContent = total
+    ? `${fmt(total)} work${total === 1 ? '' : 's'} the library knows about but has not `
+      + `downloaded — about ${hours} hour${hours === 1 ? '' : 's'} of asking, newest first.`
+      + (total > STUBS_AT_ONCE ? ` ${fmt(STUBS_AT_ONCE)} at a time.` : '')
     : 'Everything the library knows about has been downloaded.';
+  button.textContent = total > STUBS_AT_ONCE
+    ? `Download the next ${fmt(STUBS_AT_ONCE)}` : 'Download them all';
   button.onclick = () => {
     if (!signedIn()) { toast('Sign in to the archive first'); return; }
+    // read again rather than reusing the painted list: some may have arrived
     const queued = stubIds();
     if (!queued.length) { paintStubs(); return; }
     jobs.add({ ...STUBS_JOB, workIds: queued });

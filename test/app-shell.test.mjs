@@ -1473,6 +1473,8 @@ test('everything described but not held can be asked for at once', () => {
     'a description is not the work; that column is what tells them apart');
   assert.match(body, /ORDER BY COALESCE\(updated, published\) DESC/,
     'newest first, because a run this long may not finish in one sitting');
+  assert.match(body, /LIMIT \$\{Number\(limit\) \|\| STUBS_AT_ONCE\}/,
+    'and capped, because a queue is a list held in memory');
 
   const paint = js.slice(js.indexOf('function paintStubs('));
   const pbody = paint.slice(0, paint.indexOf('\n}\n'));
@@ -1482,6 +1484,10 @@ test('everything described but not held can be asked for at once', () => {
     'it goes through the queue, so it can be paused, stopped and resumed');
   assert.match(pbody, /Everything the library knows about has been downloaded/,
     'and says so when there is nothing left to get');
+  assert.match(pbody, /hour\$\{hours === 1 \? '' : 's'\} of asking/,
+    'half a minute per work is the whole cost, so it is said rather than discovered');
+  assert.match(pbody, /total > STUBS_AT_ONCE/,
+    'and it says when it is queuing part of the list rather than all of it');
 });
 
 test('failing to reach the archive is not the archive refusing', () => {
