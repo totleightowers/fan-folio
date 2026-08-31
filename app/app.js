@@ -10,7 +10,7 @@
 import { History, openingOffset } from './core/nav.js';
 import { findNewBookmarks, fetchWorks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
-import { parseListing, signedInUser, parseUserCounts } from './core/ao3/parse.js';
+import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
 import { languageName } from './core/ao3/markup.js';
 import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
   authorBookmarks as authorBookmarksUrl, authorProfile as authorProfileUrl,
@@ -1799,7 +1799,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
 
   const keep = (works) => {
     saveStubs(asStubs(works));
-    const missing = works.map((w) => String(w.workId)).filter((id) => !workIsHeld(id));
+    const missing = needsFetching(works);
     if (!missing.length) return;
     if (jobId === null) jobId = jobs.add({ author: name, part: listing, workIds: missing });
     else jobs.append(jobId, missing);
@@ -1995,6 +1995,50 @@ async function syncBookmarks() {
 }
 
 /** One work, straight from the database — cheaper than holding the whole library. */
+/**
+ * Which of these the app actually has to ask the archive for.
+ *
+ * "Do we have a row for it" was the wrong question, and it was being asked
+ * after the stubs for that very page had just been written — so every work in
+ * an index looked like one the app already had. It also meant the 2,753 works
+ * described from listings and never downloaded could not be fetched by
+ * opening their author, because a description counts as a row.
+ *
+ * Two things make a work worth a request:
+ *
+ *   there is no text, only a description of it
+ *   the index says it changed after the copy on disk
+ *
+ * Both are answered from the page that named it and one query against what is
+ * already stored, so checking costs nothing. Everything else is left alone,
+ * which is the point: an author of ninety works whose ninety are current
+ * should cost the pages of their index and not one request more.
+ */
+function needsFetching(works) {
+  const ids = works.map((w) => String(w.workId));
+  const known = new Map();
+  if (nativeStatus().hasDatabase) {
+    for (let i = 0; i < ids.length; i += 400) {
+      const block = ids.slice(i, i + 400);
+      const marks = block.map(() => '?').join(',');
+      try {
+        const out = JSON.parse(window.ArchiveNative.query(
+          `SELECT work_id, has_text, updated FROM works WHERE work_id IN (${marks})`,
+          JSON.stringify(block.map(String))));
+        for (const row of out.rows ?? []) known.set(String(row.work_id), row);
+      } catch { /* nothing known: everything is asked for, which is safe */ }
+    }
+  }
+
+  return works.filter((w) => {
+    const held = known.get(String(w.workId));
+    if (!held) return true;                       // never seen
+    if (!held.has_text) return true;              // described, not held
+    const listed = blurbDate(w);
+    return Boolean(listed && held.updated && listed > held.updated);
+  }).map((w) => String(w.workId));
+}
+
 function workIsHeld(workId) {
   try {
     return Boolean(nativeStatus().hasDatabase
@@ -2033,9 +2077,37 @@ function sheetHandle(d) {
   d.prepend(grab);
 }
 
+/*
+ * Pressing the dimmed part of the screen puts a sheet away.
+ *
+ * A modal dialog fills the window and paints its backdrop through a
+ * pseudo-element, so a press on what looks like the page behind is really a
+ * press on the dialog itself — which is why nothing happened. What separates
+ * the two is where it landed: outside the box the sheet actually occupies.
+ *
+ * Measured on pointerdown rather than acted on at click, because a drag that
+ * starts inside the sheet and ends outside it is a drag, not a dismissal.
+ */
+function dismissOnBackdrop(d) {
+  if (d.dataset.backdropClose) return;
+  d.dataset.backdropClose = '1';
+  let startedOutside = false;
+  d.addEventListener('pointerdown', (e) => {
+    if (e.target !== d) { startedOutside = false; return; }
+    const box = d.getBoundingClientRect();
+    startedOutside = e.clientX < box.left || e.clientX > box.right
+      || e.clientY < box.top || e.clientY > box.bottom;
+  });
+  d.addEventListener('click', (e) => {
+    if (e.target === d && startedOutside) closeSheet(d);
+    startedOutside = false;
+  });
+}
+
 function openSheet(d) {
   if (d.open) return;
   sheetHandle(d);
+  dismissOnBackdrop(d);
   d.classList.remove('sheet-out');
   d.showModal();
   d.classList.add('sheet-in');
