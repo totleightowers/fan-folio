@@ -1234,8 +1234,57 @@ async function buildSettings() {
   };
 
   paintJobs();
+  paintStubs();
   $('#version').textContent = `Fan Folio ${VERSION}`;
   paintAccount();
+}
+
+/**
+ * Works read off somebody's index and never fetched.
+ *
+ * These cost nothing to know about — a listing names a hundred works in one
+ * request — and after an import they are most of what a library holds. They
+ * were only reachable by opening each author in turn, which is a lot of taps
+ * to say something simple.
+ */
+const STUBS_JOB = { author: 'Your library', part: 'described but not held' };
+
+function stubIds(limit = 5000) {
+  if (!nativeStatus().hasDatabase) return [];
+  try {
+    const out = JSON.parse(window.ArchiveNative.query(
+      `SELECT work_id FROM works WHERE COALESCE(has_text, 0) = 0
+        ORDER BY COALESCE(updated, published) DESC LIMIT ${Number(limit) || 5000}`,
+      JSON.stringify([])));
+    return (out.rows ?? []).map((r) => String(r.work_id));
+  } catch {
+    return [];
+  }
+}
+
+function paintStubs() {
+  const note = $('#stub-count');
+  const button = $('#fetch-stubs');
+  if (!note || !button) return;
+  if (!isNative) {
+    note.textContent = 'Only in the app.';
+    button.hidden = true;
+    return;
+  }
+  const ids = stubIds();
+  button.hidden = ids.length === 0;
+  note.textContent = ids.length
+    ? `${fmt(ids.length)} work${ids.length === 1 ? '' : 's'} the library knows about `
+      + 'but has not downloaded. Newest first.'
+    : 'Everything the library knows about has been downloaded.';
+  button.onclick = () => {
+    if (!signedIn()) { toast('Sign in to the archive first'); return; }
+    const queued = stubIds();
+    if (!queued.length) { paintStubs(); return; }
+    jobs.add({ ...STUBS_JOB, workIds: queued });
+    toast(`Queued ${fmt(queued.length)} works`);
+    paintJobs();
+  };
 }
 
 $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
@@ -1684,7 +1733,7 @@ const jobs = createQueue({
       freshen();
     }
     save(JOBS_KEY, jobs.save());
-    if (!$('#settings').hidden) paintJobs();
+    if (!$('#settings').hidden) { paintJobs(); paintStubs(); }
   },
 });
 

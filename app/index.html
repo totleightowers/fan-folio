@@ -130,6 +130,20 @@
     </div>
 
     <div class="setting-group">
+      <h3 class="group">Described but not held</h3>
+      <!--
+          Works read off somebody's index and never fetched. They cost nothing
+          to know about and they are what the library is mostly made of after
+          an import, so it is worth being able to say "get all of them" without
+          opening every author one at a time.
+      -->
+      <p class="setting-note" id="stub-count"></p>
+      <button id="fetch-stubs" class="primary">Download them all</button>
+      <p class="setting-note">One at a time with a wait between, like everything else. It can be
+        paused or stopped from the list above, and it carries on where it left off.</p>
+    </div>
+
+    <div class="setting-group">
       <h3 class="group">New bookmarks</h3>
       <p class="setting-note">Checks the archive for bookmarks you have made since the last
         time, and downloads those works.</p>
