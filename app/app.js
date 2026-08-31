@@ -73,6 +73,7 @@ const view = load(VIEW_KEY, {
   sort: 'title', state: 'all',
   include: [], exclude: [], rating: [], author: [],
   complete: '', language: '', wordsMin: '', wordsMax: '',
+  chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
 });
 let positions = load(POS_KEY, {});
 
@@ -562,7 +563,9 @@ function filterParams(extra = {}) {
   for (const key of ['include', 'exclude', 'rating', 'author']) {
     if (view[key]?.length) p.set(key, view[key].join('\t'));
   }
-  for (const key of ['complete', 'language', 'wordsMin', 'wordsMax']) {
+  for (const key of ['complete', 'language', 'wordsMin', 'wordsMax',
+                     'chaptersMin', 'chaptersMax',
+                     'updatedAfter', 'updatedBefore', 'crossover']) {
     if (view[key]) p.set(key, view[key]);
   }
   return p;
@@ -571,7 +574,10 @@ function filterParams(extra = {}) {
 const activeCount = () =>
   view.include.length + view.exclude.length + view.rating.length + (view.author?.length ?? 0)
   + (view.complete ? 1 : 0) + (view.language ? 1 : 0)
-  + (view.wordsMin ? 1 : 0) + (view.wordsMax ? 1 : 0)
+  + (view.wordsMin || view.wordsMax ? 1 : 0)
+  + (view.chaptersMin || view.chaptersMax ? 1 : 0)
+  + (view.updatedAfter || view.updatedBefore ? 1 : 0)
+  + (view.crossover ? 1 : 0)
   + (view.state !== 'all' ? 1 : 0);
 
 /** Tri-state: off → include → exclude → off. */
@@ -611,6 +617,24 @@ const WORD_PRESETS = [
   ['', '', 'Any length'], ['', '5000', 'Under 5k'], ['5000', '20000', '5–20k'],
   ['20000', '80000', '20–80k'], ['80000', '', 'Over 80k'],
 ];
+
+const CHAPTER_PRESETS = [
+  ['', '', 'Any'], ['1', '1', 'One-shot'], ['2', '10', '2–10'],
+  ['11', '30', '11–30'], ['31', '', 'Over 30'],
+];
+
+/* Relative, because "updated since" is the question, and an absolute date
+   would go stale the moment it was saved. Worked out when the panel is drawn. */
+const SINCE_PRESETS = [
+  ['', 'Any time'], ['7', 'Past week'], ['31', 'Past month'],
+  ['186', 'Past 6 months'], ['366', 'Past year'],
+];
+
+const daysAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - Number(n));
+  return d.toISOString().slice(0, 10);
+};
 
 /* Which sections are open. Remembered, so reopening the panel is not a reset. */
 const openSections = new Set(['state']);
@@ -713,6 +737,72 @@ async function buildFilterPanel() {
     }
     box.append(opts);
   });
+
+  section('chapters', 'Chapters',
+    view.chaptersMin || view.chaptersMax
+      ? [CHAPTER_PRESETS.find(([a, b]) => a === view.chaptersMin && b === view.chaptersMax)?.[2]
+         ?? 'custom'] : [], (box) => {
+    const opts = document.createElement('div');
+    opts.className = 'opts';
+    for (const [min, max, label] of CHAPTER_PRESETS) {
+      const on = view.chaptersMin === min && view.chaptersMax === max ? 'on' : '';
+      opts.append(chip(label, null, on, () => {
+        view.chaptersMin = min; view.chaptersMax = max; save(VIEW_KEY, view);
+      }));
+    }
+    box.append(opts);
+  });
+
+  /* What the archive calls Date Updated. Relative rather than a pair of dates:
+     the question is almost always "anything new", and a date typed in once is
+     wrong by the following week. */
+  section('updated', 'Updated',
+    view.updatedAfter ? [SINCE_PRESETS.find(([d]) => d && daysAgo(d) === view.updatedAfter)?.[1]
+                         ?? `since ${view.updatedAfter}`] : [], (box) => {
+    const opts = document.createElement('div');
+    opts.className = 'opts';
+    for (const [days, label] of SINCE_PRESETS) {
+      const value = days ? daysAgo(days) : '';
+      opts.append(chip(label, null, view.updatedAfter === value ? 'on' : '', () => {
+        view.updatedAfter = value; save(VIEW_KEY, view);
+      }));
+    }
+    box.append(opts);
+  });
+
+  /* A work in more than one fandom. Not something you can assemble out of the
+     fandom chips: asking for two fandoms gives works in both, and what you
+     wanted was works in either that are also in some second thing. */
+  section('crossover', 'Crossovers',
+    view.crossover ? [view.crossover === '1' ? 'Crossovers only' : 'No crossovers'] : [], (box) => {
+    const opts = document.createElement('div');
+    opts.className = 'opts';
+    for (const [value, label] of [['', 'Any'], ['1', 'Crossovers only'], ['0', 'No crossovers']]) {
+      opts.append(chip(label, null, view.crossover === value ? 'on' : '', () => {
+        view.crossover = value; save(VIEW_KEY, view);
+      }));
+    }
+    box.append(opts);
+  });
+
+  if (facets.tags?.language?.length > 1) {
+    section('language', 'Language', view.language ? [languageName(view.language) ?? view.language] : [],
+      (box) => {
+      const opts = document.createElement('div');
+      opts.className = 'opts';
+      opts.append(chip('Any', null, view.language ? '' : 'on', () => {
+        view.language = ''; save(VIEW_KEY, view);
+      }));
+      for (const l of facets.tags.language) {
+        opts.append(chip(languageName(l.name) ?? l.name, l.n,
+          view.language === l.name ? 'on' : '', () => {
+            view.language = view.language === l.name ? '' : l.name;
+            save(VIEW_KEY, view);
+          }));
+      }
+      box.append(opts);
+    });
+  }
 
   if (facets.tags?.rating?.length) {
     section('rating', 'Rating', view.rating, (box) => {
@@ -867,9 +957,12 @@ $('#apply-filters').onclick = () => {
   loadMore(true);
 };
 $('#clear-filters').onclick = async () => {
+  /* Every filter the panel can set. Miss one and Clear leaves it on, with the
+     count in the header disagreeing with the list underneath it. */
   Object.assign(view, {
-    state: 'all', include: [], exclude: [], rating: [],
-    complete: '', language: '', wordsMin: '', wordsMax: '', author: [],
+    state: 'all', include: [], exclude: [], rating: [], author: [],
+    complete: '', language: '', wordsMin: '', wordsMax: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
   });
   save(VIEW_KEY, view);
   await refreshAfterFilterChange();

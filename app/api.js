@@ -9,7 +9,7 @@
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
-import { buildWorksQuery, buildFacetQuery, TAG_KINDS, STATES } from './core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
 import { workPage, linkTarget, chapterUrl, seriesPage, ORIGIN } from './core/ao3/urls.js';
 import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
@@ -137,11 +137,15 @@ const LOCAL = {
       const q = buildFacetQuery(filters, kind, 40);
       tags[kind] = sql(q.sql, q.args);
     }
-    return {
-      counts, tags, fandoms: tags.fandom,
-      languages: sql(`SELECT language AS name, count(*) AS n FROM works
-                      WHERE language IS NOT NULL AND language <> '' GROUP BY language ORDER BY n DESC`),
-    };
+    /* Rating and language are counted from the work itself rather than from
+       its tags. The panel draws those sections only when it has counts for
+       them, and nothing was working them out — so they never appeared, and
+       the filters behind them could not be reached. */
+    for (const column of ['rating', 'language']) {
+      const q = buildColumnFacet(filters, column);
+      tags[column] = sql(q.sql, q.args);
+    }
+    return { counts, tags, fandoms: tags.fandom, languages: tags.language };
   },
 
   work: (workId) => {

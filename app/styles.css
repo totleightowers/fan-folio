@@ -721,7 +721,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 .active-pill .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .active-pill .x { opacity: .6; font-size: .95rem; line-height: 1; }
 .active-pill.in { border-color: color-mix(in srgb, var(--accent) 55%, var(--rule)); }
-.active-pill.out { border-color: color-mix(in srgb, #c0392b 55%, var(--rule)); text-decoration: line-through; }
+.active-pill.out { border-color: color-mix(in srgb, var(--no) 55%, var(--rule)); text-decoration: line-through; }
 .active-pill.state { border-style: dashed; }
 
 #filters {
@@ -756,15 +756,20 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   font: inherit; background: none; border: 0; color: inherit; cursor: pointer;
   padding: .7rem .1rem; text-align: left;
 }
-.sec-title { flex: 0 0 auto; font-size: .9rem; font-weight: 600; }
+/* The name on the left, what is chosen on the right against the chevron.
+   These used to sit side by side with the whole of the remaining width behind
+   them, so a section read "Fandoms  BTS" with an arm's length of nothing
+   after it, and two sections in a row never lined up with each other. */
+.sec-title { flex: 1 1 auto; font-size: .92rem; font-weight: 600; }
 .sec-sel {
-  flex: 1 1 auto; min-width: 0; font-size: .78rem; color: var(--muted);
+  flex: 0 1 auto; min-width: 0; text-align: right;
+  font-size: .78rem; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .sec-sel.has { color: var(--accent); }
 .sec-chev { flex: 0 0 auto; color: var(--muted); }
 .filter-section.open .sec-chev { transform: rotate(90deg); }
-.sec-body { display: none; padding: 0 .1rem .8rem; }
+.sec-body { display: none; padding: 0 .1rem .9rem; }
 .filter-section.open .sec-body { display: block; }
 
 .sec-find {
@@ -776,19 +781,27 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   font: inherit; font-size: .78rem; background: none; border: 1px dashed var(--rule);
   color: var(--accent); border-radius: 999px; padding: .28rem .7rem; cursor: pointer;
 }
-.opts { display: flex; flex-wrap: wrap; gap: .35rem; }
+.opts { display: flex; flex-wrap: wrap; gap: .4rem; }
+/*
+ * A filter option is a control with an on state, so it keeps its pill shape —
+ * but it wore a pane fill inside a full border, which is the heavy treatment
+ * taken off every other chip in the app. Forty of them in one panel is a grid
+ * of outlines to read through before the words in them.
+ */
 .opt {
   display: inline-flex; align-items: center; gap: .35rem; font: inherit; font-size: .8rem;
-  background: var(--pane); color: inherit; border: 1px solid var(--rule);
-  border-radius: 999px; padding: .28rem .65rem; cursor: pointer; max-width: 100%;
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+  color: var(--fg); border: 1px solid transparent;
+  border-radius: 999px; padding: .32rem .7rem; cursor: pointer; max-width: 100%;
 }
 .opt .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .opt .n { color: var(--muted); font-size: .72rem; }
 .opt.on, .opt.in { background: var(--accent); border-color: var(--accent); color: #fff; }
 .opt.on .n, .opt.in .n { color: rgb(255 255 255 / .75); }
 .opt.out {
-  border-color: #c0392b; color: #c0392b; text-decoration: line-through;
-  background: color-mix(in srgb, #c0392b 12%, transparent);
+  border-color: color-mix(in srgb, var(--no) 45%, transparent);
+  color: var(--no); text-decoration: line-through;
+  background: color-mix(in srgb, var(--no) 12%, transparent);
 }
 .filter-hint { font-size: .76rem; color: var(--muted); margin: .2rem 0 0; }
 button.primary.wide { width: 100%; }
@@ -900,7 +913,7 @@ dialog h2 {
 }
 .addwork-status { font-size: .85rem; margin: .7rem 0 0; }
 .addwork-status.ok { color: var(--accent); }
-.addwork-status.bad { color: #c0392b; }
+.addwork-status.bad { color: var(--no); }
 .addwork-actions { display: flex; gap: .5rem; margin-top: 1rem; }
 .addwork-actions .close { margin-top: 0; }
 .addwork-actions .primary { flex: 0 0 auto; }
@@ -1014,7 +1027,14 @@ dialog h2 {
   /* a loop rather than a movement between states: slow enough to read as
      waiting rather than as something going wrong */
   --dur-sweep: 1400ms;
+  /* Excluding something is the one destructive-feeling act in the filters, and
+     it was written as a raw hex in three places — a red mixed for a light
+     background, left to fend for itself on a dark one. */
+  --no: #c0392b;
 }
+:root:not([data-theme='light']) { --no: #e07a6e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --no: #e07a6e; } }
+:root[data-theme='dark'], :root[data-theme='black'] { --no: #e07a6e; }
 
 /* ------------------------------------------------------- interaction layer
  *
