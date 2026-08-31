@@ -264,26 +264,54 @@ export function buildColumnFacet(filters = {}, column) {
  * expected to try it and do without the section if it fails — an Authors
  * filter is worth having and not worth a blank screen.
  */
-export function buildAuthorFacet(filters = {}, limit = 40) {
+export function buildAuthorFacet(filters = {}, limit = 40, needle = '') {
+  const base = buildWorksQuery({ ...filters, author: [], limit: 1, offset: 0 });
+  const inner = base.countSql.replace('SELECT count(*) AS n ', 'SELECT w.work_id ');
+  const args = [...base.args];
+  /* Searching has to reach past the top of the list. A library holds far more
+     names than anyone wants to scroll, so the panel shows the busiest handful
+     — and typing used to sift only that handful, which meant every author
+     outside it could not be found at all. */
+  let match = '';
+  if (needle) {
+    match = " AND j.value LIKE ? ESCAPE '\\'";
+    args.push(`%${likeLiteral(needle)}%`);
+  }
+  return {
+    args,
+    sql: `SELECT j.value AS name, count(*) AS n
+            FROM works w, json_each(w.authors) j
+           WHERE w.work_id IN (${inner})${match}
+           GROUP BY j.value ORDER BY n DESC, j.value LIMIT ${int(limit, 40, 500)}`,
+  };
+}
+
+/** How many distinct authors there are, which is not how many are shown. */
+export function buildAuthorCount(filters = {}) {
   const base = buildWorksQuery({ ...filters, author: [], limit: 1, offset: 0 });
   const inner = base.countSql.replace('SELECT count(*) AS n ', 'SELECT w.work_id ');
   return {
     args: base.args,
-    sql: `SELECT j.value AS name, count(*) AS n
-            FROM works w, json_each(w.authors) j
-           WHERE w.work_id IN (${inner})
-           GROUP BY j.value ORDER BY n DESC, j.value LIMIT ${int(limit, 40, 200)}`,
+    sql: `SELECT count(*) AS n FROM (
+            SELECT DISTINCT j.value FROM works w, json_each(w.authors) j
+             WHERE w.work_id IN (${inner}))`,
   };
 }
 
-export function buildFacetQuery(filters = {}, kind, limit = 30) {
+export function buildFacetQuery(filters = {}, kind, limit = 30, needle = '') {
   if (!TAG_KINDS.includes(kind)) throw new Error(`unknown tag kind: ${kind}`);
   const base = buildWorksQuery({ ...filters, limit: 1, offset: 0 });
   const inner = base.countSql.replace('SELECT count(*) AS n ', 'SELECT w.work_id ');
+  const args = [...base.args];
+  let match = '';
+  if (needle) {
+    match = " AND t.name LIKE ? ESCAPE '\\'";
+    args.push(`%${likeLiteral(needle)}%`);
+  }
   return {
-    args: base.args,
+    args,
     sql: `SELECT t.name, count(*) AS n FROM tags t
-          WHERE t.kind = '${kind}' AND t.work_id IN (${inner})
-          GROUP BY t.name ORDER BY n DESC, t.name LIMIT ${int(limit, 30, 200)}`,
+          WHERE t.kind = '${kind}' AND t.work_id IN (${inner})${match}
+          GROUP BY t.name ORDER BY n DESC, t.name LIMIT ${int(limit, 30, 500)}`,
   };
 }

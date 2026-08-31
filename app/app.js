@@ -641,6 +641,10 @@ const daysAgo = (n) => {
 const openSections = new Set(['state']);
 const sectionSearch = {};
 const SHOW_AT_FIRST = 12;
+/* What a facet query returns for browsing. A library names far more tags and
+   authors than anyone wants to scroll, so the panel shows the most used and
+   the search box reaches the rest. */
+const FACET_CAP = 40;
 
 /**
  * The filter panel.
@@ -653,6 +657,31 @@ const SHOW_AT_FIRST = 12;
  * Counts come from /api/facets computed against the filters already applied,
  * so every number is what you would actually get.
  */
+/*
+ * What a section's search box actually searches.
+ *
+ * The panel shows the busiest handful of each kind — 40 of 1,534 authors, in
+ * my library — and typing used to sift only that handful. So every author and
+ * every tag outside the top of the list could not be found at all, and the
+ * box quietly returned nothing rather than saying it had not looked. It asks
+ * the database now, which is the only thing that can answer.
+ */
+const facetMatches = new Map();          // kind -> items for the needle in hand
+let facetSearchAt = 0;
+
+async function searchFacet(kind, needle) {
+  const mine = ++facetSearchAt;
+  try {
+    const params = filterParams({ kind, q: needle });
+    const { items } = await api(`/api/facet-search?${params}`);
+    if (mine !== facetSearchAt) return null;      // a later keystroke won
+    facetMatches.set(kind, items ?? []);
+    return items ?? [];
+  } catch {
+    return null;
+  }
+}
+
 async function buildFilterPanel() {
   const body = $('#filter-body');
   if (!body.dataset.painted) body.innerHTML = '<p class="empty">Counting…</p>';
@@ -837,11 +866,15 @@ async function buildFilterPanel() {
         find.value = sectionSearch.author ?? '';
         find.oninput = () => {
           sectionSearch.author = find.value;
-          const at = find.selectionStart;
-          paint();
-          const again = box.querySelector('.sec-find');
-          again.focus();
-          again.setSelectionRange(at, at);
+          clearTimeout(find.timer);
+          // asked of the database, not of the handful on screen
+          find.timer = setTimeout(async () => {
+            await searchFacet('author', find.value);
+            const at = find.selectionStart;
+            paint();
+            const again = box.querySelector('.sec-find');
+            if (again) { again.focus(); again.setSelectionRange(at, at); }
+          }, 180);
         };
         box.append(find);
       }
@@ -851,7 +884,8 @@ async function buildFilterPanel() {
 
       let expanded = box.dataset.expanded === '1';
       function paint() {
-        const list_ = needle ? items.filter((a) => a.name.toLowerCase().includes(needle)) : items;
+        const typed = sectionSearch.author ?? '';
+        const list_ = typed ? (facetMatches.get('author') ?? []) : items;
         const shown = expanded ? list_ : list_.slice(0, SHOW_AT_FIRST);
         opts.textContent = '';
         for (const a of shown) {
@@ -865,9 +899,26 @@ async function buildFilterPanel() {
         if (list_.length > shown.length) {
           const more = document.createElement('button');
           more.className = 'show-more';
-          more.textContent = `Show all ${list_.length}`;
+          more.textContent = `Show ${list_.length}`;
           more.onclick = () => { expanded = true; box.dataset.expanded = '1'; paint(); };
           opts.append(more);
+        }
+        /* Say what is not on the list rather than implying there is nothing
+           more: 40 of 1,534 with a button reading "Show all 40" was a claim
+           the panel was in no position to make. */
+        const total = facets.authorTotal ?? 0;
+        if (!typed && total > items.length) {
+          const rest = document.createElement('p');
+          rest.className = 'filter-hint';
+          rest.textContent = `The ${fmt(items.length)} with the most works, of `
+            + `${fmt(total)}. Search to find any of the others.`;
+          opts.append(rest);
+        }
+        if (typed && !list_.length) {
+          const none = document.createElement('p');
+          none.className = 'filter-hint';
+          none.textContent = 'No author matches that.';
+          opts.append(none);
         }
       }
       paint();
@@ -898,11 +949,16 @@ async function buildFilterPanel() {
         // keystroke would be a request per letter for no new information
         find.oninput = () => {
           sectionSearch[kind] = find.value;
-          const at = find.selectionStart;
-          paintChips();
-          const again = box.querySelector('.sec-find');
-          again.focus();
-          again.setSelectionRange(at, at);
+          clearTimeout(find.timer);
+          /* Asked of the database. Sifting the forty on screen meant a tag
+             outside the busiest forty simply could not be found. */
+          find.timer = setTimeout(async () => {
+            await searchFacet(kind, find.value);
+            const at = find.selectionStart;
+            paintChips();
+            const again = box.querySelector('.sec-find');
+            if (again) { again.focus(); again.setSelectionRange(at, at); }
+          }, 180);
         };
         box.append(find);
       }
@@ -933,9 +989,8 @@ async function buildFilterPanel() {
 
       let expanded = box.dataset.expanded === '1';
       function paintChips() {
-        const list = (sectionSearch[kind] ?? '')
-          ? items.filter((t) => t.name.toLowerCase().includes((sectionSearch[kind] ?? '').toLowerCase()))
-          : items;
+        const typed = sectionSearch[kind] ?? '';
+        const list = typed ? (facetMatches.get(kind) ?? []) : items;
         const shown = expanded ? list : list.slice(0, SHOW_AT_FIRST);
         opts.textContent = '';
         for (const t of shown) {
@@ -946,9 +1001,15 @@ async function buildFilterPanel() {
         if (list.length > shown.length) {
           const more = document.createElement('button');
           more.className = 'show-more';
-          more.textContent = `Show all ${list.length}`;
+          more.textContent = `Show ${list.length}`;
           more.onclick = () => { expanded = true; box.dataset.expanded = '1'; paintChips(); };
           opts.append(more);
+        }
+        if (!typed && items.length >= FACET_CAP) {
+          const rest = document.createElement('p');
+          rest.className = 'filter-hint';
+          rest.textContent = 'The most used. Search to find any of the others.';
+          opts.append(rest);
         }
         if (!list.length) {
           const none = document.createElement('p');
@@ -1740,6 +1801,20 @@ const jobs = createQueue({
   gap: () => nextGap(),
   shouldRetry: isTransient,
   retryWait: (attempt) => retryDelay(attempt),
+  /*
+   * What the database still does not hold, asked at the end of a run.
+   *
+   * A job used to call itself finished because the fetch did not throw, which
+   * is a different statement from the work being here — a fetch can end having
+   * stored a description and no text. So jobs reported themselves complete
+   * while the works they had queued were still stubs. This asks the only
+   * question that settles it, and whatever comes back is gone round again.
+   */
+  verify: async (workIds) => {
+    const ids = workIds.map(String);
+    const held = heldWithText(ids);
+    return ids.filter((id) => !held.has(id));
+  },
   onEvent: (e) => {
     if (e.type === 'progress') {
       toast(`${e.job.author} · ${e.job.part}: ${e.job.added} of ${e.job.total}`
@@ -1769,7 +1844,11 @@ function paintJobs() {
      finished with, whatever its state says. It used to leave the screen the
      moment it stopped — reporting nothing downloaded and then disappearing,
      with no sign that the works were still owed. */
-  const list = jobs.list().filter((j) => j.state !== 'done' || j.unfinished > 0);
+  /* Finished jobs stay on the list. A job that has been and gone is the only
+     record of what was asked for, and with nowhere to see it there was no way
+     to tell a job that got everything from one that quietly got none of it —
+     or to ask for it again. */
+  const list = jobs.list();
 
   if (jobError) {
     /* Failures from background work belong here, next to the thing that
@@ -1822,6 +1901,8 @@ function paintJobs() {
           : job.state === 'paused' ? ' · paused'
           : job.state === 'cancelled' ? ' · stopped'
           : job.state === 'listing' ? ' · still reading the list'
+          : job.state === 'done' && job.unfinished ? ` · ${job.unfinished} never arrived`
+          : job.state === 'done' ? ' · done'
           : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
           : ' · waiting');
 
@@ -1870,6 +1951,11 @@ function paintJobs() {
       act('bolt', 'Start now, alongside what is running', () => jobs.startNow(job.id));
       act('prev', 'Move up', () => jobs.moveUp(job.id));
       act('next', 'Move down', () => jobs.moveDown(job.id));
+    } else if (job.state === 'done' || job.state === 'cancelled') {
+      /* Ask again for what never arrived, or for the lot if it all did. */
+      act('play', job.unfinished ? `Try the ${job.unfinished} that never arrived again`
+                                 : 'Ask for all of these again',
+        () => jobs.rerun(job.id));
     }
     act('trash', 'Delete', () => jobs.remove(job.id), true);
     row.append(acts);
@@ -2302,6 +2388,33 @@ function needsFetching(works) {
     const listed = blurbDate(w);
     return Boolean(listed && held.updated && listed > held.updated);
   }).map((w) => String(w.workId));
+}
+
+/**
+ * Which of these are downloaded, text and all.
+ *
+ * Not "is there a row": a listing writes a row for every work it names, so a
+ * row is a description. This asks for the ones that actually have chapters
+ * behind them, which is what a job is for.
+ */
+function heldWithText(ids) {
+  const held = new Set();
+  if (!nativeStatus().hasDatabase) return new Set(ids);   // cannot tell: assume held
+  for (let i = 0; i < ids.length; i += 400) {
+    const block = ids.slice(i, i + 400);
+    const marks = block.map(() => '?').join(',');
+    try {
+      const out = JSON.parse(window.ArchiveNative.query(
+        `SELECT work_id FROM works WHERE has_text = 1 AND work_id IN (${marks})`,
+        JSON.stringify(block.map(String))));
+      for (const r of out.rows ?? []) held.add(String(r.work_id));
+    } catch {
+      /* If the question cannot be asked, do not answer it wrongly: treating
+         everything as missing would send a finished job round again for ever. */
+      for (const id of block) held.add(String(id));
+    }
+  }
+  return held;
 }
 
 function workIsHeld(workId) {

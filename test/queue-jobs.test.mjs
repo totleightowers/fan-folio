@@ -318,3 +318,67 @@ test('a work that is genuinely gone is not asked for for ever', async () => {
   assert.equal(q.list()[0].unfinished, 0, 'a refusal is an answer, not an outage');
   assert.deepEqual(q.save(), [], 'so nothing is carried over');
 });
+
+/*
+ * A job used to decide it had finished by counting: the task did not throw, so
+ * the work arrived. Those are different statements — a fetch can end having
+ * stored a description and no text — so jobs reported themselves complete
+ * while the works they queued were still stubs.
+ */
+test('a job is not finished while the works are still missing', async () => {
+  let round = 0;
+  const asked = [];
+  const q = createQueue({
+    runTask: async (w) => { asked.push(w); },
+    wait: async () => {}, gap: () => 0,
+    // missing the first time round, there the second
+    verify: async (ids) => (++round === 1 ? ids.slice(0, 1) : []),
+  });
+  q.add({ author: 'a', part: 'works', workIds: ['1', '2'] });
+  await new Promise((r) => setTimeout(r, 40));
+
+  assert.deepEqual(asked, ['1', '2', '1'], 'the one that never arrived is asked for again');
+  assert.equal(q.list()[0].state, 'done');
+  assert.equal(q.list()[0].unfinished, 0, 'and once it is there, the job is genuinely done');
+});
+
+test('a work the archive will not give up does not loop for ever', async () => {
+  let calls = 0;
+  const q = createQueue({
+    runTask: async () => { calls += 1; },
+    wait: async () => {}, gap: () => 0, maxRounds: 3,
+    verify: async (ids) => ids,          // never arrives, whatever we do
+  });
+  q.add({ author: 'a', part: 'works', workIds: ['1'] });
+  await new Promise((r) => setTimeout(r, 40));
+
+  assert.equal(calls, 3, 'bounded rounds, not an endless retry');
+  assert.equal(q.list()[0].state, 'done');
+  assert.equal(q.list()[0].unfinished, 1, 'and it says plainly that one never arrived');
+});
+
+test('a finished job can be asked for again', async () => {
+  const asked = [];
+  const q = createQueue({
+    runTask: async (w) => { asked.push(w); },
+    wait: async () => {}, gap: () => 0,
+    verify: async () => [],
+  });
+  const id = q.add({ author: 'a', part: 'works', workIds: ['1', '2'] });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(q.list()[0].state, 'done');
+
+  assert.equal(q.rerun(id), true);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(asked, ['1', '2', '1', '2'], 'the whole list, since it all arrived last time');
+});
+
+test('a finished job stays on the list', async () => {
+  const q = createQueue({
+    runTask: async () => {}, wait: async () => {}, gap: () => 0, verify: async () => [],
+  });
+  q.add({ author: 'a', part: 'works', workIds: ['1'] });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(q.list().length, 1,
+    'with nowhere to see it, a job that got nothing looked the same as one that got everything');
+});

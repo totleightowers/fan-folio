@@ -9,7 +9,7 @@
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, TAG_KINDS, STATES } from './core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
 import { workPage, linkTarget, chapterUrl, seriesPage, ORIGIN } from './core/ao3/urls.js';
 import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
@@ -126,6 +126,24 @@ const LOCAL = {
                   WHERE COALESCE(r.chapters_read,0) = 0 ORDER BY RANDOM() LIMIT 1`)[0]?.work_id ?? null,
   }),
 
+  /**
+   * One section's options, searched across the whole library.
+   *
+   * The panel shows the busiest handful of each kind, and typing used to sift
+   * only that handful — so an author or a tag outside the top of the list
+   * could not be found at all. A search asks the database instead.
+   */
+  facetSearch: ({ kind, q = '', ...filters }) => {
+    if (kind === 'author') {
+      try {
+        const built = buildAuthorFacet(filters, 60, q);
+        return { items: sql(built.sql, built.args) };
+      } catch { return { items: [] }; }
+    }
+    const built = buildFacetQuery(filters, kind, 60, q);
+    return { items: sql(built.sql, built.args) };
+  },
+
   facets: (filters = {}) => {
     const counts = {};
     for (const state of Object.keys(STATES)) {
@@ -148,11 +166,14 @@ const LOCAL = {
     /* Authors need json_each, which the oldest SQLite this app supports does
        not have. Worth offering where it works, not worth an error where it
        does not. */
+    let authorTotal = 0;
     try {
       const q = buildAuthorFacet(filters, 40);
       tags.author = sql(q.sql, q.args);
+      const c = buildAuthorCount(filters);
+      authorTotal = sql(c.sql, c.args)[0]?.n ?? 0;
     } catch { tags.author = []; }
-    return { counts, tags, fandoms: tags.fandom, languages: tags.language };
+    return { counts, tags, fandoms: tags.fandom, languages: tags.language, authorTotal };
   },
 
   work: (workId) => {
@@ -243,6 +264,7 @@ export async function api(path) {
 
   if (p === '/api/works') return LOCAL['/api/works'](q);
   if (p === '/api/facets') return LOCAL.facets(q);
+  if (p === '/api/facet-search') return LOCAL.facetSearch(q);
   if (p === '/api/home') return LOCAL.home();
   if (p === '/api/surprise') return LOCAL.surprise();
 

@@ -37,6 +37,17 @@ export function createQueue({
   shouldRetry = () => false,
   retryWait = (attempt) => gap() * (attempt + 1),
   maxRetries = 3,
+  /**
+   * Which of these the database still does not hold.
+   *
+   * A job used to decide it had finished by counting: the task did not throw,
+   * so the work arrived. Those are different statements — a fetch can end
+   * having stored a description and no text — so jobs reported themselves
+   * complete while the works they had queued were still stubs. Asked at the
+   * end of a run, and whatever it names is still owed.
+   */
+  verify = async () => [],
+  maxRounds = 3,
 } = {}) {
   const jobs = [];
 
@@ -47,8 +58,10 @@ export function createQueue({
        far rather than what there will be — the difference between a bar that
        can be trusted and one that slides backwards. */
     open: Boolean(j.open),
-    /* Work that ran out of retries rather than being refused: still owed. */
+    /* Work that ran out of retries rather than being refused, or that the
+       database says never arrived: still owed either way. */
     unfinished: j.unfinished?.length ?? 0,
+    rounds: j.rounds ?? 0,
     parallel: j.parallel, retrying: j.retrying ?? null, lastError: j.lastError ?? null,
   });
   const snapshot = () => jobs.map(view);
@@ -235,12 +248,61 @@ export function createQueue({
       announce('progress', job);
     }
 
-    if (job.state === 'pausing') job.state = 'paused';
-    /* Out of work but not out of list: it goes back to waiting rather than
-       reporting itself finished, and the next page to land wakes it. */
-    else if (job.state === 'running') job.state = job.open ? 'listing' : 'done';
-    announce(job.state === 'listing' ? 'waiting' : 'finished', job);
+    if (job.state === 'pausing') {
+      job.state = 'paused'; announce('finished', job); pump(); return;
+    }
+    if (job.state !== 'running') { announce('finished', job); pump(); return; }
+
+    /* Out of work but not out of list: back to waiting rather than reporting
+       itself finished, and the next page to land wakes it. */
+    if (job.open) { job.state = 'listing'; announce('waiting', job); pump(); return; }
+
+    /*
+     * Having counted to the end is not the same as having got everything. Ask
+     * what is still missing and go round again for those — a bounded number of
+     * times, because a work the archive will not give up is not a reason to
+     * ask for ever.
+     */
+    job.rounds = (job.rounds ?? 0) + 1;
+    let owed = [];
+    try { owed = await verify(job.workIds); } catch { owed = []; }
+
+    if (owed.length && job.rounds < maxRounds) {
+      job.workIds = owed;
+      job.done = 0;
+      job.unfinished = [];
+      job.state = 'queued';
+      announce('again', job);
+      pump();
+      return;
+    }
+
+    /* Out of rounds with work still missing: owed, not delivered, so it is
+       kept and saved rather than quietly counted as done. */
+    if (owed.length) job.unfinished = owed;
+    job.state = 'done';
+    announce('finished', job);
     pump();
+  }
+
+  /**
+   * Do it again: what a finished job could not get, or the whole list if it
+   * got everything. A job that reported itself done while leaving works
+   * behind was the thing there was no way to act on.
+   */
+  function rerun(id) {
+    const job = find(id);
+    if (!job) return false;
+    const again = job.unfinished?.length ? job.unfinished : job.workIds;
+    if (!again.length) return false;
+    job.workIds = [...again];
+    job.done = 0; job.added = 0; job.failed = 0;
+    job.unfinished = []; job.rounds = 0;
+    job.lastError = null; job.attempt = 0;
+    job.state = 'queued';
+    announce('again', job);
+    pump();
+    return true;
   }
 
   /**
@@ -272,7 +334,7 @@ export function createQueue({
   }
 
   return {
-    add, append, note, seal, pause, resume, stop, remove, startNow, moveUp, moveDown,
+    add, append, note, seal, rerun, pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
     /**
      * What is left, so a restart resumes rather than starting over.
@@ -282,8 +344,12 @@ export function createQueue({
      * not read yet were not written down anywhere, and the whole job — walk
      * included — disappeared when the app was closed.
      */
+    /* Finished jobs are kept too, so the list survives a restart and what
+       never arrived can still be asked for again. Bounded: this is a record
+       of recent work, not a log. */
     save: () => jobs
       .filter((j) => j.state !== 'cancelled')
+      .slice(-40)
       .map((j) => ({
         author: j.author, part: j.part,
         /* What was never reached, and what could not be had this time for a
