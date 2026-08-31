@@ -1971,10 +1971,10 @@ function paintJobs() {
       act('bolt', 'Start now, alongside what is running', () => jobs.startNow(job.id));
       act('prev', 'Move up', () => jobs.moveUp(job.id));
       act('next', 'Move down', () => jobs.moveDown(job.id));
-    } else if (job.state === 'done' || job.state === 'cancelled') {
-      /* Ask again for what never arrived, or for the lot if it all did. */
-      act('play', job.unfinished ? `Try the ${job.unfinished} that never arrived again`
-                                 : 'Ask for all of these again',
+    } else if ((job.state === 'done' || job.state === 'cancelled') && job.unfinished) {
+      /* Only where there is something to ask for. A finished job has emptied
+         its list, so offering to run it again was a button that did nothing. */
+      act('play', `Try the ${job.unfinished} that never arrived again`,
         () => jobs.rerun(job.id));
     }
     act('trash', 'Delete', () => jobs.remove(job.id), true);
@@ -2024,7 +2024,12 @@ function resumeJobs() {
        on the list so the app can still say what it did, rather than opening
        with Nothing waiting and no account of yesterday. */
     if (!left.length && !job.open) {
-      jobs.restore({ ...job, workIds: [] });
+      /* A record that says nothing is worse than no record: an earlier
+         version did not keep the totals, so those rows come back reading
+         0 of 0 and then save their zeros back over what they had done. */
+      const says = (Number(job.total) || 0) + (Number(job.added) || 0)
+        + (Number(job.failed) || 0);
+      if (says > 0) jobs.restore({ ...job, workIds: [] });
       continue;
     }
 
