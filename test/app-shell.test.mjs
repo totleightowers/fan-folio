@@ -1455,6 +1455,28 @@ test('arriving at home rebuilds it', () => {
  * pseudo-element, so pressing what looks like the page behind is really
  * pressing the dialog — which is why nothing happened.
  */
+/*
+ * The archive answering 500 and the app never reaching the archive arrived on
+ * the same path with the same status, which made them indistinguishable — and
+ * the one that is always worth trying again looked like the one that might
+ * not be.
+ */
+test('failing to reach the archive is not the archive refusing', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const at = java.indexOf('String reason = e.getClass().getSimpleName()');
+  const around = java.slice(at, at + 260);
+  assert.match(around, /"text\/plain", "utf-8", 502/,
+    'the shell says 502 when it could not get there at all');
+
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  assert.match(api, /if \(res\.status === 502\) \{/,
+    'and the page reads that status, not the one the archive uses');
+  assert.match(api, /The app could not reach the archive\$\{detail/,
+    'the wording decides whether the work is tried again, so it leads with the cause');
+  assert.ok(!/res\.status === 500\) throw/.test(api),
+    'nothing still treats an archive 500 as the app failing');
+});
+
 test('pressing the dimmed part of the screen puts a sheet away', () => {
   const fn = js.slice(js.indexOf('function dismissOnBackdrop('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));

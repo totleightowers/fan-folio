@@ -166,7 +166,25 @@ export function isTransient(reason) {
   const text = String(reason ?? '');
   if (/answered 4\d\d/i.test(text)) return false;          // it answered, and said no
   if (/deleted|does not exist|no chapters found/i.test(text)) return false;
-  return /answered 5\d\d|could not reach|timed out|timeout|network|failed to fetch/i.test(text);
+
+  /*
+   * Never getting there is always worth trying again.
+   *
+   * These are the ways a phone fails to reach a host, and every one of them
+   * is a moment rather than a verdict: a tunnel, a handover between masts, a
+   * network that has not finished coming up. They were all being read as the
+   * work being unavailable, so a few seconds without signal permanently gave
+   * up on whatever happened to be in flight — and the reader was told the
+   * work had been skipped, which was not true and not actionable.
+   *
+   * Named rather than matched loosely, because "unavailable" has to keep
+   * meaning something: a work that is genuinely gone still stops here.
+   */
+  return /answered 5\d\d|could not reach|timed out|timeout|network|failed to fetch/i.test(text)
+    || /unable to resolve host|no address associated|unknownhost|enotfound|eai_again/i.test(text)
+    || /connection (reset|refused|abort|closed)|econnreset|econnrefused|econnaborted/i.test(text)
+    || /unexpected end of stream|broken pipe|software caused connection abort/i.test(text)
+    || /sslexception|handshake|socketexception|sockettimeout|protocol error/i.test(text);
 }
 
 /** How long to leave it before trying again: longer each time. */

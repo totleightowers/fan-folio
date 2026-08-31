@@ -164,3 +164,39 @@ test('waiting longer after each failure', () => {
   assert.ok(retryDelay(2) > retryDelay(1));
   assert.equal(retryDelay(9), retryDelay(3), 'and it stops growing rather than waiting for ever');
 });
+
+/*
+ * Never getting there is always worth trying again.
+ *
+ * A phone loses a host for a moment — a tunnel, a handover between masts, a
+ * network that has not finished coming up — and every one of those arrived as
+ * "UnknownHostException: Unable to resolve host", which matched nothing here
+ * and so was treated as a verdict on the work. A few seconds without signal
+ * permanently gave up on whatever was in flight, and the reader was told the
+ * work had been skipped, which was neither true nor anything they could act on.
+ */
+test('failing to reach the archive is worth trying again', () => {
+  for (const reason of [
+    'The app could not reach the archive: UnknownHostException: Unable to resolve host'
+      + ' "archiveofourown.org": No address associated with hostname',
+    'UnknownHostException: Unable to resolve host',
+    'java.net.SocketTimeoutException: timeout',
+    'SSLException: Read error: ssl=0x0: I/O error during system call',
+    'ConnectException: Connection refused',
+    'unexpected end of stream',
+    'the archive answered 502',
+  ]) {
+    assert.equal(isTransient(reason), true, `should be retried: ${reason.slice(0, 60)}`);
+  }
+});
+
+test('the archive saying no is still not worth trying again', () => {
+  for (const reason of [
+    'the archive answered 404',
+    'That work does not exist, or has been deleted',
+    'That work is restricted — sign in to the archive first',
+    'no chapters found',
+  ]) {
+    assert.equal(isTransient(reason), false, `should not be retried: ${reason}`);
+  }
+});
