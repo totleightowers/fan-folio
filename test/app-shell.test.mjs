@@ -1461,6 +1461,29 @@ test('arriving at home rebuilds it', () => {
  * the one that is always worth trying again looked like the one that might
  * not be.
  */
+/*
+ * A listing names a hundred works in one request, so a library fills up with
+ * works it knows about and has never fetched — most of mine, after an import.
+ * They were only reachable by opening each author in turn.
+ */
+test('everything described but not held can be asked for at once', () => {
+  const fn = js.slice(js.indexOf('function stubIds('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /COALESCE\(has_text, 0\) = 0/,
+    'a description is not the work; that column is what tells them apart');
+  assert.match(body, /ORDER BY COALESCE\(updated, published\) DESC/,
+    'newest first, because a run this long may not finish in one sitting');
+
+  const paint = js.slice(js.indexOf('function paintStubs('));
+  const pbody = paint.slice(0, paint.indexOf('\n}\n'));
+  assert.match(pbody, /if \(!signedIn\(\)\)/,
+    'the archive will not hand over most works to nobody');
+  assert.match(pbody, /jobs\.add\(\{ \.\.\.STUBS_JOB/,
+    'it goes through the queue, so it can be paused, stopped and resumed');
+  assert.match(pbody, /Everything the library knows about has been downloaded/,
+    'and says so when there is nothing left to get');
+});
+
 test('failing to reach the archive is not the archive refusing', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
   const at = java.indexOf('String reason = e.getClass().getSimpleName()');
