@@ -47,6 +47,8 @@ export function createQueue({
        far rather than what there will be — the difference between a bar that
        can be trusted and one that slides backwards. */
     open: Boolean(j.open),
+    /* Work that ran out of retries rather than being refused: still owed. */
+    unfinished: j.unfinished?.length ?? 0,
     parallel: j.parallel, retrying: j.retrying ?? null, lastError: j.lastError ?? null,
   });
   const snapshot = () => jobs.map(view);
@@ -214,9 +216,17 @@ export function createQueue({
           await wait(retryWait(attempt));
           continue;
         }
-        // a bookmark outlives the work it points at: note it and carry on
+        /*
+         * A bookmark outlives the work it points at, so a failure is noted and
+         * the job carries on. But there are two kinds of failure here and only
+         * one of them is final: a work that is gone is gone, while one that
+         * ran out of retries during an outage is unfinished business. Keeping
+         * the second means a restart picks it up instead of the job reporting
+         * nothing downloaded and vanishing.
+         */
         job.failed += 1;
         job.lastError = String(e?.message ?? '');
+        if (shouldRetry(e?.message)) (job.unfinished ??= []).push(job.workIds[job.done]);
         job.attempt = 0;
         job.retrying = null;
       }
@@ -273,10 +283,14 @@ export function createQueue({
      * included — disappeared when the app was closed.
      */
     save: () => jobs
-      .filter((j) => j.state !== 'done' && j.state !== 'cancelled')
+      .filter((j) => j.state !== 'cancelled')
       .map((j) => ({
         author: j.author, part: j.part,
-        workIds: j.workIds.slice(j.done),
+        /* What was never reached, and what could not be had this time for a
+           reason worth trying again. A job that ran to the end of its list
+           without downloading anything used to save an empty list and be
+           dropped — reporting nothing downloaded and then disappearing. */
+        workIds: [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],
         open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
       }))
       .filter((j) => j.workIds.length || j.open),
