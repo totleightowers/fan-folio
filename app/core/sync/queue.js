@@ -301,29 +301,31 @@ export function createQueue({
    * left are handed to the runner.
    */
   function restore(saved) {
+    const owed = [...(saved.workIds ?? [])];
     const job = {
       id: nextId++, author: saved.author, part: saved.part,
-      workIds: [...(saved.workIds ?? [])],
+      workIds: owed,
       done: 0, added: saved.added ?? 0, failed: saved.failed ?? 0,
       open: Boolean(saved.open),
       page: saved.page ?? 0, pages: saved.pages ?? null,
-      rounds: 0, parallel: false, attempt: 0, retrying: null,
+      rounds: saved.rounds ?? 0, parallel: false, attempt: 0, retrying: null,
       lastError: saved.lastError ?? null,
-      wasTotal: Number(saved.total) || 0,
-      /* Unknown rather than now: a record from a version that did not keep
-         the time would otherwise claim to have finished this second. */
+      /* What it was ever about, kept as a number rather than worked out from a
+         list it may have finished with. */
+      wasTotal: Number(saved.total) || owed.length,
       at: saved.at ?? null,
-      unfinished: [],
-      state: 'done',
+      unfinished: saved.state === 'done' ? [...(saved.unfinished ?? [])] : [],
+      state: saved.state === 'done' ? 'done' : 'queued',
     };
-    /* Anything still owed goes back to waiting; the rest is a record. */
-    if (job.workIds.length) job.state = 'queued';
-    else if (job.open) job.state = 'listing';
+    /* Anything owed by a job that had not finished goes back to waiting; a
+       finished one stays finished, with what it never got still named. */
+    if (job.state !== 'done' && !job.workIds.length) job.state = job.open ? 'listing' : 'done';
     jobs.push(job);
     announce('restored', job);
     if (job.state === 'queued') pump();
     return job.id;
   }
+
 
   /**
    * Do it again: what a finished job could not get, or the whole list if it
@@ -389,27 +391,39 @@ export function createQueue({
        never arrived can still be asked for again. Bounded: this is a record
        of recent work, not a log. */
     /**
-     * Everything, finished or not.
+     * The jobs themselves, not a summary of them.
      *
-     * A job that got everything saved an empty list and was then dropped for
-     * having one, so it did not survive a restart — and with nothing kept,
-     * there was no answer to what the app had been doing yesterday, or
-     * whether a job had ended well or ended at all. What it did is worth
-     * keeping even when there is nothing left to do.
+     * This used to hand back a description — what was left, how it went — and
+     * the other side built a job out of that description. Every round trip
+     * through those two lost something: first the totals, then the times,
+     * then the work still owed. The cure is not a better description. It is
+     * to write down the job and read the job back.
      *
-     * Bounded: a record of recent work, not a log.
+     * A finished job keeps its counts and whatever it never got, and lets go
+     * of the ids it delivered — those are in the library now, and thousands
+     * of them are not worth carrying around to say a job went well.
+     *
+     * Bounded to the last forty: a record of recent work, not a log.
      */
     save: () => jobs
       .filter((j) => j.state !== 'cancelled')
       .slice(-40)
-      .map((j) => ({
-        author: j.author, part: j.part,
-        workIds: [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],
-        open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
-        state: j.state, total: j.workIds.length || j.wasTotal || 0,
-        added: j.added, failed: j.failed,
-        lastError: j.lastError ?? null,
-        at: j.at ?? Date.now(),
-      })),
+      .map((j) => {
+        const settled = j.state === 'done';
+        return {
+          author: j.author, part: j.part,
+          state: j.state,
+          workIds: settled
+            ? [...(j.unfinished ?? [])]
+            : [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],
+          unfinished: [...(j.unfinished ?? [])],
+          total: j.workIds.length || j.wasTotal || 0,
+          added: j.added, failed: j.failed,
+          open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
+          rounds: j.rounds ?? 0,
+          lastError: j.lastError ?? null,
+          at: j.at ?? null,
+        };
+      })
   };
 }
