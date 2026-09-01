@@ -348,6 +348,9 @@ public class MainActivity extends Activity {
     private void migrate(SQLiteDatabase db) {
         migrateTable(db, "works", WORKS_COLUMNS);
         migrateTable(db, "reading", READING_COLUMNS);
+        try {
+            db.execSQL("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+        } catch (Exception ignored) { }
         repairCompleteness(db);
     }
 
@@ -1438,6 +1441,31 @@ public class MainActivity extends Activity {
          * and being positioned are two facts, so they are two calls, and only
          * the second is skipped for a peek.
          */
+        /**
+         * A note kept beside the library rather than beside the browser.
+         *
+         * The download queue lived in web storage, which is the wrong place
+         * for it: it is not a preference, it is a record of work owed and
+         * work done, and it belongs with the works. Here it survives clearing
+         * site data, travels in a backup, and can be read back exactly as it
+         * was written instead of being rebuilt from a summary.
+         */
+        @JavascriptInterface
+        public String saveMeta(String key, String value) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                db.execSQL("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put("key", key);
+                v.put("value", value);
+                db.insertWithOnConflict("meta", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
         @JavascriptInterface
         public String markOpened(String workId) {
             mustBeOurPage();

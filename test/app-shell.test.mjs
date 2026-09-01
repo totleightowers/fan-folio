@@ -995,7 +995,8 @@ test('progress is reported as it happens', () => {
   const wiring = js.slice(js.indexOf('const jobs = createQueue('));
   const body = wiring.slice(0, wiring.indexOf('\n});'));
   assert.match(body, /e\.job\.added.*e\.job\.total/s, 'each work says which of how many');
-  assert.match(body, /save\(JOBS_KEY/, 'and what is left survives the app closing');
+  assert.match(body, /keepQueue\(\)/,
+    'and what is left survives the app closing');
 });
 
 /*
@@ -1085,7 +1086,7 @@ test('a library already full of works called unfinished is put right', () => {
     'what the archive already said is on disk; nothing needs fetching again');
   assert.match(body, /COALESCE\(complete, 0\) = 0/,
     'and a work already marked finished is left alone');
-  assert.match(java, /migrateTable\(db, "reading"[\s\S]{0,120}repairCompleteness\(db\)/,
+  assert.match(java, /migrateTable\(db, "reading"[\s\S]{0,300}repairCompleteness\(db\)/,
     'it runs where every other repair does, on opening the library');
 });
 
@@ -1254,6 +1255,32 @@ test('what is owed is picked up again after a restart', () => {
  * record with no total silently took the skipped count, the state and the time
  * with it — a finished job became the words "36 downloaded" and nothing else.
  */
+/*
+ * The queue lived in web storage and was written as a description, then built
+ * back up from that description. Every round trip through those two lost
+ * something: first the totals, then the times, then the work still owed. The
+ * cure is not a better description — it is to write down the job and read the
+ * job back, beside the works rather than beside the browser.
+ */
+test('the queue is kept with the library, not with the browser', () => {
+  const keep = js.slice(js.indexOf('function keepQueue('));
+  assert.match(keep.slice(0, keep.indexOf('\n}\n')),
+    /saveMeta\(QUEUE_KEY, JSON\.stringify\(list\)\)/,
+    'so it survives site data being cleared, and travels in a backup');
+  assert.match(keep.slice(0, keep.indexOf('\n}\n')), /save\(JOBS_KEY, list\)/,
+    'with the browser as the fallback when there is no library open');
+
+  const read = js.slice(js.indexOf('function storedQueue('));
+  const rbody = read.slice(0, read.indexOf('\n}\n'));
+  assert.match(rbody, /readMeta\(QUEUE_KEY\)/);
+  assert.match(rbody, /if \(older\.length && isNative\) saveMeta/,
+    'a queue saved by an older version is carried over, not dropped');
+
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.match(java, /public String saveMeta\(String key, String value\)/,
+    'and the shell has one way to write it');
+});
+
 test('a job row says how much, what went wrong, and where it stands', () => {
   const paint = js.slice(js.indexOf('function paintJobs('));
   const body = paint.slice(0, paint.indexOf('\n}\n'));
@@ -1706,9 +1733,10 @@ test('what has already run can still be seen', () => {
   const src = readFileSync(new URL('../app/core/sync/queue.js', import.meta.url), 'utf8');
   const fn = src.slice(src.indexOf('function restore('));
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
-  assert.match(body, /if \(job\.workIds\.length\) job\.state = 'queued'/,
-    'work still owed goes back to waiting');
-  assert.match(body, /state: 'done'/, 'and the rest is history, not an instruction');
+  assert.match(body, /state: saved\.state === 'done' \? 'done' : 'queued'/,
+    'a job comes back as what it was, rather than being guessed at from a list');
+  assert.match(body, /wasTotal: Number\(saved\.total\) \|\| owed\.length/,
+    'and how much it was about is a number that was written down');
 
   const resume = js.slice(js.indexOf('function resumeJobs('));
   assert.match(resume.slice(0, resume.indexOf('\n}\n')), /jobs\.restore\(\{ \.\.\.job, workIds: \[\] \}\)/,
@@ -1726,8 +1754,9 @@ test('a queue still reading its index survives a restart', () => {
   const body = save.slice(0, save.indexOf('\n  };'));
   assert.match(body, /open: Boolean\(j\.open\), page: j\.page \?\? 0/,
     'how far the walk got is part of what is saved');
-  assert.match(body, /state: j\.state, total: j\.workIds\.length/,
-    'and so is how it went, so a restart can still say what was done');
+  assert.match(body, /state: j\.state,/, 'and what state it was in');
+  assert.match(body, /total: j\.workIds\.length \|\| j\.wasTotal \|\| 0/,
+    'and how much it was about, as a number rather than a list length');
   assert.ok(!/\.filter\(\(j\) => j\.workIds\.length \|\| j\.open\)/.test(body),
     'a finished job is no longer dropped for having nothing left to do');
 

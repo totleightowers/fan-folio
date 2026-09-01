@@ -19,7 +19,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, pendingLink } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, saveMeta, readMeta, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1835,7 +1835,7 @@ const jobs = createQueue({
       }
       freshen();
     }
-    save(JOBS_KEY, jobs.save());
+    keepQueue();
     if (!$('#settings').hidden) { paintJobs(); paintStubs(); }
   },
 });
@@ -2032,8 +2032,42 @@ function paintJobs() {
 }
 
 /** Whatever was left when the app last closed, minus anything since fetched. */
+/*
+ * Where the queue lives.
+ *
+ * It was in web storage, which is where a preference goes. This is not a
+ * preference — it is a record of work owed and work done — so it sits beside
+ * the works instead: it survives site data being cleared, it travels in a
+ * backup, and nothing rebuilds it from a summary on the way back in.
+ *
+ * Web storage is still read once, so a queue saved by an older version is
+ * carried over rather than dropped on the floor.
+ */
+const QUEUE_KEY = 'queue';
+
+function keepQueue() {
+  const list = jobs.save();
+  if (isNative && saveMeta(QUEUE_KEY, JSON.stringify(list))) return;
+  save(JOBS_KEY, list);            // no library open, or not the app at all
+}
+
+function storedQueue() {
+  if (isNative) {
+    const kept = readMeta(QUEUE_KEY);
+    if (kept) {
+      try {
+        const list = JSON.parse(kept);
+        if (Array.isArray(list)) return list;
+      } catch { /* unreadable: fall through to what the browser has */ }
+    }
+  }
+  const older = load(JOBS_KEY, []);
+  if (older.length && isNative) saveMeta(QUEUE_KEY, JSON.stringify(older));
+  return older;
+}
+
 function resumeJobs() {
-  for (const job of load(JOBS_KEY, [])) {
+  for (const job of storedQueue()) {
     const ids = (job.workIds ?? []).map(String);
     /*
      * Which of these are actually downloaded — text and all.

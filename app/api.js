@@ -557,6 +557,32 @@ export function pendingLink() {
  * A peek from a search result must not move the bookmark, but it is still
  * reading and still belongs at the front of Continue reading.
  */
+/**
+ * A note kept beside the library rather than beside the browser.
+ *
+ * Used for the download queue, which is not a preference: it is a record of
+ * work owed and work done, and it belongs with the works — surviving cleared
+ * site data and travelling in a backup.
+ */
+export function saveMeta(key, value) {
+  if (!isNative) return false;
+  try {
+    const out = JSON.parse(native.saveMeta(String(key), String(value)));
+    return !out.error;
+  } catch {
+    return false;
+  }
+}
+
+export function readMeta(key) {
+  if (!isNative) return null;
+  try {
+    return sql('SELECT value FROM meta WHERE key = ?', [key])[0]?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function markOpened(workId) {
   try {
     if (isNative) { native.markOpened(String(workId)); return; }
