@@ -2363,12 +2363,23 @@ async function syncBookmarks() {
 
   try {
     const user = await whoAmI();
-    const held = new Set(
-      (await api('/api/works?limit=200&sort=added')).works?.map((w) => String(w.work_id)) ?? []
-    );
-    /* The page list is capped, so held-ness is asked of the database per work
-       rather than trusted to that first page. */
-    const isHeld = (id) => held.has(String(id)) || Boolean(workIsHeld(String(id)));
+    /*
+     * Where the sync stops walking backwards.
+     *
+     * It stops at the bookmarks it already has, and it decided that by asking
+     * whether there was a row — so a work described by some listing and never
+     * downloaded counted as one it had. With thousands of those in a library,
+     * the walk stopped at the first one it met and reported itself up to
+     * date, leaving every bookmark past that point unseen.
+     */
+    const known = new Map();
+    const isHeld = (id) => {
+      const key = String(id);
+      if (!known.has(key)) {
+        known.set(key, heldWithText([key], { unknownIsHeld: false }).has(key));
+      }
+      return known.get(key);
+    };
 
     let first = true;
     const { workIds } = await findNewBookmarks({
@@ -2486,15 +2497,6 @@ function heldWithText(ids, { unknownIsHeld = true } = {}) {
   return held;
 }
 
-function workIsHeld(workId) {
-  try {
-    return Boolean(nativeStatus().hasDatabase
-      && JSON.parse(window.ArchiveNative.query(
-        'SELECT 1 FROM works WHERE work_id = ?', JSON.stringify([workId]))).length);
-  } catch {
-    return false;
-  }
-}
 
 $('#sync-now').onclick = syncBookmarks;
 $('#sync-stop').onclick = () => { stopRequested = true; syncSay('Stopping after this one…'); };

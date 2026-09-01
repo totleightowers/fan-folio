@@ -1241,6 +1241,27 @@ test('what is owed is picked up again after a restart', () => {
  * round trips to Java in front of the first thing the reader looks at, and
  * the app opened on an empty page.
  */
+/*
+ * The same confusion, in the last place it survived. The bookmark sync walks
+ * backwards and stops at the bookmarks it already has — and it decided that by
+ * asking whether there was a row, so a work described by a listing and never
+ * downloaded counted as one it had. With thousands of those in a library, the
+ * walk stopped at the first one and reported itself up to date.
+ */
+test('the bookmark sync stops at what it holds, not at what it has heard of', () => {
+  const fn = js.slice(js.indexOf('const isHeld = (id) => {'));
+  const body = fn.slice(0, fn.indexOf('\n    };'));
+  assert.match(body, /heldWithText\(\[key\], \{ unknownIsHeld: false \}\)/,
+    'a description is not a bookmark you have');
+  assert.match(body, /known\.has\(key\)/, 'asked once per work, not once per page it appears on');
+});
+
+test('there is one question about whether a work is held', () => {
+  assert.ok(!/workIsHeld/.test(js),
+    'two spellings of it is how one of them stayed wrong for so long');
+  assert.equal([...js.matchAll(/function heldWithText\(/g)].length, 1);
+});
+
 test('resuming asks whether the work is here, not whether a row is', () => {
   const fn = js.slice(js.indexOf('function heldWithText('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
