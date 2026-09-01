@@ -1241,11 +1241,20 @@ test('what is owed is picked up again after a restart', () => {
  * round trips to Java in front of the first thing the reader looks at, and
  * the app opened on an empty page.
  */
-test('resuming asks about a whole job at once', () => {
-  const fn = js.slice(js.indexOf('function heldAmong('));
+test('resuming asks whether the work is here, not whether a row is', () => {
+  const fn = js.slice(js.indexOf('function heldWithText('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /has_text = 1/,
+    'a listing writes a row for every work it names, so a row is a description');
   assert.match(body, /work_id IN \(\$\{marks\}\)/, 'one statement, not one per work');
   assert.match(body, /i \+= 400/, 'in blocks, because a statement can only bind so many');
+
+  const resume = js.slice(js.indexOf('function resumeJobs('));
+  const rbody = resume.slice(0, resume.indexOf('\n}\n'));
+  assert.match(rbody, /heldWithText\(ids, \{ unknownIsHeld: false \}\)/,
+    'every work still queued is a stub, so asking for a row emptied every job on launch');
+  assert.ok(!/heldAmong/.test(js),
+    'and the question that was wrong to ask is gone, not merely unused');
 });
 
 test('the home screen is not built last', () => {

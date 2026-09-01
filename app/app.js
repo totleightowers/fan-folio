@@ -1912,8 +1912,14 @@ function paintJobs() {
        the bar slide backwards — is worse than saying plainly that the list is
        still being read. */
     const counting = job.state === 'listing' && !job.total;
+    /* Records saved while the total was being lost cannot get it back, and
+       "36 of 0" is worse than not answering: it reads as a job asked for
+       nothing that did thirty-six anyway. Say only what is known. */
+    const lostTotal = !job.total && (job.added || job.failed);
     how.textContent = counting
       ? (job.part === 'works' ? 'reading their works…' : 'reading their bookmarks…')
+      : lostTotal
+      ? `${job.added} downloaded`
       : `${job.added} of ${job.total}${job.open ? '+' : ''}`
         + (job.retrying ? ' · archive busy, trying again'
           : job.failed ? ` · ${job.failed} skipped` : '')
@@ -1984,41 +1990,25 @@ function paintJobs() {
 }
 
 /** Whatever was left when the app last closed, minus anything since fetched. */
-/**
- * Which of these are already downloaded, in one question rather than many.
- *
- * Every call across the bridge is a round trip to Java and back, and asking
- * once per work meant a resumed job of five hundred put five hundred of them
- * in a row on the thread that draws the screen. SQLite has a ceiling on how
- * many values one statement can bind, so the ids go over in blocks.
- */
-function heldAmong(ids) {
-  const held = new Set();
-  if (!nativeStatus().hasDatabase) return held;
-  for (let i = 0; i < ids.length; i += 400) {
-    const block = ids.slice(i, i + 400);
-    const marks = block.map(() => '?').join(',');
-    try {
-      const out = JSON.parse(window.ArchiveNative.query(
-        `SELECT work_id FROM works WHERE work_id IN (${marks})`,
-        JSON.stringify(block.map(String))));
-      for (const r of out.rows ?? []) held.add(String(r.work_id));
-    } catch { /* treated as not held, which only costs a re-check later */ }
-  }
-  return held;
-}
-
 function resumeJobs() {
   for (const job of load(JOBS_KEY, [])) {
     const ids = (job.workIds ?? []).map(String);
+    /*
+     * Which of these are actually downloaded — text and all.
+     *
+     * This asked whether there was a row for the work, and a listing writes a
+     * row for every work it names. So every work still queued, which is a
+     * stub by definition, looked like one already held: the remaining list
+     * emptied on every launch, the job became a record of nothing with a
+     * total of zero, and it never ran again. That is the queue disappearing.
+     */
     let left = ids;
     try {
-      const held = heldAmong(ids);
+      const held = heldWithText(ids, { unknownIsHeld: false });
       left = ids.filter((id) => !held.has(id));
     } catch {
-      /* Asking what is already downloaded is an optimisation. Failing at it
-         is not a reason to abandon somebody's queue — the worst it costs is
-         fetching something twice. */
+      /* Asking is an optimisation; failing to ask is not a reason to abandon
+         somebody's queue. The worst it costs is fetching something twice. */
     }
     /* A job with nothing left is a record of one that finished. It goes back
        on the list so the app can still say what it did, rather than opening
@@ -2474,9 +2464,9 @@ function needsFetching(works) {
  * row is a description. This asks for the ones that actually have chapters
  * behind them, which is what a job is for.
  */
-function heldWithText(ids) {
+function heldWithText(ids, { unknownIsHeld = true } = {}) {
   const held = new Set();
-  if (!nativeStatus().hasDatabase) return new Set(ids);   // cannot tell: assume held
+  if (!nativeStatus().hasDatabase) return unknownIsHeld ? new Set(ids) : held;
   for (let i = 0; i < ids.length; i += 400) {
     const block = ids.slice(i, i + 400);
     const marks = block.map(() => '?').join(',');
@@ -2486,9 +2476,11 @@ function heldWithText(ids) {
         JSON.stringify(block.map(String))));
       for (const r of out.rows ?? []) held.add(String(r.work_id));
     } catch {
-      /* If the question cannot be asked, do not answer it wrongly: treating
-         everything as missing would send a finished job round again for ever. */
-      for (const id of block) held.add(String(id));
+      /* Which way to lean depends on what the answer is for. Deciding a job
+         has finished: treat what cannot be checked as held, or it goes round
+         for ever. Deciding what is still owed on the way in: treat it as
+         missing, or the queue throws away work it has not done. */
+      if (unknownIsHeld) for (const id of block) held.add(String(id));
     }
   }
   return held;
