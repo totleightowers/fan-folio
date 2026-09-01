@@ -1248,6 +1248,37 @@ test('what is owed is picked up again after a restart', () => {
  * downloaded counted as one it had. With thousands of those in a library, the
  * walk stopped at the first one and reported itself up to date.
  */
+/*
+ * How much, what went wrong, and where it stands are three separate things.
+ * They were one chained expression, so making the count read differently for a
+ * record with no total silently took the skipped count, the state and the time
+ * with it — a finished job became the words "36 downloaded" and nothing else.
+ */
+test('a job row says how much, what went wrong, and where it stands', () => {
+  const paint = js.slice(js.indexOf('function paintJobs('));
+  const body = paint.slice(0, paint.indexOf('\n}\n'));
+  assert.match(body, /how\.textContent = count \+ trouble \+ standing/,
+    'three things, each said or not on its own');
+  assert.match(body, /const standing = counting \? ''/,
+    'so a row with an unusual count keeps its state and its time');
+  assert.match(body, /finished\$\{job\.at \? ` \$\{whenShort\(job\.at\)\}` : ''\}/);
+});
+
+test('a finished job can always be asked for again', () => {
+  const fn = js.slice(js.indexOf('function runAgain('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(job\.unfinished && jobs\.rerun\(job\.id\)\) return/,
+    'what it could not get, when the ids are still to hand');
+  assert.match(body, /job\.author === STUBS_JOB\.author/,
+    'and otherwise worked out from what the job was: the backlog off the database');
+  assert.match(body, /walkAuthor\(job\.author, \{ listing: part, jobId: id \}\)/,
+    'or the author walked again');
+
+  const paint = js.slice(js.indexOf('function paintJobs('));
+  assert.match(paint.slice(0, paint.indexOf('\n}\n')), /'Ask for this again', \(\) => runAgain\(job\)/,
+    'a record that cannot be acted on is only half a record');
+});
+
 test('the bookmark sync stops at what it holds, not at what it has heard of', () => {
   const fn = js.slice(js.indexOf('const isHeld = (id) => {'));
   const body = fn.slice(0, fn.indexOf('\n    };'));

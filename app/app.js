@@ -1851,6 +1851,31 @@ function whenShort(at) {
   return days === 1 ? 'yesterday' : `${days}d ago`;
 }
 
+/**
+ * Do a finished job over.
+ *
+ * Whatever it could not get, if the ids are still to hand. Otherwise it is
+ * worked out again from what the job was, because a record that cannot be
+ * acted on is only half a record.
+ */
+function runAgain(job) {
+  if (job.unfinished && jobs.rerun(job.id)) return;
+  if (job.author === STUBS_JOB.author && job.part === STUBS_JOB.part) {
+    const queued = stubIds();
+    if (!queued.length) { toast('Everything described has been downloaded'); paintStubs(); return; }
+    jobs.add({ ...STUBS_JOB, workIds: queued });
+    toast(`Queued ${fmt(queued.length)} works`);
+    return;
+  }
+  if (!isNative || !signedIn()) { toast('Sign in to the archive first'); return; }
+  const part = job.part === 'bookmarks' ? 'bookmarks' : 'works';
+  const id = jobs.add({ author: job.author, part, workIds: [], open: true });
+  walkAuthor(job.author, { listing: part, jobId: id })
+    .catch(() => {})
+    .finally(() => jobs.seal(id));
+  toast(`Reading ${job.author}'s ${part} again`);
+}
+
 function paintJobs() {
   const box = $('#job-list');
   box.textContent = '';
@@ -1911,26 +1936,36 @@ function paintJobs() {
        inventing one — "0 of 0", or a number that grows as pages land and makes
        the bar slide backwards — is worse than saying plainly that the list is
        still being read. */
+    /*
+     * Three separate things, each said or not on its own: how much, what went
+     * wrong, and where it stands. They were one chained expression, so making
+     * the count read differently for a record with no total silently took the
+     * skipped count, the state and the time down with it — a finished job
+     * became the words "36 downloaded" and nothing else.
+     */
     const counting = job.state === 'listing' && !job.total;
-    /* Records saved while the total was being lost cannot get it back, and
-       "36 of 0" is worse than not answering: it reads as a job asked for
-       nothing that did thirty-six anyway. Say only what is known. */
-    const lostTotal = !job.total && (job.added || job.failed);
-    how.textContent = counting
+    /* A total lost by the older fault cannot come back, and "36 of 0" reads as
+       a job asked for nothing that did thirty-six anyway. */
+    const count = counting
       ? (job.part === 'works' ? 'reading their works…' : 'reading their bookmarks…')
-      : lostTotal
+      : !job.total && (job.added || job.failed)
       ? `${job.added} downloaded`
-      : `${job.added} of ${job.total}${job.open ? '+' : ''}`
-        + (job.retrying ? ' · archive busy, trying again'
-          : job.failed ? ` · ${job.failed} skipped` : '')
-        + (job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
-          : job.state === 'paused' ? ' · paused'
-          : job.state === 'cancelled' ? ' · stopped'
-          : job.state === 'listing' ? ' · still reading the list'
-          : job.state === 'done' && job.unfinished ? ` · ${job.unfinished} never arrived`
-          : job.state === 'done' ? ` · finished${job.at ? ` ${whenShort(job.at)}` : ''}`
-          : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
-          : ' · waiting');
+      : `${job.added} of ${job.total}${job.open ? '+' : ''}`;
+
+    const trouble = job.retrying ? ' · archive busy, trying again'
+      : job.failed ? ` · ${job.failed} skipped` : '';
+
+    const standing = counting ? ''
+      : job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
+      : job.state === 'paused' ? ' · paused'
+      : job.state === 'cancelled' ? ' · stopped'
+      : job.state === 'listing' ? ' · still reading the list'
+      : job.state === 'done' && job.unfinished ? ` · ${job.unfinished} never arrived`
+      : job.state === 'done' ? ` · finished${job.at ? ` ${whenShort(job.at)}` : ''}`
+      : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
+      : ' · waiting';
+
+    how.textContent = count + trouble + standing;
 
     /* How far along, as a bar rather than a badge. A pill saying "downloading"
        spends a third of the row restating a word already in the line above it
@@ -1977,11 +2012,18 @@ function paintJobs() {
       act('bolt', 'Start now, alongside what is running', () => jobs.startNow(job.id));
       act('prev', 'Move up', () => jobs.moveUp(job.id));
       act('next', 'Move down', () => jobs.moveDown(job.id));
-    } else if ((job.state === 'done' || job.state === 'cancelled') && job.unfinished) {
-      /* Only where there is something to ask for. A finished job has emptied
-         its list, so offering to run it again was a button that did nothing. */
-      act('play', `Try the ${job.unfinished} that never arrived again`,
-        () => jobs.rerun(job.id));
+    } else if (job.state === 'done' || job.state === 'cancelled') {
+      /*
+       * Ask for it again.
+       *
+       * A finished job has emptied its list, so there is usually nothing left
+       * to hand back to the runner — which is not a reason to offer nothing.
+       * What the job was is enough to work out how to do it again: an author
+       * is walked, and the library's own backlog is read off the database.
+       */
+      act('play', job.unfinished
+        ? `Try the ${job.unfinished} that never arrived again`
+        : 'Ask for this again', () => runAgain(job));
     }
     act('trash', 'Delete', () => jobs.remove(job.id), true);
     row.append(acts);
