@@ -395,3 +395,32 @@ test('a finished job stays on the list', async () => {
   assert.equal(q.list().length, 1,
     'with nowhere to see it, a job that got nothing looked the same as one that got everything');
 });
+
+/*
+ * A finished job has emptied its list, so a total taken from that list is
+ * zero — and every restored record read "0 of 0" and then saved those zeros
+ * back over what it had actually done.
+ */
+test('a record remembers how much it was ever about', async () => {
+  const { q, tick } = harness();
+  q.add(job('a', 'works', ['1', '2', '3']));
+  await settle();
+  await tick(); await tick(); await tick();   // one gap before each work after the first
+
+  const saved = q.save()[0];
+  assert.equal(saved.total, 3);
+  assert.equal(saved.added, 3);
+
+  const { q: q2 } = harness();
+  q2.restore(saved);
+  const [record] = q2.list();
+  assert.equal(record.total, 3, 'not the length of a list it has finished with');
+  assert.equal(record.added, 3);
+  assert.equal(q2.save()[0].total, 3, 'and saving it again does not lose it');
+});
+
+test('a record from a version that kept no time does not claim to be recent', () => {
+  const { q } = harness();
+  q.restore({ author: 'a', part: 'works', workIds: [], state: 'done', total: 2, added: 2 });
+  assert.equal(q.list()[0].at, null, 'unknown, rather than this second');
+});

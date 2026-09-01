@@ -53,7 +53,12 @@ export function createQueue({
 
   const view = (j) => ({
     id: j.id, author: j.author, part: j.part, state: j.state,
-    total: j.workIds.length, done: j.done, added: j.added, failed: j.failed,
+    /* How many it was ever about. A running job knows from its own list; a
+       finished one has emptied that list, so it has to have been kept — which
+       it was not, and every restored record read 0 of 0 and then saved those
+       zeros back over what it had actually done. */
+    total: j.workIds.length || j.wasTotal || 0,
+    done: j.done, added: j.added, failed: j.failed,
     /* Open means the list is still being read, so `total` is what is known so
        far rather than what there will be — the difference between a bar that
        can be trusted and one that slides backwards. */
@@ -304,7 +309,10 @@ export function createQueue({
       page: saved.page ?? 0, pages: saved.pages ?? null,
       rounds: 0, parallel: false, attempt: 0, retrying: null,
       lastError: saved.lastError ?? null,
-      at: saved.at ?? Date.now(),
+      wasTotal: Number(saved.total) || 0,
+      /* Unknown rather than now: a record from a version that did not keep
+         the time would otherwise claim to have finished this second. */
+      at: saved.at ?? null,
       unfinished: [],
       state: 'done',
     };
@@ -398,7 +406,7 @@ export function createQueue({
         author: j.author, part: j.part,
         workIds: [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],
         open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
-        state: j.state, total: j.workIds.length,
+        state: j.state, total: j.workIds.length || j.wasTotal || 0,
         added: j.added, failed: j.failed,
         lastError: j.lastError ?? null,
         at: j.at ?? Date.now(),
