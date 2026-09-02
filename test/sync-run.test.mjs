@@ -9,17 +9,48 @@ const page = (ids, total = 3) => ({
   pagination: { current: 1, total },
 });
 
-test('walking stops once a page holds nothing new', async () => {
+test('walking stops once a page holds no bookmarks it did not know', async () => {
   const asked = [];
-  const held = new Set(['old1', 'old2']);
+  const known = new Set(['old1', 'old2']);
   const { workIds } = await findNewBookmarks({
     fetchPage: async (p) => { asked.push(p); return page(p === 1 ? ['new1', 'old1'] : ['old1', 'old2']); },
-    isHeld: (id) => held.has(id),
+    isHeld: (id) => known.has(id),
+    isBookmarked: (id) => known.has(id),
   });
-  /* Bookmarks are newest first, so a page with nothing new means the rest was
-     gathered on an earlier run. A full walk is 86 pages; this is two. */
+  /* Bookmarks are newest first, so a page holding none the library had not
+     already listed means the rest was gathered on an earlier run. */
   assert.deepEqual(asked, [1, 2]);
   assert.deepEqual(workIds, ['new1']);
+});
+
+/*
+ * Two questions that were being answered as one. Bookmarking a work the
+ * library already holds is a new bookmark; it just does not need downloading.
+ */
+test('a work already held can still be a new bookmark', async () => {
+  const { workIds, seen } = await findNewBookmarks({
+    fetchPage: async (p) => (p === 1 ? page(['alreadyHere']) : page([])),
+    isHeld: () => true,             // the text is here
+    isBookmarked: () => false,      // but it was not among the bookmarks
+  });
+  assert.deepEqual(seen, ['alreadyHere'],
+    'reported, so the library can record that it is now bookmarked');
+  assert.deepEqual(workIds, [], 'and not queued, because there is nothing to fetch');
+});
+
+test('a page of works held for other reasons does not end the walk', async () => {
+  const asked = [];
+  const { workIds } = await findNewBookmarks({
+    fetchPage: async (p) => {
+      asked.push(p);
+      return page(p === 1 ? ['heldA', 'heldB'] : p === 2 ? ['reallyNew'] : []);
+    },
+    isHeld: (id) => id.startsWith('held'),
+    isBookmarked: () => false,
+  });
+  assert.deepEqual(asked, [1, 2, 3],
+    'a first page of works downloaded through other routes used to stop it dead');
+  assert.deepEqual(workIds, ['reallyNew']);
 });
 
 test('everything new across several pages is collected', async () => {

@@ -583,6 +583,23 @@ export function readMeta(key) {
   }
 }
 
+/**
+ * Record that a work is one of yours on the archive.
+ *
+ * Separate from downloading it. A work already in the library that you
+ * bookmarked today is a new bookmark and needs no fetching, and the sync had
+ * no way to write that down.
+ */
+export function markBookmarked(workId) {
+  if (!isNative) return false;
+  try {
+    native.markWork(String(workId), 'in_bookmarks', true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function markOpened(workId) {
   try {
     if (isNative) { native.markOpened(String(workId)); return; }
