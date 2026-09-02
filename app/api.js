@@ -564,6 +564,22 @@ export function pendingLink() {
  * work owed and work done, and it belongs with the works — surviving cleared
  * site data and travelling in a backup.
  */
+/**
+ * Tell the shell there is work going on, or that there is not.
+ *
+ * The queue runs in this page; this only asks Android to keep the app running
+ * while it has something to do, and to say so where it can be seen.
+ */
+export function keepWorking(summary) {
+  if (!isNative) return;
+  try { native.keepWorking(String(summary)); } catch { /* the work carries on */ }
+}
+
+export function stopWorking() {
+  if (!isNative) return;
+  try { native.stopWorking(); } catch { /* nothing to take down */ }
+}
+
 export function saveMeta(key, value) {
   if (!isNative) return false;
   try {

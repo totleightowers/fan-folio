@@ -19,7 +19,8 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, saveMeta, readMeta, pendingLink } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, saveMeta, readMeta,
+  keepWorking, stopWorking, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1859,6 +1860,7 @@ const jobs = createQueue({
       freshen();
     }
     keepQueue();
+    sayWhatIsHappening();
     if (!$('#settings').hidden) { paintJobs(); paintStubs(); }
   },
 });
@@ -1898,6 +1900,45 @@ function runAgain(job) {
     .finally(() => jobs.seal(id));
   toast(`Reading ${job.author}'s ${part} again`);
 }
+
+/*
+ * What the shell should be telling Android.
+ *
+ * A download is hours of paced requests and all of it used to stop when the
+ * app went away, which the settings screen admitted to rather than fixed.
+ * While there is something to do the app says so, with an ongoing notification
+ * and a wake lock so the page's own timers keep firing; when there is nothing
+ * left it says that too, because a notification that outlives its work is
+ * worse than none.
+ */
+let lastSaid = '';
+
+function sayWhatIsHappening() {
+  if (!isNative) return;
+  const busy = jobs.list().filter(
+    (j) => j.state === 'running' || j.state === 'queued' || j.state === 'listing');
+  if (!busy.length) {
+    if (lastSaid) { lastSaid = ''; stopWorking(); }
+    return;
+  }
+  const first = busy[0];
+  const left = busy.reduce((n, j) => n + Math.max(0, j.total - j.added), 0);
+  const said = busy.length === 1
+    ? `${first.author} · ${first.part} — ${first.added} of ${first.total || '?'}`
+    : `${busy.length} jobs, about ${left} works to go`;
+  if (said === lastSaid) return;
+  lastSaid = said;
+  keepWorking(said);
+}
+
+/* The notification's Pause. Everything stops; nothing is thrown away. */
+window.__pauseAll = () => {
+  for (const job of jobs.list()) {
+    if (job.state === 'running' || job.state === 'queued') jobs.pause(job.id);
+  }
+  keepQueue();
+  sayWhatIsHappening();
+};
 
 function paintJobs() {
   const box = $('#job-list');
