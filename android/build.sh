@@ -38,6 +38,10 @@ printf '%s' "$VERSION" > assets/web/version.txt
 # under test, so the tested statements travel with the app instead.
 node ../tools/emit-merge-sql.mjs > assets/web/merge.sql
 
+# And the shape of a new one, so a first run does not need a file from
+# somewhere else before the app can be used at all.
+node ../tools/emit-schema-sql.mjs > assets/web/schema.sql
+
 echo "2/7  compile resources"
 aapt2 compile --dir res -o build/compiled/res.zip
 

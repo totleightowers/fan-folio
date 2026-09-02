@@ -94,10 +94,19 @@
   <!-- first run: there is no archive to read yet -->
   <section id="setup" class="view" hidden>
     <div class="setup-card">
-      <h1>Your archive isn't here yet</h1>
-      <p>This app reads a single <code>fanfolio.db</code> file holding your works,
-         their text, and the search index. Pick it and it will be copied in.</p>
-      <button id="import" class="primary">Choose fanfolio.db</button>
+      <h1>Welcome to Fan Folio</h1>
+      <p>Keep and read your archive offline: the works, their text, where you were in
+         each of them, and a search across every word held.</p>
+      <!--
+          A first run could only say "find me a fanfolio.db", which assumes some
+          other tool made one — and there is no other tool. Everything needed to
+          fill a library is already here; only the empty file was missing.
+      -->
+      <button id="start-fresh" class="primary">Start a new library</button>
+      <p class="hint">Then sign in to the archive and fetch your bookmarks, or paste a
+         link to a work.</p>
+      <p class="hint">Already have a <code>fanfolio.db</code>?
+         <button id="import" class="linkish">Bring it in</button></p>
       <p class="hint" id="setup-hint"></p>
     </div>
   </section>

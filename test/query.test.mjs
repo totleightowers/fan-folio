@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, SORTS, STATES } from '../app/core/query.js';
 import { SCHEMA } from '../app/core/store/schema.js';
+import { executable } from '../tools/emit-schema-sql.mjs';
 
 /** A small library with known contents, so counts can be asserted exactly. */
 function library() {
@@ -315,4 +316,30 @@ test('how many authors there are is a different question from which to show', ()
   const count = buildAuthorCount({});
   assert.match(count.sql, /count\(\*\) AS n FROM \(\s*SELECT DISTINCT/,
     'so the panel can say 40 of 1,534 rather than implying 40 is all of them');
+});
+
+/*
+ * The shell makes a new library by reading the emitted schema and running it a
+ * statement at a time, split on semicolons. That is a real thing to get wrong —
+ * a semicolon inside a string, a statement that cannot run outside a
+ * transaction — so it is done here exactly as the shell does it.
+ */
+test('a new library can be made from the emitted schema, the way the shell makes it', () => {
+  const emitted = executable(SCHEMA);          // what tools/emit-schema-sql.mjs writes
+  const db = new DatabaseSync(':memory:');
+  const steps = emitted.split(';').map((s) => s.trim()).filter(Boolean);
+  assert.ok(steps.length > 5, 'the schema is more than one statement');
+  for (const step of steps) db.exec(step);
+
+  const tables = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
+  for (const needed of ['works', 'tags', 'chapters', 'reading', 'meta']) {
+    assert.ok(tables.includes(needed), `${needed} must exist in a new library`);
+  }
+
+  /* And it is usable, not merely present. */
+  db.exec("INSERT INTO works (work_id, title, has_text) VALUES ('1', 'A work', 1)");
+  const q = buildWorksQuery({ state: 'all' });
+  assert.equal(db.prepare(q.countSql).get(...q.args).n, 1,
+    'the app can read what it just made');
 });
