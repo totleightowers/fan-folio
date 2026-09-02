@@ -534,6 +534,12 @@ export function importDatabase() {
 }
 
 /** A link the shell was opened with, if it arrived before the page was ready. */
+/** Where an intent asked the app to land, if it arrived before the page did. */
+export function pendingOpen() {
+  if (!isNative) return '';
+  try { return native.takePendingOpen() || ''; } catch { return ''; }
+}
+
 export function pendingLink() {
   if (!isNative) return '';
   try { return native.takePendingLink() || ''; } catch { return ''; }

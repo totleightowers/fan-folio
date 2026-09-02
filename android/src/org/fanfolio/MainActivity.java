@@ -107,6 +107,7 @@ public class MainActivity extends Activity {
         registerBackGesture();
         openDatabase();
         pendingLink = linkFrom(getIntent());
+        pendingOpen = getIntent() == null ? null : getIntent().getStringExtra("open");
         web.loadUrl(ORIGIN + "/index.html");
     }
 
@@ -259,6 +260,9 @@ public class MainActivity extends Activity {
      * calling into a page that does not exist yet silently does nothing.
      */
     private String pendingLink;
+    /* Where an intent asked to land, held for the same reason a link is: the
+       notification can be tapped before the page it wants exists. */
+    private String pendingOpen;
 
     /** The work link out of an intent, whether opened or shared. */
     private String linkFrom(Intent intent) {
@@ -300,6 +304,26 @@ public class MainActivity extends Activity {
         setIntent(intent);
         String link = linkFrom(intent);
         if (link != null) deliverLink(link);
+        goWhereAsked(intent);
+    }
+
+    /**
+     * A destination carried on the intent.
+     *
+     * The download notification is about the download, so tapping it should
+     * land on the screen that shows downloads rather than wherever the app was
+     * last left.
+     */
+    private void goWhereAsked(Intent intent) {
+        if (intent == null || web == null) return;
+        final String where = intent.getStringExtra("open");
+        if (where == null || where.isEmpty()) return;
+        intent.removeExtra("open");          // acted on once, not on every resume
+        web.post(new Runnable() {
+            @Override public void run() {
+                toPage("window.__open && window.__open(" + quote(where) + ")");
+            }
+        });
     }
 
     private void deliverLink(final String link) {
@@ -1607,6 +1631,15 @@ public class MainActivity extends Activity {
             String link = pendingLink;
             pendingLink = null;
             return link == null ? "" : link;
+        }
+
+        /** And where it was asked to land, for the same reason. */
+        @JavascriptInterface
+        public String takePendingOpen() {
+            mustBeOurPage();
+            String where = pendingOpen;
+            pendingOpen = null;
+            return where == null ? "" : where;
         }
 
         /** Open the archive's login page. */
