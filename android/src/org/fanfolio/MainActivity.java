@@ -1576,6 +1576,46 @@ public class MainActivity extends Activity {
          * Only membership changes. The works themselves are left alone: you
          * unbookmarked it, you did not ask to lose it.
          */
+        /**
+         * Make an empty library.
+         *
+         * A first run could only say "find me a fanfolio.db", which assumes
+         * some other tool made one — and there is no other tool. Everything
+         * needed to fill a library is already here: signing in, fetching a
+         * work, walking an author, syncing bookmarks. Only the empty file was
+         * missing.
+         *
+         * The shape comes from the same schema the tests exercise, emitted by
+         * the build, because a second copy written out in Java would drift
+         * from the one under test.
+         */
+        @JavascriptInterface
+        public String createDatabase() {
+            mustBeOurPage();
+            File f = databaseFile();
+            if (f.exists()) return errorJson("a library is already here");
+            SQLiteDatabase fresh = null;
+            try {
+                fresh = SQLiteDatabase.openOrCreateDatabase(f, null);
+                /* Not wrapped in a transaction: setting the journal mode is one
+                   of these statements, and SQLite will not change it inside
+                   one. Any failure leaves nothing behind instead. */
+                for (String step : readAsset("web/schema.sql").split(";")) {
+                    String sql = step.trim();
+                    if (!sql.isEmpty()) fresh.execSQL(sql);
+                }
+                fresh.close();
+                fresh = null;
+                openDatabase();
+                return db == null ? errorJson("the new library would not open") : "{\"ok\":true}";
+            } catch (Exception e) {
+                if (fresh != null) try { fresh.close(); } catch (Exception ignored) { }
+                // a half-made library is worse than none: leave nothing behind
+                try { f.delete(); } catch (Exception ignored) { }
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
         @JavascriptInterface
         public String reconcileBookmarks(String idsJson) {
             mustBeOurPage();

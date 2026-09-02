@@ -614,6 +614,16 @@ export function readMeta(key) {
  * something. Only membership changes: a work you unbookmarked is not a work
  * you asked to lose.
  */
+/**
+ * Make an empty library, so a first run does not need a file from elsewhere.
+ */
+export function createDatabase() {
+  if (!isNative) throw new Error('Only the app can make a library');
+  const out = JSON.parse(native.createDatabase());
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
 export function reconcileBookmarks(workIds) {
   if (!isNative) return { kept: 0, dropped: 0 };
   const out = JSON.parse(native.reconcileBookmarks(JSON.stringify(workIds.map(String))));

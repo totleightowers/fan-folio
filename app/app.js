@@ -19,7 +19,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
+import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, pendingLink, pendingOpen } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -4452,6 +4452,30 @@ $('#addwork-url').addEventListener('keydown', (e) => {
 $('#import').onclick = () => {
   if (!isNative) { toast('Import is only available in the app'); return; }
   importDatabase();
+};
+
+/*
+ * Start with nothing, which is how most people start.
+ *
+ * The first run could only ask for a fanfolio.db, which assumes some other
+ * tool made one — and there is no other tool. Everything needed to fill a
+ * library is already in here.
+ */
+$('#start-fresh').onclick = async () => {
+  const button = $('#start-fresh');
+  if (!isNative) { toast('Only the app can make a library'); return; }
+  button.disabled = true;
+  button.textContent = 'Making it…';
+  try {
+    createDatabase();
+    $('#setup-hint').textContent = '';
+    await start();
+    toast('Library made. Sign in to fetch your bookmarks, or add a work.');
+  } catch (e) {
+    $('#setup-hint').textContent = e.message;
+    button.disabled = false;
+    button.textContent = 'Start a new library';
+  }
 };
 
 async function adoptImportedTheme() {
