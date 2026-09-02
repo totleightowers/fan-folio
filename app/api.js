@@ -607,6 +607,20 @@ export function readMeta(key) {
  * bookmarked today is a new bookmark and needs no fetching, and the sync had
  * no way to write that down.
  */
+/**
+ * Which works are your bookmarks now — all of them, as one answer.
+ *
+ * Removal cannot be seen a page at a time, because it is the absence of
+ * something. Only membership changes: a work you unbookmarked is not a work
+ * you asked to lose.
+ */
+export function reconcileBookmarks(workIds) {
+  if (!isNative) return { kept: 0, dropped: 0 };
+  const out = JSON.parse(native.reconcileBookmarks(JSON.stringify(workIds.map(String))));
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
 export function markBookmarked(workId) {
   if (!isNative) return false;
   try {

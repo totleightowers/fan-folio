@@ -19,7 +19,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, saveMeta, readMeta,
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, pendingLink, pendingOpen } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -2678,6 +2678,68 @@ function forgetArchiveUser() {
   save(PREFS_KEY, prefs);
 }
 
+/**
+ * Read the whole bookmark list and make the library agree with it.
+ *
+ * Checking for new ones reads the newest pages and stops where they stop being
+ * new. That is quick and it can only add — removing a bookmark on the archive
+ * is the absence of something, and an absence cannot be noticed by looking at
+ * what is there. So the local idea of "bookmarked" only ever grew, until the
+ * filter meant "has ever been bookmarked" rather than "is".
+ *
+ * This reads all of it, which is slow enough to be its own deliberate act, and
+ * changes only which works are marked. A work you unbookmarked is not a work
+ * you asked to lose.
+ */
+async function reconcileAllBookmarks() {
+  if (syncing) return;
+  if (!isNative) { toast('Syncing needs the app'); return; }
+  if (!signedIn()) { toast('Sign in to the archive first'); return; }
+
+  syncing = true;
+  stopRequested = false;
+  $('#sync-now').disabled = true;
+  $('#sync-all').disabled = true;
+  $('#sync-stop').hidden = false;
+  syncSay('Asking the archive who you are…');
+
+  try {
+    const user = await whoAmI();
+    const all = [];
+    let pages = null;
+    for (let page = 1; page <= 200; page++) {
+      if (stopRequested) break;
+      const listing = parseListing(await archivePage(bookmarksUrl(user, page)));
+      pages = listing.pagination?.total ?? pages;
+      for (const w of listing.works) if (w.workId) all.push(String(w.workId));
+      syncSay(`Page ${page}${pages ? ` of ${pages}` : ''} — ${all.length} bookmarks read`);
+      if (pages && page >= pages) break;
+      if (!listing.works.length) break;
+    }
+
+    if (stopRequested) {
+      /* A partial list would read as "everything else was unbookmarked". */
+      syncSay(`Stopped after ${all.length}. Nothing changed — a half-read list `
+        + 'cannot say what was removed.');
+      return;
+    }
+
+    const { kept, dropped } = reconcileBookmarks(all);
+    await refresh({ works: true, force: true });
+    tick('commit');
+    syncSay(`${fmt(kept)} bookmark${kept === 1 ? '' : 's'}`
+      + (dropped ? `, ${fmt(dropped)} no longer bookmarked.` : ', nothing removed.')
+      + ' Works already downloaded were kept.');
+  } catch (e) {
+    syncSay(e.message);
+  } finally {
+    syncing = false;
+    $('#sync-now').disabled = false;
+    $('#sync-all').disabled = false;
+    $('#sync-stop').hidden = true;
+  }
+}
+
 async function syncBookmarks() {
   if (syncing) return;
   if (!isNative) { toast('Syncing needs the app'); return; }
@@ -2854,6 +2916,7 @@ function heldWithText(ids, { unknownIsHeld = true } = {}) {
 
 
 $('#sync-now').onclick = syncBookmarks;
+$('#sync-all').onclick = reconcileAllBookmarks;
 $('#sync-stop').onclick = () => { stopRequested = true; syncSay('Stopping after this one…'); };
 
 /* ------------------------------------------------------------------ sheets */
