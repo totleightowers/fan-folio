@@ -198,6 +198,8 @@ let suppressMotion = false;
 
 function show(name, motion = 'none') {
   if (name !== 'reader') keepAwake(false);
+  /* Adding a work is never part of reading one. */
+  $('#add').hidden = name === 'reader';
   clearBackPreview();
   const entering = $(`#${name}`);
   const changing = entering.hidden;
@@ -562,7 +564,6 @@ function workRow(w) {
            <div class="progress-note">${p.read} of ${p.total} chapters read</div>` : ''}
     <div class="rowactions">
       <button data-act="open">${p ? 'Continue' : 'Read'}</button>
-      <button data-act="details">Details</button>
       <button data-act="ao3">AO3</button>
     </div>`;
 
@@ -597,7 +598,6 @@ function workRow(w) {
 
   const act = {
     open: () => openChapter(w.work_id, p ? (w.at_chapter ?? 1) : 1),
-    details: () => openWork(w.work_id),
     // the one place the app leaves itself: the work as AO3 has it now
     ao3: () => window.open(`https://archiveofourown.org/works/${w.work_id}`, '_blank', 'noopener'),
   };
@@ -1656,18 +1656,32 @@ function archiveActions(w) {
 
   /* Only when there is something to look at. A control offering nothing is a
      control that teaches you to ignore it. */
+  /*
+   * Two rows, because these are not peers.
+   *
+   * Leaving kudos, bookmarking and commenting are things done because of the
+   * work. Opening it on the archive, fetching it again and looking at older
+   * copies are upkeep — done because of the app. Six buttons of equal weight
+   * made Fetch again, which is a repair, look like as ordinary a thing to do
+   * as leaving kudos.
+   */
+  row.append(kudos, bookmark, comment);
+
+  const upkeep = document.createElement('div');
+  upkeep.className = 'actions archive-upkeep';
+  upkeep.append(onArchive, refetch);
   if (w.versions > 0) {
     const earlier = document.createElement('button');
     earlier.className = 'archive-act';
     earlier.append(icon('chapters', 'ic ic-inline'),
       document.createTextNode(`Earlier versions (${w.versions})`));
     earlier.onclick = () => showVersions(w.work_id);
-    row.append(kudos, bookmark, comment, onArchive, refetch, earlier);
-    return row;
+    upkeep.append(earlier);
   }
 
-  row.append(kudos, bookmark, comment, onArchive, refetch);
-  return row;
+  const both = document.createDocumentFragment();
+  both.append(row, upkeep);
+  return both;
 }
 
 let bookmarkTarget = null;
