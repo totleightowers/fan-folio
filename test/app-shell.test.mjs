@@ -294,7 +294,7 @@ test('the default tap flash is replaced rather than joined', () => {
  * navigation, and the app goes back to tap, nothing, eventually a new screen.
  */
 test('a destination opens before its data is awaited', () => {
-  for (const [fn, nav] of [['openWork', "go('detail')"], ['openChapter', "go('reader')"]]) {
+  for (const [fn, nav] of [['openWork', "go('detail'"], ['openChapter', "go('reader'"]]) {
     const body = js.slice(js.indexOf(`async function ${fn}(`));
     const end = body.indexOf('\n}\n');
     const source = body.slice(0, end);
@@ -568,8 +568,9 @@ test('the reader can reach the work it belongs to', () => {
   const reader = html.slice(html.indexOf('<section id="reader"'),
     html.indexOf('</section>', html.indexOf('<section id="reader"')));
   assert.ok(reader.includes('id="to-work"'), 'the way up to the work lives in the reader');
-  assert.match(js, /\$\('#to-work'\)\.onclick[\s\S]{0,120}openWork\(/,
-    'and it opens the work, rather than relying on history that may not hold it');
+  assert.match(js, /\$\('#to-work'\)\.onclick[\s\S]{0,120}upToWork\(/,
+    'and it goes up to the work — which is going back when the work is behind it, '
+    + 'and rebuilding the work when it is not, rather than piling one on the other');
 });
 
 test('the chapter body is not a horizontal scroll container', () => {
@@ -689,7 +690,9 @@ test('swiping back from the first chapter leaves for the work', () => {
   const call = js.slice(js.indexOf("wireSwipe($('#reader')"));
   const body = call.slice(0, call.indexOf('});') + 3);
   assert.match(body, /current\.chapter > 1/, 'a later chapter steps back one');
-  assert.match(body, /openWork\(current\.workId\)/, 'and the first one leaves for the work');
+  assert.match(body, /upToWork\(current\.workId\)/,
+    'and the first one goes up to the work rather than pushing it, which is what '
+    + 'made Reader and Work lead to each other for ever');
 });
 
 test('forwards still stops at the end of the work', () => {
@@ -1999,4 +2002,33 @@ test('a series is queued, not downloaded on the spot', () => {
   const queue = js.slice(js.indexOf('function queueSeries('));
   assert.match(queue.slice(0, queue.indexOf('\n}\n')), /jobs\.add\(\{ author: `Series/,
     'the queue takes it, which is what paces it');
+});
+
+/*
+ * The stack held a screen name, and a screen name is not a place: there is one
+ * Detail element and one Results element in the page, so "detail" meant
+ * whichever work had most recently been painted into it.
+ */
+test('a history entry describes a place, not a screen', () => {
+  const fn = js.slice(js.indexOf('function here() {'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /params\.workId = String\(currentWork\.work_id\)/, 'which work');
+  assert.match(body, /params\.chapter = Number\(current\.chapter\)/, 'which chapter');
+  assert.match(body, /params\.query = \$\('#q'\)\.value/, 'which search');
+  assert.match(body, /params\.filters = JSON\.parse\(JSON\.stringify\(view\)\)/,
+    'and which filters — copied, because a place that changes underneath you is not one');
+});
+
+test('going back rebuilds the place rather than unhiding a screen', () => {
+  const fn = js.slice(js.indexOf('function renderPlace('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /openWork\(p\.workId\)/, 'the work that entry names');
+  assert.match(body, /openChapter\(p\.workId, Number\(p\.chapter\) \|\| 1\)/, 'that chapter');
+  assert.match(body, /runSearch\(p\.query\)/, 'that search');
+  assert.match(body, /Object\.assign\(view, p\.filters\)/, 'those filters');
+
+  assert.match(js, /let restoring = false;/,
+    'and rebuilding a place does not count as travelling to it');
+  const go = js.slice(js.indexOf('function go(name, params'));
+  assert.match(go.slice(0, go.indexOf('\n}\n')), /if \(restoring\) return;/);
 });
