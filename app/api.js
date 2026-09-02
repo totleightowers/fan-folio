@@ -400,26 +400,21 @@ async function addSeries(seriesId) {
   const body = await res.text();
   if (!res.ok) throw new Error(`The archive answered ${res.status} for that series`);
 
-  const ids = [...new Set(parseListing(body).works.map((w) => w.workId).filter(Boolean))];
-  if (!ids.length) throw new Error('That series has no works we can see');
+  const workIds = [...new Set(parseListing(body).works.map((w) => w.workId).filter(Boolean))]
+    .map(String);
+  if (!workIds.length) throw new Error('That series has no works we can see');
 
-  const added = [];
-  const failed = [];
-  for (const id of ids) {
-    try {
-      added.push(await fetchAndSave(id));
-    } catch (e) {
-      failed.push({ workId: id, reason: e.message });
-    }
-  }
-  return {
-    kind: 'series',
-    seriesId,
-    added: added.length,
-    failed,
-    works: added,
-    title: `${added.length} work${added.length === 1 ? '' : 's'} from the series`,
-  };
+  /*
+   * A plan, not a download.
+   *
+   * This used to fetch every work in the series itself, one after another with
+   * nothing between them — sequential, which is not the same as paced. A long
+   * series therefore asked the archive for a work the instant the last one
+   * finished, and walked straight through the rate the rest of the app is so
+   * careful about. Handing back the list lets it go through the same queue as
+   * everything else, which paces it, shows it, and can pause it.
+   */
+  return { kind: 'series', seriesId, workIds, count: workIds.length };
 }
 
 /** One work: fetch the whole thing, parse it, hand it to the shell to store. */
