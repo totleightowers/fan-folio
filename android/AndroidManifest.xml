@@ -33,6 +33,23 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+        Keeping a download going while the app is not being looked at.
+
+        An author's catalogue is hours of paced requests, and all of it used to
+        stop the moment the app went away. Android will keep a process alive
+        and out of Doze if it says what it is doing and shows that it is doing
+        it, which is what the notification is for.
+
+        WAKE_LOCK is the one that matters: the work runs on the page's own
+        timers, and those only fire while the processor is awake. The screen is
+        left alone.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <!-- allowBackup is off deliberately: a detailed record of what someone
          reads is not something to hand to cloud backup without asking. -->
     <application
@@ -45,6 +62,11 @@
         android:hardwareAccelerated="true"
         android:enableOnBackInvokedCallback="true"
         android:largeHeap="true">
+
+        <service
+            android:name=".DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <activity
             android:name=".MainActivity"

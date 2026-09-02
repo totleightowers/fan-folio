@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        alive = new java.lang.ref.WeakReference<>(this);
 
         root = new FrameLayout(this);
         root.setBackgroundColor(0xFF000000);
@@ -159,6 +160,43 @@ public class MainActivity extends Activity {
      */
     private void toPage(String js) {
         if (web != null) web.evaluateJavascript(js, null);
+    }
+
+    /* The one live activity, so the notification's Pause can reach the queue.
+       Weakly enough that a dead activity is simply nobody to tell. */
+    private static java.lang.ref.WeakReference<MainActivity> alive =
+            new java.lang.ref.WeakReference<>(null);
+
+    /**
+     * From Android 13 a notification needs asking for.
+     *
+     * The service runs either way — this is about whether the reader can see
+     * what it is doing and press Pause. Asked when there is first something to
+     * show rather than on a first run that has nothing to notify about, and
+     * asked once: a refusal is an answer.
+     */
+    private boolean askedAboutNotifications = false;
+
+    private void askAboutNotificationsOnce() {
+        if (askedAboutNotifications || android.os.Build.VERSION.SDK_INT < 33) return;
+        askedAboutNotifications = true;
+        try {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{ android.Manifest.permission.POST_NOTIFICATIONS }, 7);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    static void pauseFromNotification() {
+        final MainActivity self = alive.get();
+        if (self == null || self.web == null) return;
+        self.web.post(new Runnable() {
+            @Override public void run() {
+                self.toPage("window.__pauseAll && window.__pauseAll()");
+            }
+        });
     }
 
     /**
@@ -1450,6 +1488,40 @@ public class MainActivity extends Activity {
          * site data, travels in a backup, and can be read back exactly as it
          * was written instead of being rebuilt from a summary.
          */
+        /**
+         * Say that work is going on, so the system leaves the app running.
+         *
+         * The page keeps its own queue; this only asks Android not to stop the
+         * process while there is something to do, and shows what that is.
+         * Called again whenever the summary changes, which is how the
+         * notification stays truthful rather than saying "downloading" for an
+         * hour after the last work arrived.
+         */
+        @JavascriptInterface
+        public void keepWorking(String summary) {
+            mustBeOurPage();
+            askAboutNotificationsOnce();
+            try {
+                Intent go = new Intent(MainActivity.this, DownloadService.class)
+                        .setAction(DownloadService.ACTION_START)
+                        .putExtra(DownloadService.EXTRA_TEXT, String.valueOf(summary));
+                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(go);
+                else startService(go);
+            } catch (Exception ignored) {
+                /* A refusal to start it is not a reason to stop downloading —
+                   the work carries on for as long as the app is open. */
+            }
+        }
+
+        /** Nothing left to do: take the notification down and let go. */
+        @JavascriptInterface
+        public void stopWorking() {
+            mustBeOurPage();
+            try {
+                stopService(new Intent(MainActivity.this, DownloadService.class));
+            } catch (Exception ignored) { }
+        }
+
         @JavascriptInterface
         public String saveMeta(String key, String value) {
             mustBeOurPage();

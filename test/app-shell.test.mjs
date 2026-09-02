@@ -1919,3 +1919,42 @@ test('the app parses', () => {
     assert.equal(out.status, 0, `${file} does not parse:\n${out.stderr}`);
   }
 });
+
+/*
+ * A download is hours of paced requests, and all of it used to stop the moment
+ * the app went away — which the settings screen admitted to rather than fixed.
+ */
+test('a download keeps going while the app is not being looked at', () => {
+  const service = readFileSync(
+    new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
+  assert.match(service, /startForeground\(NOTE_ID, built,[\s\S]*FOREGROUND_SERVICE_TYPE_DATA_SYNC/,
+    'a typed foreground service, which is what Android 14 asks for');
+  assert.match(service, /PARTIAL_WAKE_LOCK/,
+    'the processor stays awake, which is what actually keeps the page timers firing');
+  assert.ok(!/FULL_WAKE_LOCK|SCREEN_BRIGHT/.test(service),
+    'and not the screen: an hour of downloading is not a reason to keep a display on');
+  assert.match(service, /addAction\([\s\S]*"Pause"/, 'with a way to stop it from the notification');
+
+  const manifest = readFileSync(new URL('../android/AndroidManifest.xml', import.meta.url), 'utf8');
+  for (const needed of ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_DATA_SYNC',
+                        'POST_NOTIFICATIONS', 'WAKE_LOCK']) {
+    assert.ok(manifest.includes(needed), `${needed} must be declared`);
+  }
+  assert.match(manifest, /android:name="\.DownloadService"[\s\S]*foregroundServiceType="dataSync"/);
+});
+
+test('the notification says what is happening, and goes when it stops', () => {
+  const fn = js.slice(js.indexOf('function sayWhatIsHappening('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(!busy\.length\)/, 'nothing to do means nothing shown');
+  assert.match(body, /stopWorking\(\)/,
+    'a notification that outlives its work is worse than none');
+  assert.match(body, /if \(said === lastSaid\) return/,
+    'and it is not rewritten on every event for the same words');
+
+  assert.match(js, /window\.__pauseAll = \(\) => \{/, 'Pause on the notification reaches the queue');
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.match(java, /window\.__pauseAll && window\.__pauseAll\(\)/,
+    'and the shell is what calls it');
+});
