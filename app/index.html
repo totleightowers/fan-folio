@@ -159,6 +159,18 @@
       <button id="sync-now" class="primary">Check for new bookmarks</button>
       <button id="sync-stop" class="linkish" hidden>Stop</button>
       <p id="sync-status" class="setting-note" hidden></p>
+      <!--
+          Checking for new ones reads the newest pages and stops where they
+          stop being new, which is quick and can only add. Removing a bookmark
+          on the archive is the absence of something, and absence cannot be
+          seen a page at a time — so putting that right means reading the whole
+          list, which is slow enough to be its own deliberate act.
+      -->
+      <p class="setting-note">Removing a bookmark on the archive cannot be noticed by checking
+        for new ones. Reading the whole list puts that right — it takes as long as your
+        bookmarks are long, and it only changes which works are marked, never what is
+        downloaded.</p>
+      <button id="sync-all" class="ghost">Read the whole bookmark list</button>
     </div>
 
   </section>

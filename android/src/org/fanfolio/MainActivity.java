@@ -1562,6 +1562,55 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Which works are your bookmarks now — all of them, as one answer.
+         *
+         * Adding was the only thing the sync could do, so the local idea of
+         * bookmarked only ever grew: unbookmark something on the archive and
+         * it stayed bookmarked here for ever, until the filter meant "has ever
+         * been bookmarked" rather than "is". Removal cannot be seen one page
+         * at a time — it is the absence of something — so it takes the whole
+         * list, and it is applied in one transaction because a half-applied
+         * reconciliation is worse than none.
+         *
+         * Only membership changes. The works themselves are left alone: you
+         * unbookmarked it, you did not ask to lose it.
+         */
+        @JavascriptInterface
+        public String reconcileBookmarks(String idsJson) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                org.json.JSONArray ids = new org.json.JSONArray(idsJson);
+                db.beginTransaction();
+                try {
+                    db.execSQL("CREATE TEMP TABLE IF NOT EXISTS bookmarks_now ("
+                             + "work_id TEXT PRIMARY KEY)");
+                    db.execSQL("DELETE FROM bookmarks_now");
+                    for (int i = 0; i < ids.length(); i++) {
+                        db.execSQL("INSERT OR IGNORE INTO bookmarks_now (work_id) VALUES (?)",
+                                new Object[]{ String.valueOf(ids.optString(i)) });
+                    }
+                    android.database.Cursor c = db.rawQuery(
+                            "SELECT count(*) FROM works WHERE in_bookmarks = 1 "
+                          + "AND work_id NOT IN (SELECT work_id FROM bookmarks_now)", null);
+                    int dropped = c.moveToFirst() ? c.getInt(0) : 0;
+                    c.close();
+
+                    db.execSQL("UPDATE works SET in_bookmarks = 0 WHERE in_bookmarks = 1 "
+                             + "AND work_id NOT IN (SELECT work_id FROM bookmarks_now)");
+                    db.execSQL("UPDATE works SET in_bookmarks = 1 "
+                             + "WHERE work_id IN (SELECT work_id FROM bookmarks_now)");
+                    db.setTransactionSuccessful();
+                    return "{\"ok\":true,\"kept\":" + ids.length() + ",\"dropped\":" + dropped + "}";
+                } finally {
+                    db.endTransaction();
+                }
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
         @JavascriptInterface
         public String markOpened(String workId) {
             mustBeOurPage();

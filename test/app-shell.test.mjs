@@ -2076,3 +2076,28 @@ test('a download notification lands on the downloads', () => {
     'and held when the notification is tapped before the page exists');
   assert.match(js, /window\.__open = \(where\) => \{/);
 });
+
+/*
+ * Checking for new bookmarks reads the newest pages and stops where they stop
+ * being new. That can only add — removing one on the archive is the absence of
+ * something, and an absence cannot be noticed by looking at what is there. So
+ * the local idea of "bookmarked" only ever grew, until the filter meant "has
+ * ever been bookmarked" rather than "is".
+ */
+test('the whole bookmark list can be read, so removals are noticed', () => {
+  const fn = js.slice(js.indexOf('async function reconcileAllBookmarks('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /reconcileBookmarks\(all\)/, 'the whole list decides it, not a page of it');
+  assert.match(body, /if \(stopRequested\) \{/, 'and a half-read list decides nothing');
+  assert.match(body, /Nothing changed/,
+    'because everything unread would look like everything unbookmarked');
+
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const shell = java.slice(java.indexOf('public String reconcileBookmarks('));
+  const sbody = shell.slice(0, shell.indexOf('\n        }\n'));
+  assert.match(sbody, /beginTransaction/, 'a half-applied reconciliation is worse than none');
+  assert.match(sbody, /UPDATE works SET in_bookmarks = 0/, 'membership can go down');
+  assert.ok(!/DELETE FROM works|DROP/.test(sbody),
+    'and a work you unbookmarked is not a work you asked to lose');
+});
