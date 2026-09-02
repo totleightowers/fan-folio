@@ -1940,6 +1940,23 @@ window.__pauseAll = () => {
   sayWhatIsHappening();
 };
 
+/**
+ * A series, put through the queue rather than downloaded on the spot.
+ *
+ * Sequential is not paced: fetching each work the moment the last one finished
+ * walked straight through the rate the rest of the app keeps to. As a job it
+ * takes its turns with everything else, and can be watched and paused.
+ */
+function queueSeries(plan) {
+  const ids = (plan.workIds ?? []).map(String);
+  const held = heldWithText(ids, { unknownIsHeld: false });
+  const missing = ids.filter((id) => !held.has(id));
+  if (!missing.length) return false;
+  jobs.add({ author: `Series ${plan.seriesId}`, part: 'works', workIds: missing });
+  paintJobs();
+  return true;
+}
+
 function paintJobs() {
   const box = $('#job-list');
   box.textContent = '';
@@ -2304,10 +2321,22 @@ async function catchUpOn(name) {
       const walked = await walkAuthor(name, {
         listing: part, jobId: opened[part],
         stopIfTopIs: unchangedCount ? knownTop : null,
+        /* Where an interrupted walk left off, so this one carries on. */
+        fromPage: Math.max(1, Number(before?.nextPage) || 1),
+        knownPages: before?.pages ?? null,
       });
+      /*
+       * Only a walk that reached the end may say the listing was checked. An
+       * interrupted one records how far it got instead, so opening the author
+       * again carries on rather than trusting a fingerprint for pages nobody
+       * read.
+       */
       seenAuthors[name] = {
         ...(seenAuthors[name] ?? {}),
-        [part]: { n: total, top: walked?.top ?? knownTop ?? null },
+        [part]: walked?.complete
+          ? { n: total, top: walked?.top ?? knownTop ?? null }
+          : { n: null, top: null, nextPage: (walked?.reached ?? 0) + 1,
+              pages: walked?.pages ?? null },
       };
       save(AUTHORS_KEY, seenAuthors);
     } catch {
@@ -2350,7 +2379,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
       /* The count said nothing had changed and the newest one agrees, so the
          rest of the index is what it was. One request rather than none, and
          far fewer than walking all of it. */
-      if (stopIfTopIs && top && top === stopIfTopIs) return { top, pages };
+      if (stopIfTopIs && top && top === stopIfTopIs) return { complete: true, top, pages };
       keep(first.works);
       if (jobId !== null) jobs.note(jobId, { page: fromPage, pages });
       offset = 0;
@@ -2361,20 +2390,31 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
        collects the rest, and the author's totals are deliberately not recorded
        unless every page was read, so opening them again finishes the job
        rather than believing it is already done. */
+    /*
+     * Whether the whole index was read, which is not the same as the loop
+     * ending. Walking away stopped it and it returned like any other success,
+     * so the count and the newest work were written down as current — and the
+     * seventy-seven pages nobody had looked at were never asked for again,
+     * because next time the fingerprint would match.
+     */
+    let complete = true;
     let missed = 0;
+    let reached = Math.max(1, fromPage);
     for (let page = Math.max(2, fromPage + 1); page <= pages; page++) {
-      if (currentAuthor !== name) break;      // they have gone somewhere else
+      if (currentAuthor !== name) { complete = false; break; }
       await wait(nextGap());
       try {
         keep(parseListing(await archivePage(url(name, page))).works);
+        reached = page;
         if (jobId !== null) jobs.note(jobId, { page, pages });
       } catch (e) {
+        complete = false;
         missed++;
         jobError = `${name} · ${listing}: page ${page} of ${pages} — ${e.message}`;
       }
     }
     if (missed) throw new Error(`${missed} of ${pages} pages could not be read`);
-    return { top, pages };
+    return { complete, top, pages, reached };
   } catch (e) {
     /* Kept for settings. "The archive answered 500" over a shelf is a sentence
        the reader cannot act on while doing something else. */
@@ -4096,12 +4136,14 @@ async function submitAddWork() {
     const out = await addWork(input);
     status.className = 'addwork-status ok';
 
-    /* A series link brings back many works rather than one, so it reports a
-       count and opens nothing — there is no single work to open, and one that
-       partly failed should say so rather than look like a clean success. */
+    /* A series is a batch, so it goes through the queue like any other batch:
+       paced, visible, and able to be paused. It used to download itself, one
+       work straight after another, which is sequential rather than paced. */
     if (out.kind === 'series') {
-      status.textContent = `Added ${out.added} work${out.added === 1 ? '' : 's'}`
-        + (out.failed.length ? `, ${out.failed.length} could not be fetched` : '');
+      const queued = queueSeries(out);
+      status.textContent = queued
+        ? `Queued ${fmt(out.count)} work${out.count === 1 ? '' : 's'} from the series`
+        : 'Those works are all here already';
     } else {
       status.textContent = `${out.added === false ? 'Updated' : 'Added'} “${out.title}” — `
         + `${out.chapters} chapter${out.chapters === 1 ? '' : 's'}`;
@@ -4148,7 +4190,10 @@ window.__openLink = async (link) => {
     tick('commit');
 
     if (out.kind === 'series') {
-      toast(`Saved ${out.added} work${out.added === 1 ? '' : 's'} from the series`);
+      const queued = queueSeries(out);
+      toast(queued
+        ? `Queued ${fmt(out.count)} work${out.count === 1 ? '' : 's'} from the series`
+        : 'Those works are all here already');
       go('library');
       return;
     }

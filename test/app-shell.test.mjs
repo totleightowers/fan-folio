@@ -1958,3 +1958,45 @@ test('the notification says what is happening, and goes when it stops', () => {
   assert.match(java, /window\.__pauseAll && window\.__pauseAll\(\)/,
     'and the shell is what calls it');
 });
+
+/*
+ * Walking away from an author stopped the loop, and the loop returned like any
+ * other success — so the count and the newest work were written down as
+ * current, and the pages nobody had read were never asked for again, because
+ * next time the fingerprint would match.
+ */
+test('an interrupted author walk is not recorded as a checked one', () => {
+  const walk = js.slice(js.indexOf('async function walkAuthor('));
+  const body = walk.slice(0, walk.indexOf('\n}\n'));
+  assert.match(body, /if \(currentAuthor !== name\) \{ complete = false; break; \}/,
+    'leaving is not finishing');
+  assert.match(body, /return \{ complete, top, pages, reached \}/,
+    'and the walk says which it was');
+
+  const catchUp = js.slice(js.indexOf('async function catchUpOn('));
+  const cbody = catchUp.slice(0, catchUp.indexOf('\n}\n'));
+  assert.match(cbody, /walked\?\.complete\s*\n?\s*\?\s*\{ n: total/,
+    'only a finished walk may say the listing was checked');
+  assert.match(cbody, /nextPage: \(walked\?\.reached \?\? 0\) \+ 1/,
+    'an unfinished one records where to carry on from');
+  assert.match(cbody, /fromPage: Math\.max\(1, Number\(before\?\.nextPage\) \|\| 1\)/,
+    'and opening the author again does carry on');
+});
+
+/*
+ * Sequential is not paced. A series fetched each work the moment the last one
+ * finished, walking straight through the rate the rest of the app keeps to.
+ */
+test('a series is queued, not downloaded on the spot', () => {
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  const fn = api.slice(api.indexOf('async function addSeries('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /return \{ kind: 'series', seriesId, workIds, count/,
+    'it hands back a plan');
+  assert.ok(!/fetchAndSave/.test(body),
+    'and does not fetch the works itself, at any rate it likes');
+
+  const queue = js.slice(js.indexOf('function queueSeries('));
+  assert.match(queue.slice(0, queue.indexOf('\n}\n')), /jobs\.add\(\{ author: `Series/,
+    'the queue takes it, which is what paces it');
+});

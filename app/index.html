@@ -125,8 +125,9 @@
         of works is read a page at a time, so a job says it is reading before it can say
         how many.</p>
       <div id="job-list"></div>
-      <p class="setting-note">Start now begins a job straight away and skips the waiting. It is
-        faster, and the archive may start refusing for a while.</p>
+      <p class="setting-note">Start now moves a job to the front so it runs alongside the one
+        already going. Every request still waits its turn behind the same half minute, so this
+        changes the order things arrive in rather than how fast the archive is asked.</p>
     </div>
 
     <div class="setting-group">
@@ -140,9 +141,11 @@
       <p class="setting-note" id="stub-count"></p>
       <button id="fetch-stubs" class="primary">Download them all</button>
       <p class="setting-note">One at a time with a wait between, like everything else. It can be
-        paused or stopped from the list above, and it carries on where it left off. While there
-        is work to do the app keeps going in the background and says so in a notification, which
-        can be used to pause it.</p>
+        paused or stopped from the list above, and it carries on where it left off.</p>
+      <p class="setting-note">While there is work to do, a notification shows what is happening
+        and can pause it. The work itself still runs in this app: Android is asked to keep it
+        running and the processor awake, which usually holds while the screen is off, but a
+        long job is safest with Fan&nbsp;Folio still open.</p>
     </div>
 
     <div class="setting-group">
