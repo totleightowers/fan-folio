@@ -1150,6 +1150,7 @@ async function buildFilterPanelKeepingScroll() {
 function paintActiveFilters() {
   const box = $('#active');
   box.textContent = '';
+  paintAuthorBar();
   const badge = $('#filter-count');
   const n = activeCount();
   badge.hidden = !n;
@@ -2356,10 +2357,62 @@ const seenAuthors = load(AUTHORS_KEY, {});
 
 let currentAuthor = null;
 
+/**
+ * Opening an author shows the author.
+ *
+ * It used to also start reading their whole index and downloading everything
+ * they had written and everything they had bookmarked — for a prolific person,
+ * hours of archive, begun by tapping a name. Looking at somebody is not the
+ * same as asking for all of them.
+ *
+ * The work is still one tap and still both halves, because choosing between
+ * their works and their bookmarks is a decision nobody wants to make. It is
+ * simply a tap that says so.
+ */
 function openAuthor(name) {
   currentAuthor = name;
   filterBy('author', name);
-  if (isNative && signedIn()) catchUpOn(name);
+  paintAuthorBar();
+}
+
+/** What is here of theirs, and the way to go and get the rest. */
+function paintAuthorBar() {
+  const bar = $('#author-bar');
+  if (!bar) return;
+  const chosen = view.author ?? [];
+  const name = chosen.length === 1 ? chosen[0] : null;
+  bar.hidden = !name || !isNative;
+  if (bar.hidden) return;
+
+  const note = $('#author-known');
+  let held = 0;
+  let known = 0;
+  try {
+    const rows = JSON.parse(window.ArchiveNative.query(
+      'SELECT has_text, count(*) AS n FROM works WHERE authors LIKE ? ESCAPE \'\\\' GROUP BY has_text',
+      JSON.stringify([`%${JSON.stringify(String(name)).replace(/[\\%_]/g, (c) => `\\${c}`)}%`])));
+    for (const r of rows.rows ?? []) {
+      if (Number(r.has_text) === 1) held = Number(r.n) || 0;
+      else known += Number(r.n) || 0;
+    }
+  } catch { /* the counts are a courtesy; the button still works */ }
+
+  const seen = seenAuthors[name] ?? {};
+  const checked = seen.works?.n != null || seen.bookmarks?.n != null;
+  note.textContent = `${fmt(held)} of theirs downloaded`
+    + (known ? `, ${fmt(known)} known but not` : '')
+    + (checked ? '. Checked before.' : '. Not checked against the archive yet.');
+
+  const button = $('#author-sync');
+  button.disabled = false;
+  button.textContent = 'Fetch their works and bookmarks';
+  button.onclick = () => {
+    if (!signedIn()) { toast('Sign in to the archive first'); return; }
+    button.disabled = true;
+    button.textContent = 'Reading their index…';
+    catchUpOn(name);
+    toast(`Reading ${name}'s works and bookmarks`);
+  };
 }
 
 async function catchUpOn(name) {

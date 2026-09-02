@@ -920,7 +920,11 @@ test('a work with no text fetches itself when opened', () => {
 test('there is one way to fetch a work, not two', () => {
   /* "Fetch this work" and "Fetch again" called the identical function on the
      same work id; only the label and the state differed. */
-  const buttons = [...js.matchAll(/textContent = '(Fetch[^']*)'/g)].map((m) => m[1]);
+  /* Scoped to the work page, which is where the two of them were. Fetching an
+     author's catalogue is a different thing and lives somewhere else. */
+  const fn = js.slice(js.indexOf('async function openWork('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  const buttons = [...body.matchAll(/textContent = '(Fetch[^']*)'/g)].map((m) => m[1]);
   assert.deepEqual([...new Set(buttons)].sort(), ['Fetching…'],
     `only the in-progress label remains: ${buttons}`);
 });
@@ -2100,4 +2104,24 @@ test('the whole bookmark list can be read, so removals are noticed', () => {
   assert.match(sbody, /UPDATE works SET in_bookmarks = 0/, 'membership can go down');
   assert.ok(!/DELETE FROM works|DROP/.test(sbody),
     'and a work you unbookmarked is not a work you asked to lose');
+});
+
+/*
+ * Opening an author used to start reading their whole index and downloading
+ * everything they had written and everything they had bookmarked. For a
+ * prolific person that is hours of archive, begun by tapping a name.
+ */
+test('opening an author shows the author', () => {
+  const fn = js.slice(js.indexOf('function openAuthor(name) {'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /filterBy\('author', name\)/, 'the library narrows to them');
+  assert.ok(!/catchUpOn\(name\)/.test(body),
+    'and nothing is asked of the archive by looking at somebody');
+
+  const bar = js.slice(js.indexOf('function paintAuthorBar('));
+  const bbody = bar.slice(0, bar.indexOf('\n}\n'));
+  assert.match(bbody, /catchUpOn\(name\)/, 'the work is still one tap');
+  assert.match(bbody, /works and bookmarks/,
+    'and still both halves, because choosing between them is a decision nobody wants');
+  assert.match(bbody, /if \(!signedIn\(\)\)/, 'and it needs an account like everything else');
 });
