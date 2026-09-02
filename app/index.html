@@ -109,13 +109,17 @@
     <div id="shelves"></div>
   </section>
 
-  <section id="settings" class="view" hidden>
-    <h2 class="settings-title">Settings</h2>
+  <!--
+      What the app is doing, and what it has done.
 
-    <div class="setting-group">
-      <h3 class="group">Your library</h3>
-      <dl id="library-facts" class="facts"></dl>
-    </div>
+      This was all inside Settings, which is where preferences go. A queue of
+      hours of work, a bookmark sync and a backlog of undownloaded works are
+      not preferences — they are the app's activity, and the question they
+      answer is "what is Fan Folio doing", which nobody thinks to look for
+      under a cog.
+  -->
+  <section id="activity" class="view" hidden>
+    <h2 class="settings-title">Activity</h2>
 
     <div class="setting-group">
       <h3 class="group">Downloads</h3>
@@ -155,6 +159,16 @@
       <button id="sync-now" class="primary">Check for new bookmarks</button>
       <button id="sync-stop" class="linkish" hidden>Stop</button>
       <p id="sync-status" class="setting-note" hidden></p>
+    </div>
+
+  </section>
+
+  <section id="settings" class="view" hidden>
+    <h2 class="settings-title">Settings</h2>
+
+    <div class="setting-group">
+      <h3 class="group">Your library</h3>
+      <dl id="library-facts" class="facts"></dl>
     </div>
 
     <div class="setting-group">
@@ -266,7 +280,7 @@
 <nav id="tabs" hidden>
   <button data-tab="home" class="on"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
   <button data-tab="library"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
-  <button data-tab="search"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-search"/></svg>Search</button>
+  <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-bolt"/></svg>Activity</button>
 </nav>
 
 <dialog id="chapters-dialog">

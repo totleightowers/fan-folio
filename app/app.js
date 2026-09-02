@@ -20,7 +20,7 @@ import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, saveMeta, readMeta,
-  keepWorking, stopWorking, pendingLink } from './api.js';
+  keepWorking, stopWorking, pendingLink, pendingOpen } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -167,11 +167,15 @@ function applyPrefs() {
 
 /* ------------------------------------------------------------------ views */
 
-const VIEWS = ['setup', 'home', 'library', 'results', 'detail', 'reader', 'settings'];
+const VIEWS = ['setup', 'home', 'library', 'activity', 'results', 'detail', 'reader', 'settings'];
 const stack = new History();
 
 /** Views the tab bar owns; anything deeper hides it and shows Back instead. */
-const TABBED = new Set(['home', 'library', 'results']);
+/* Search is an action from wherever you are, not a place to go — the box in
+   the top bar already changes what it searches according to the screen. Its
+   results are a child of that screen, reached and left like any other. What
+   deserved a tab was the thing with no home at all: what the app is doing. */
+const TABBED = new Set(['home', 'library', 'activity']);
 
 /** The view currently on screen. */
 const showing = () => VIEWS.find((v) => !$(`#${v}`).hidden) ?? 'home';
@@ -1393,10 +1397,14 @@ async function buildSettings() {
     if (haptics.checked) tick('commit');    // show what was just turned on
   };
 
-  paintJobs();
-  paintStubs();
   $('#version').textContent = `Fan Folio ${VERSION}`;
   paintAccount();
+}
+
+/** What the app is doing, and what it has done. */
+function buildActivity() {
+  paintJobs();
+  paintStubs();
 }
 
 /**
@@ -1953,7 +1961,7 @@ const jobs = createQueue({
     }
     keepQueue();
     sayWhatIsHappening();
-    if (!$('#settings').hidden) { paintJobs(); paintStubs(); }
+    if (!$('#activity').hidden) { paintJobs(); paintStubs(); }
   },
 });
 
@@ -4155,6 +4163,7 @@ for (const b of $$('#tabs button')) {
   b.onclick = () => {
     stack.reset();
     const tab = b.dataset.tab;
+    if (tab === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
     if (tab === 'search') {
       /* The results screen is one reused element, so arriving at it with an
          empty box used to show whatever was searched for last — an old result
@@ -4187,6 +4196,19 @@ function paintAccount() {
     else { closeSheet($('#typography')); signIn(); }
   };
 }
+
+/**
+ * The shell calls this when the notification is tapped.
+ *
+ * A notification about a download has one sensible destination, and it is not
+ * wherever the app happened to be left.
+ */
+window.__open = (where) => {
+  if (!VIEWS.includes(String(where))) return;
+  stack.reset();
+  show(String(where), 'lateral');
+  if (where === 'activity') buildActivity();
+};
 
 /* The shell calls this when the archive's login page has finished with us. */
 window.__signedIn = (ok) => {
@@ -4364,6 +4386,9 @@ async function start() {
     // an intent can arrive before this page exists, so the shell holds it
     () => { const opened = pendingLink();
             if (opened) setTimeout(() => window.__openLink(opened), 0); },
+    /* Tapped a download notification while the app was closed: land there. */
+    () => { const where = pendingOpen();
+            if (where) setTimeout(() => window.__open(where), 0); },
   ]) {
     try { chore(); } catch (e) { console.warn('startup', e); }
   }

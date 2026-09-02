@@ -2032,3 +2032,47 @@ test('going back rebuilds the place rather than unhiding a screen', () => {
   const go = js.slice(js.indexOf('function go(name, params'));
   assert.match(go.slice(0, go.indexOf('\n}\n')), /if \(restoring\) return;/);
 });
+
+/*
+ * A queue of hours of work, a bookmark sync and a backlog of undownloaded
+ * works are not preferences. They are what the app is doing, and the question
+ * they answer — "what is Fan Folio doing" — is not one anybody thinks to look
+ * for under a cog.
+ */
+test('what the app is doing has a place of its own', () => {
+  const activity = html.slice(html.indexOf('<section id="activity"'),
+    html.indexOf('</section>', html.indexOf('<section id="activity"')));
+  for (const moved of ['id="job-list"', 'id="stub-count"', 'id="fetch-stubs"', 'id="sync-now"']) {
+    assert.ok(activity.includes(moved), `${moved} belongs in Activity`);
+  }
+
+  const settings = html.slice(html.indexOf('<section id="settings"'),
+    html.indexOf('</section>', html.indexOf('<section id="settings"')));
+  for (const gone of ['id="job-list"', 'id="fetch-stubs"', 'id="sync-now"']) {
+    assert.ok(!settings.includes(gone), `${gone} is not a setting`);
+  }
+  assert.ok(settings.includes('id="library-facts"'), 'what the library holds can stay');
+});
+
+test('search is an action, not a destination', () => {
+  assert.match(js, /const TABBED = new Set\(\['home', 'library', 'activity'\]\)/,
+    'the box in the top bar already searches whatever screen you are on');
+  const tabsAt = html.indexOf('<nav id="tabs"');
+  const tabs = html.slice(tabsAt, html.indexOf('</nav>', tabsAt));
+  assert.ok(!tabs.includes('data-tab="search"'), 'so it does not also need a tab');
+  assert.ok(tabs.includes('data-tab="activity"'));
+});
+
+test('a download notification lands on the downloads', () => {
+  const service = readFileSync(
+    new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
+  assert.match(service, /open\.putExtra\("open", "activity"\)/,
+    'not wherever the app happened to be left');
+
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.match(java, /private void goWhereAsked\(Intent intent\)/, 'acted on when resuming');
+  assert.match(java, /public String takePendingOpen\(\)/,
+    'and held when the notification is tapped before the page exists');
+  assert.match(js, /window\.__open = \(where\) => \{/);
+});
