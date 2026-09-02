@@ -12,6 +12,33 @@
  * Kept free of the DOM so it can be tested as what it is — a stack with rules —
  * rather than only through a browser.
  */
+/**
+ * Whether two entries describe the same place.
+ *
+ * The route on its own is not a place. There is one Detail element and one
+ * Results element in the page, so "detail" described whichever work had most
+ * recently been painted into it — go Work A, author, Work B, then back twice,
+ * and the second Back unhid a Detail holding Work B. What makes a place is the
+ * route together with what it was asked for.
+ */
+export function samePlace(a, b) {
+  if (!a || !b) return false;
+  if (a.route !== b.route) return false;
+  const mine = a.params ?? {};
+  const theirs = b.params ?? {};
+  const keys = new Set([...Object.keys(mine), ...Object.keys(theirs)]);
+  for (const key of keys) {
+    if (key === 'filters') {
+      if (JSON.stringify(mine.filters ?? null) !== JSON.stringify(theirs.filters ?? null)) {
+        return false;
+      }
+      continue;
+    }
+    if (String(mine[key] ?? '') !== String(theirs[key] ?? '')) return false;
+  }
+  return true;
+}
+
 export class History {
   constructor() { this.entries = []; }
 
@@ -20,12 +47,12 @@ export class History {
   /**
    * Leave `from` for `to`.
    *
-   * Navigating to the screen already showing is not a movement and must not
-   * push an entry, or turning a page in the reader would build a stack of
-   * identical frames that Back then has to walk back through one at a time.
+   * Going to the place already showing is not a movement and must not push an
+   * entry, or turning a page in the reader would build a stack of identical
+   * frames for Back to walk back through one at a time.
    */
   go(from, to) {
-    if (!from || from.screen === to) return false;
+    if (!from || samePlace(from, to)) return false;
     this.entries.push(from);
     return true;
   }
@@ -33,6 +60,26 @@ export class History {
   /** The place to restore, or null when there is nowhere left to go back to. */
   back() {
     return this.entries.pop() ?? null;
+  }
+
+  /** What is immediately behind, without taking it. */
+  peek() {
+    return this.entries[this.entries.length - 1] ?? null;
+  }
+
+  /**
+   * Go up to a place that may or may not be behind you.
+   *
+   * Back and Up are different questions. Back is where you came from; Up is
+   * where this thing belongs — a chapter belongs to its work whether or not
+   * the work is what you came from. When the parent is right behind, going up
+   * is going back; when it is not, the current place is exchanged for it
+   * rather than piled on top, which is what turned Reader and Work into a
+   * pair that each led to the other for ever.
+   */
+  up(from, parent) {
+    if (samePlace(this.peek(), parent)) return { popped: this.back(), pushed: false };
+    return { popped: null, pushed: false };
   }
 
   /**

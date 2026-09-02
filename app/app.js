@@ -241,27 +241,119 @@ function show(name, motion = 'none') {
  * position. An entry now describes the place it came from, which is the only
  * thing Back ever needs to know.
  */
+/**
+ * Where the reader is now, described well enough to be built again.
+ *
+ * The stack used to hold a screen name, and a screen name is not a place:
+ * there is one Detail element and one Results element in this page, so
+ * "detail" meant whichever work had most recently been painted into it. Go to
+ * Work A, then its author, then Work B, and Back twice unhid a Detail holding
+ * Work B — the stack had remembered the furniture rather than the room.
+ */
 function here() {
-  return { screen: showing(), scrollY: window.scrollY, query: $('#q').value };
+  const route = showing();
+  const params = {};
+  if (route === 'detail' && currentWork) params.workId = String(currentWork.work_id);
+  if (route === 'reader' && current.workId) {
+    params.workId = String(current.workId);
+    params.chapter = Number(current.chapter) || 1;
+  }
+  if (route === 'results') {
+    params.query = $('#q').value;
+    params.scope = searchInScope;
+    if (current.workId && (searchInScope === 'work' || searchInScope === 'text')) {
+      params.workId = String(current.workId);
+    }
+  }
+  /* Not a reference: the filters go on changing after this is recorded, and a
+     place that changes underneath you is not a place. */
+  if (route === 'library') params.filters = JSON.parse(JSON.stringify(view));
+  return { route, params, scrollY: window.scrollY, query: $('#q').value };
 }
 
-function go(name) {
-  if (!stack.go(here(), name)) return;
+/* True while a place is being built again, so rebuilding it does not look
+   like travelling to it. */
+let restoring = false;
+
+function go(name, params = {}) {
+  if (restoring) return;
+  if (!stack.go(here(), { route: name, params })) return;
   show(name, 'forward');
+}
+
+/**
+ * Build a place again from what was written down about it.
+ *
+ * Views are kept in the DOM rather than torn down, which is what makes this
+ * quick — but the DOM is a cache, not the record. What decides what you see is
+ * the entry.
+ */
+function renderPlace(place, motion = 'back') {
+  const p = place.params ?? {};
+  restoring = true;
+  try {
+    if (place.route === 'detail' && p.workId) {
+      show('detail', motion);
+      openWork(p.workId);
+    } else if (place.route === 'reader' && p.workId) {
+      show('reader', motion);
+      openChapter(p.workId, Number(p.chapter) || 1);
+    } else if (place.route === 'results' && p.query) {
+      $('#q').value = p.query;
+      searchInScope = p.scope || 'text';
+      show('results', motion);
+      runSearch(p.query);
+    } else if (place.route === 'library') {
+      if (p.filters) {
+        Object.assign(view, p.filters);
+        save(VIEW_KEY, view);
+        paintActiveFilters();
+        $('#sort').value = view.sort;
+        offset = 0;
+        loadMore(true);
+      }
+      show('library', motion);
+    } else {
+      show(place.route, motion);
+    }
+  } finally {
+    restoring = false;
+  }
+
+  $('#q').value = place.query ?? '';
+  paintSearchPlaceholder();
+  requestAnimationFrame(() => window.scrollTo(0, place.scrollY ?? 0));
 }
 
 function goBack() {
   const from = stack.back();
   if (!from) return false;
-  show(from.screen, 'back');
-  /* Views are hidden rather than torn down, so the library's rows, the results
-     and the work page are all still in the DOM exactly as they were left —
-     returning is a matter of showing them again at the right offset, with no
-     refetch and no flash of rebuilt content. */
-  $('#q').value = from.query ?? '';
-  paintSearchPlaceholder();
-  requestAnimationFrame(() => window.scrollTo(0, from.scrollY ?? 0));
+  renderPlace(from, 'back');
   return true;
+}
+
+/**
+ * Up to the work this chapter belongs to.
+ *
+ * Back is where you came from; Up is where a thing belongs. Going up used to
+ * be an ordinary forward navigation, so it pushed the reader — and Back from
+ * the work returned to the reader, which returned to the work, for ever. When
+ * the work is right behind, going up is going back. When it is not — the
+ * reader was opened straight from a shelf — the reader is exchanged for it
+ * rather than piled on top, so Back still leads out of the reading.
+ */
+function upToWork(workId) {
+  if (!workId) return;
+  const parent = { route: 'detail', params: { workId: String(workId) } };
+  const { popped } = stack.up(here(), parent);
+  if (popped) { renderPlace(popped, 'back'); return; }
+  restoring = true;
+  try {
+    show('detail', 'back');
+    openWork(workId);
+  } finally {
+    restoring = false;
+  }
 }
 
 $('#back').onclick = () => goBack();
@@ -3128,7 +3220,7 @@ function filterBy(kind, value) {
   paintActiveFilters();
   offset = 0;
   loadMore(true);
-  go('library');
+  go('library', { filters: JSON.parse(JSON.stringify(view)) });
 }
 
 /* Every value on a work page carries what it filters by, so one listener
@@ -3191,7 +3283,7 @@ async function runSearch(q) {
   searchInScope = scope;
   const box = $('#results');
   box.innerHTML = '<div class="count">Searching…</div>';
-  go('results');
+  go('results', { query: q, scope, workId: current.workId ? String(current.workId) : '' });
 
   const params = new URLSearchParams({ q, scope });
   // searching the library searches *this* library: whatever is already
@@ -3407,7 +3499,7 @@ async function openWork(workId) {
   /* Opening a second work before the first has answered must not let the
      first overwrite the second when it lands. */
   const token = ++pending;
-  go('detail');
+  go('detail', { workId: String(workId) });
   const box = $('#detail');
   box.replaceChildren(skeleton('title', 'line', 'line', 'meta', 'button'));
 
@@ -3638,7 +3730,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
      skeleton flashing behind it would be noise rather than feedback. */
   const arriving = showing() !== 'reader';
   if (arriving) {
-    go('reader');
+    go('reader', { workId: String(workId), chapter: Number(number) || 1 });
     $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line', 'line', 'line'));
     $('#reader-head').hidden = true;
     $('#endnotes').hidden = true;
@@ -3788,7 +3880,7 @@ async function showChapterDrawer(workId, at) {
  * kudos button. This is that route, and it exists whether or not the work page
  * happens to be behind us.
  */
-$('#to-work').onclick = () => current.workId && openWork(current.workId);
+$('#to-work').onclick = () => upToWork(current.workId);
 $('#kudos-here').onclick = () => giveKudos(current.workId, $('#kudos-here'));
 
 $('#on-archive').onclick = () => {
@@ -3976,7 +4068,7 @@ wireSwipe($('#reader'), {
   canRight: () => !viewingArchive && Boolean(current.workId),
   onRight: () => (current.chapter > 1
     ? openChapter(current.workId, current.chapter - 1)
-    : openWork(current.workId)),
+    : upToWork(current.workId)),
 });
 
 /**
