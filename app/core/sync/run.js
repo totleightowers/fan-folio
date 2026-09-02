@@ -36,11 +36,30 @@ export function nextGap(minGap = MIN_GAP_MS, random = Math.random) {
 export async function findNewBookmarks({
   fetchPage,
   isHeld,
+  /* Whether the library already lists it as one of yours — which is not the
+     same as whether the library holds its text. */
+  isBookmarked = () => false,
   maxPages = 40,
   onProgress = () => {},
   shouldStop = () => false,
 }) {
-  const found = [];
+  /*
+   * Two questions, and they were being answered as one.
+   *
+   * "Is this among my bookmarks" and "do I have this work's text" are
+   * different facts, and the walk used the second for both. So a work already
+   * in the library that you bookmarked today was not recognised as a new
+   * bookmark at all — nothing recorded that it had become one — and a page of
+   * works held for other reasons stopped the walk, leaving genuinely new
+   * bookmarks further down unseen.
+   *
+   * Every work on the pages walked is reported as seen, so bookmark state can
+   * be written down. What needs downloading is a separate list. And the walk
+   * stops where the bookmarks stop being new, which is a question about
+   * bookmarks.
+   */
+  const seen = [];
+  const needed = [];
   let totalPages = null;
 
   for (let page = 1; page <= maxPages; page++) {
@@ -51,16 +70,23 @@ export async function findNewBookmarks({
        hand-written fake made it look right. */
     totalPages = pagination?.total ?? totalPages;
 
-    const fresh = works.filter((w) => w.workId && !isHeld(w.workId));
-    for (const w of fresh) found.push(w.workId);
-    onProgress({ phase: 'listing', page, totalPages, found: found.length });
+    const listed = works.filter((w) => w.workId);
+    for (const w of listed) {
+      seen.push(w.workId);
+      if (!isHeld(w.workId)) needed.push(w.workId);
+    }
+    const newlyBookmarked = listed.filter((w) => !isBookmarked(w.workId));
+    onProgress({ phase: 'listing', page, totalPages, found: needed.length });
 
-    // a page with nothing new on it means the rest was gathered before
-    if (!fresh.length) break;
+    // a page where every bookmark was already known means the rest was too
+    if (!newlyBookmarked.length) break;
     if (totalPages && page >= totalPages) break;
   }
 
-  return { workIds: found, pagesWalked: Math.min(maxPages, totalPages ?? maxPages) };
+  return {
+    workIds: needed, seen,
+    pagesWalked: Math.min(maxPages, totalPages ?? maxPages),
+  };
 }
 
 /**

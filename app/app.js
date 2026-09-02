@@ -19,7 +19,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, saveMeta, readMeta, pendingLink } from './api.js';
+import { api, isNative, nativeStatus, importDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, saveMeta, readMeta, pendingLink } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1284,7 +1284,13 @@ async function buildSettings() {
   }
 
   const bytes = databaseSize();
-  if (bytes) add('Backup size', `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`);
+  /* A young library is not 0.00 GB. */
+  if (bytes) {
+    const gb = bytes / 1024 / 1024 / 1024;
+    add('Backup size', gb >= 1
+      ? `${gb.toFixed(2)} GB`
+      : `${Math.max(1, Math.round(bytes / 1024 / 1024))} MB`);
+  }
 
   const haptics = $('#haptics');
   haptics.checked = prefs.haptics !== false;
@@ -1465,9 +1471,26 @@ function archiveActions(w) {
 
   const bookmark = document.createElement('button');
   bookmark.className = 'archive-act';
+  /*
+   * Bookmarked is a state, and it was behaving as an instruction.
+   *
+   * The label changed to say the work was already bookmarked, and pressing it
+   * opened the same empty form and posted it down the same make-a-bookmark
+   * route — so a word describing how things are was wired to an action that
+   * assumed they were not. What the archive did with a second new bookmark for
+   * the same work was anybody's guess.
+   *
+   * Making one is done here. Changing one is done on the archive, which is
+   * where the notes and tags being edited actually live.
+   */
+  const bookmarked = Boolean(w.in_bookmarks);
   bookmark.append(icon('bookmark', 'ic ic-inline'),
-    document.createTextNode(w.in_bookmarks ? 'Bookmarked' : 'Bookmark'));
+    document.createTextNode(bookmarked ? 'Bookmarked · edit' : 'Bookmark'));
+  bookmark.title = bookmarked
+    ? 'Already bookmarked. Opens the archive, where the bookmark can be changed.'
+    : 'Bookmark this on the archive';
   bookmark.onclick = () => {
+    if (bookmarked) { openOnArchive(String(w.work_id)); return; }
     $('#bm-notes').value = '';
     $('#bm-tags').value = '';
     $('#bm-private').checked = false;
@@ -2219,12 +2242,32 @@ async function catchUpOn(name) {
   for (const part of ['works', 'bookmarks']) {
     if (currentAuthor !== name) { closeAll(); return; }
     const total = counts[part];
-    // the page did not say, so there is nothing to compare and we walk
-    if (total != null && seen[part] === total) { jobs.seal(opened[part]); continue; }
+    /*
+     * A count is a cheap first question and a poor last one.
+     *
+     * Remembering only how many there were meant an author who deleted one
+     * work and posted another still had the number the app remembered, so it
+     * concluded nothing had changed and never saw the new one. The same for
+     * bookmarks: remove one, add one, same total, invisible.
+     *
+     * So the count decides whether to walk the whole index, and the first
+     * page — one request — decides whether even that is needed, by comparing
+     * the newest thing on it with the newest thing last time.
+     */
+    const before = seen[part];
+    const knownCount = typeof before === 'number' ? before : before?.n;
+    const knownTop = typeof before === 'number' ? null : before?.top ?? null;
+    const unchangedCount = total != null && knownCount === total;
 
     try {
-      await walkAuthor(name, { listing: part, jobId: opened[part] });
-      seenAuthors[name] = { ...(seenAuthors[name] ?? {}), [part]: total };
+      const walked = await walkAuthor(name, {
+        listing: part, jobId: opened[part],
+        stopIfTopIs: unchangedCount ? knownTop : null,
+      });
+      seenAuthors[name] = {
+        ...(seenAuthors[name] ?? {}),
+        [part]: { n: total, top: walked?.top ?? knownTop ?? null },
+      };
       save(AUTHORS_KEY, seenAuthors);
     } catch {
       // recorded for settings; the other half still gets its turn
@@ -2242,7 +2285,8 @@ async function catchUpOn(name) {
  * of an app that looks like it has done nothing.
  */
 async function walkAuthor(name, { listing = 'works', jobId = null,
-                                  fromPage = 1, knownPages = null } = {}) {
+                                  fromPage = 1, knownPages = null,
+                                  stopIfTopIs = null } = {}) {
   const url = listing === 'works' ? authorWorksUrl : authorBookmarksUrl;
 
   const keep = (works) => {
@@ -2257,9 +2301,15 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
     /* Resuming: the total was written down last time, so the first page does
        not have to be read again just to learn it. */
     let pages = knownPages;
+    let top = null;
     if (fromPage <= 1 || pages == null) {
       const first = parseListing(await archivePage(url(name, fromPage)));
       pages = first.pagination?.total ?? 1;
+      top = first.works?.[0]?.workId != null ? String(first.works[0].workId) : null;
+      /* The count said nothing had changed and the newest one agrees, so the
+         rest of the index is what it was. One request rather than none, and
+         far fewer than walking all of it. */
+      if (stopIfTopIs && top && top === stopIfTopIs) return { top, pages };
       keep(first.works);
       if (jobId !== null) jobs.note(jobId, { page: fromPage, pages });
       offset = 0;
@@ -2283,6 +2333,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
       }
     }
     if (missed) throw new Error(`${missed} of ${pages} pages could not be read`);
+    return { top, pages };
   } catch (e) {
     /* Kept for settings. "The archive answered 500" over a shelf is a sentence
        the reader cannot act on while doing something else. */
@@ -2416,7 +2467,20 @@ async function archivePage(url, { attempts = 4 } = {}) {
   throw failure;
 }
 
-/** Whose bookmarks. Read from the archive rather than asked for. */
+/**
+ * Whose bookmarks. Read from the archive rather than asked for.
+ *
+ * The name was cached and never let go of, which is fine while one person is
+ * signed in and wrong the moment that changes: signing out left it, signing in
+ * as somebody else did not replace it, and the next sync went looking for the
+ * previous account's bookmark pages. Whatever that returned — a stranger's
+ * public bookmarks, or nothing, or a confident "up to date" — was not an
+ * answer about the person actually signed in.
+ *
+ * It is still cached, because asking on every sync is a request spent to be
+ * told something that rarely changes. It is dropped whenever the account
+ * might have.
+ */
 async function whoAmI() {
   if (prefs.archiveUser) return prefs.archiveUser;
   const name = signedInUser(await archivePage(`${AO3}/`));
@@ -2424,6 +2488,13 @@ async function whoAmI() {
   prefs.archiveUser = name;
   save(PREFS_KEY, prefs);
   return name;
+}
+
+/** The account may not be the same one. Ask again before trusting the name. */
+function forgetArchiveUser() {
+  if (!prefs.archiveUser) return;
+  delete prefs.archiveUser;
+  save(PREFS_KEY, prefs);
 }
 
 async function syncBookmarks() {
@@ -2458,20 +2529,47 @@ async function syncBookmarks() {
     };
 
     let first = true;
-    const { workIds } = await findNewBookmarks({
+    /* Whether the library already lists it as one of yours, which is what
+       says where the new bookmarks stop — not whether its text is here. */
+    const bookmarked = new Map();
+    const isBookmarked = (id) => {
+      const key = String(id);
+      if (!bookmarked.has(key)) {
+        let yes = false;
+        try {
+          yes = JSON.parse(window.ArchiveNative.query(
+            'SELECT 1 FROM works WHERE work_id = ? AND in_bookmarks = 1',
+            JSON.stringify([key]))).rows?.length > 0;
+        } catch { yes = false; }
+        bookmarked.set(key, yes);
+      }
+      return bookmarked.get(key);
+    };
+
+    const { workIds, seen } = await findNewBookmarks({
       fetchPage: async (page) => {
         if (!first) await wait(nextGap());
         first = false;
         return parseListing(await archivePage(bookmarksUrl(user, page)));
       },
       isHeld,
+      isBookmarked,
       shouldStop: () => stopRequested,
       onProgress: ({ page, found }) =>
         syncSay(`Page ${page} — ${found} new bookmark${found === 1 ? '' : 's'} so far`),
     });
 
+    /* Every bookmark the walk saw is one of yours, whether or not its text
+       needed fetching. Recording that is the point of a bookmark sync; the
+       downloading is a consequence of it. */
+    let noted = 0;
+    for (const id of seen ?? []) if (markBookmarked(id)) noted += 1;
+
     if (!workIds.length) {
-      syncSay('Nothing new. The library already has everything you have bookmarked.');
+      syncSay(noted
+        ? `Up to date. ${noted} bookmark${noted === 1 ? '' : 's'} checked, all already here.`
+        : 'Nothing new. The library already has everything you have bookmarked.');
+      await refresh({ works: true, force: true });
       return;
     }
 
@@ -3884,7 +3982,18 @@ for (const b of $$('#tabs button')) {
   b.onclick = () => {
     stack.reset();
     const tab = b.dataset.tab;
-    if (tab === 'search') { show('results', 'lateral'); $('#q').focus(); return; }
+    if (tab === 'search') {
+      /* The results screen is one reused element, so arriving at it with an
+         empty box used to show whatever was searched for last — an old result
+         set under a field that says nothing was asked. */
+      if (!$('#q').value.trim()) {
+        $('#results').innerHTML =
+          '<p class="empty">Search your library — works, tags, and every word held.</p>';
+      }
+      show('results', 'lateral');
+      $('#q').focus();
+      return;
+    }
     show(tab, 'lateral');
     if (tab === 'library' && !offset) loadMore(true);
     // Home is refreshed by show(), the same way arriving at it any other way is
@@ -3901,13 +4010,15 @@ function paintAccount() {
   button.textContent = on ? 'Sign out' : 'Sign in';
   button.classList.toggle('on', on);
   button.onclick = () => {
-    if (on) { signOut(); toast('Signed out'); paintAccount(); }
+    if (on) { signOut(); forgetArchiveUser(); toast('Signed out'); paintAccount(); }
     else { closeSheet($('#typography')); signIn(); }
   };
 }
 
 /* The shell calls this when the archive's login page has finished with us. */
 window.__signedIn = (ok) => {
+  /* Signing in may be a different person from the one signed in before. */
+  forgetArchiveUser();
   paintAccount();
   toast(ok ? 'Signed in to the archive' : 'Not signed in');
   if (ok) $('#addwork-signin').hidden = true;

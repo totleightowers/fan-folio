@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
@@ -1426,8 +1428,18 @@ test('opening the same author again does not walk their index over', () => {
   /* The archive prints the totals on a person's own page. One request answers
      "has anything changed"; finding out by walking is a page per twenty works. */
   assert.match(body, /parseUserCounts\(/, 'the totals are read from their page');
-  assert.match(body, /seen\[part\] === total/, 'and compared with what was seen last time');
+  assert.match(body, /knownCount === total/, 'and compared with what was seen last time');
   assert.match(js, /AUTHORS_KEY/, 'which is remembered across restarts');
+
+  /* A count is a cheap first question and a poor last one: delete one work,
+     post another, and the number the app remembered is still right while the
+     new work is invisible. The newest thing on the first page settles it. */
+  assert.match(body, /stopIfTopIs: unchangedCount \? knownTop : null/,
+    'so a matching count buys one request, not a decision');
+  const walk = js.slice(js.indexOf('async function walkAuthor('));
+  assert.match(walk.slice(0, walk.indexOf('\n}\n')),
+    /if \(stopIfTopIs && top && top === stopIfTopIs\) return/,
+    'and the walk ends there only when the newest one agrees too');
 });
 
 test('a failure worth retrying is retried rather than called unavailable', () => {
@@ -1892,4 +1904,18 @@ test('the page cannot say where an image request goes', () => {
   const finder = java.slice(java.indexOf('private String nextImageFor('));
   assert.match(finder.slice(0, finder.indexOf('\n    }\n')), /FROM chapters WHERE work_id = \?/,
     'from the work itself, with the id bound rather than pasted');
+});
+/*
+ * The tests here read the app as text, to assert things about how it is
+ * written. That is useful and it is not the same as knowing it runs: a
+ * duplicate declaration sailed past four hundred and fifty of them, because
+ * not one of them had asked whether the file parses.
+ */
+test('the app parses', () => {
+  for (const file of ['../app/app.js', '../app/api.js', '../app/core/sync/queue.js',
+                      '../app/core/sync/run.js', '../app/core/query.js']) {
+    const path = fileURLToPath(new URL(file, import.meta.url));
+    const out = spawnSync(process.execPath, ['--check', path], { encoding: 'utf8' });
+    assert.equal(out.status, 0, `${file} does not parse:\n${out.stderr}`);
+  }
 });
