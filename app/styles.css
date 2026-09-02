@@ -1524,6 +1524,13 @@ button:disabled, .opt:disabled {
  * author, and a bookmark shows on a public profile unless marked private —
  * so they sit apart from Read, which only ever affects this device.
  */
+/* Upkeep, one step back from the things done because of the work itself. */
+.archive-upkeep {
+  margin-top: .5rem;
+  opacity: .75;
+}
+.archive-upkeep .archive-act { font-size: .78rem; }
+
 .archive-actions {
   display: flex; flex-wrap: wrap; gap: .5rem;
   margin: .2rem 0 1.2rem;

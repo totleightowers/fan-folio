@@ -2125,3 +2125,50 @@ test('opening an author shows the author', () => {
     'and still both halves, because choosing between them is a decision nobody wants');
   assert.match(bbody, /if \(!signedIn\(\)\)/, 'and it needs an account like everything else');
 });
+
+/*
+ * The order was tiles, then counts, then browse, then the shelves — so the
+ * most common reason to open a reading app sat below three things that are
+ * useful once and rarely twice.
+ */
+test('what somebody came back for is first', () => {
+  const home = html.slice(html.indexOf('<section id="home"'),
+    html.indexOf('</section>', html.indexOf('<section id="home"')));
+  const order = ['id="shelves"', 'id="starthere"', 'id="fandoms"', 'id="stats"']
+    .map((id) => home.indexOf(id));
+  assert.deepEqual([...order].sort((a, b) => a - b), order,
+    'continue reading, then the ways in, then browse, then the counts');
+});
+
+test('a library row does not offer twice what the row itself does', () => {
+  const fn = js.slice(js.indexOf('function workRow('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.ok(!/data-act="details"/.test(body), 'tapping the row already opens it');
+  assert.match(body, /node\.onclick = \(\) => openWork\(w\.work_id\)/);
+  assert.match(body, /data-act="open"/, 'and the way straight in stays');
+});
+
+test('upkeep is not a peer of leaving kudos', () => {
+  const fn = js.slice(js.indexOf('function archiveActions('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /row\.append\(kudos, bookmark, comment\)/,
+    'things done because of the work');
+  assert.match(body, /upkeep\.append\(onArchive, refetch\)/,
+    'and things done because of the app');
+  assert.match(css, /\.archive-upkeep \{/, 'drawn a step back');
+});
+
+test('the reader does not offer to add a work', () => {
+  const fn = js.slice(js.indexOf('function show(name, motion'));
+  assert.match(fn.slice(0, fn.indexOf('\n}\n')), /\$\('#add'\)\.hidden = name === 'reader'/,
+    'never part of reading one');
+});
+
+test('the fonts that need no internet are named as such', () => {
+  assert.match(html, /Georgia, System and Monospace are always available/,
+    'in an app whose point is having things without asking for them');
+  const list = html.slice(html.indexOf('<datalist id="fonts">'));
+  const first = list.slice(0, list.indexOf('</datalist>'));
+  assert.ok(first.indexOf('Georgia') < first.indexOf('Literata'),
+    'and offered before the ones that do');
+});

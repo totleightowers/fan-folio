@@ -111,11 +111,19 @@
     </div>
   </section>
 
+  <!--
+      What somebody came back for, first.
+
+      The order was tiles, then counts, then browse, then the shelves — so
+      the most common reason to open a reading app, carrying on with what you
+      were reading, sat below three things that are useful once and rarely
+      twice.
+  -->
   <section id="home" class="view" hidden>
-    <div id="starthere"></div>
-    <div id="stats" class="stats"></div>
-    <div id="fandoms" class="fandom-block"></div>
     <div id="shelves"></div>
+    <div id="starthere"></div>
+    <div id="fandoms" class="fandom-block"></div>
+    <div id="stats" class="stats"></div>
   </section>
 
   <!--
@@ -404,10 +412,20 @@
   <label>Background <input id="bg" type="color"></label>
   <label>Text <input id="fg" type="color"></label>
   <label>Typeface
-    <input id="face" list="fonts" spellcheck="false" autocapitalize="words" placeholder="any Google font">
+    <input id="face" list="fonts" spellcheck="false" autocapitalize="words"
+           placeholder="Georgia, System, or any Google font">
   </label>
+  <!--
+      Georgia, System and Monospace are on the phone already. Everything else
+      is fetched from Google the first time it is chosen, which is the one
+      place this app talks to anybody but the archive — worth saying, in an app
+      whose whole point is having things without asking for them.
+  -->
+  <p class="hint">Georgia, System and Monospace are always available. Other names are
+     fetched from Google Fonts the first time you use them, and need the internet once.</p>
   <datalist id="fonts">
-    <option>Georgia</option><option>Literata</option><option>Merriweather</option>
+    <option>Georgia</option><option>System</option><option>Monospace</option>
+    <option>Literata</option><option>Merriweather</option>
     <option>Lora</option><option>EB Garamond</option><option>Crimson Pro</option>
     <option>Source Serif 4</option><option>PT Serif</option><option>Bitter</option>
     <option>Noto Serif</option><option>Vollkorn</option><option>Spectral</option>
