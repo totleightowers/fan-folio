@@ -8,7 +8,7 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
-import { findNewBookmarks, fetchWorks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
+import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
 import { languageName } from './core/ao3/markup.js';
@@ -2933,21 +2933,23 @@ async function syncBookmarks() {
       return;
     }
 
-    syncSay(`${workIds.length} to fetch. About ${Math.ceil(workIds.length / 2)} minutes.`);
-    const { added, failed } = await fetchWorks({
-      workIds,
-      fetchWork: (workId) => addWork(String(workId)),
-      wait,
-      shouldStop: () => stopRequested,
-      onProgress: ({ done, total, added: n }) =>
-        syncSay(`Fetched ${n} of ${total}${done < total ? '…' : ''}`),
-    });
-
+    /*
+     * The works go through the queue rather than being fetched here.
+     *
+     * This had its own loop with its own half-minute clock, which is the very
+     * thing the shared pacer was built to stop: an author job and a bookmark
+     * sync running together made requests twice as fast as either believed it
+     * was. Sequential is not paced, and a second clock is not a schedule.
+     *
+     * As a job it also gains everything a job has — it survives closing the
+     * app, it can be paused and stopped, it keeps the notification alive, and
+     * it says what it is doing in the same place as everything else.
+     */
+    jobs.add({ author: 'New bookmarks', part: 'works', workIds });
     await refresh({ works: true, force: true });
     tick('commit');
-    syncSay(`Added ${added.length}`
-      + (failed.length ? `, ${failed.length} could not be fetched.` : '.')
-      + (stopRequested ? ' Stopped early.' : ''));
+    syncSay(`${fmt(workIds.length)} work${workIds.length === 1 ? '' : 's'} to fetch, `
+      + 'queued below. They arrive one at a time, and carry on if you go elsewhere.');
   } catch (e) {
     syncSay(e.message);
   } finally {

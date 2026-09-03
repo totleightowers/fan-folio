@@ -882,12 +882,20 @@ test('settings offers a sync, and it can be stopped', () => {
   assert.match(js, /\$\('#sync-stop'\)\.onclick/, 'a long job must be interruptible');
 });
 
-test('every archive request in a sync goes through the pacer', () => {
+/*
+ * This used to assert that the sync spaced its own work downloads — which is
+ * the bug written down as a requirement. A second clock is not a schedule:
+ * an author job and a bookmark sync each waiting their own half minute made
+ * requests twice as fast as either believed it was.
+ */
+test('a sync owns no download loop of its own', () => {
   const fn = js.slice(js.indexOf('async function syncBookmarks('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /await wait\(nextGap\(\)\)/, 'pages are spaced apart');
-  assert.match(body, /wait,/, 'and so are the works');
-  assert.match(body, /shouldStop: \(\) => stopRequested/, 'both halves can be stopped');
+  assert.match(body, /jobs\.add\(\{ author: 'New bookmarks'/,
+    'the works it finds go to the one queue, like every other batch');
+  assert.ok(!/fetchWorks\(/.test(body),
+    'and it does not fetch them itself, at a rate only it knows about');
+  assert.match(body, /shouldStop: \(\) => stopRequested/, 'the listing can still be stopped');
 });
 
 test('the sync reads who is signed in rather than asking', () => {
@@ -2223,4 +2231,28 @@ test('the shell keeps the time only while there is work', () => {
   const java = readFileSync(
     new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
   assert.match(java, /window\.__tick && window\.__tick\(\)/);
+});
+
+/*
+ * The shared pacer exists so that no part of the app can decide for itself how
+ * often the archive may be asked. Every batch of work goes to the queue, and
+ * the queue's one runner is the only thing that fetches.
+ */
+test('nothing outside the queue fetches a batch of works', () => {
+  /* One place calls addWork in a loop, and it is the queue's runner, which is
+     wrapped in the pacer. */
+  assert.match(js, /runTask: \(workId\) => paced\(\(\) => addWork\(/,
+    'the queue fetches through the pacer');
+
+  for (const [what, fn] of [['a series', 'function queueSeries('],
+                            ['a bookmark sync', 'async function syncBookmarks('],
+                            ['the backlog', 'function paintStubs(']]) {
+    const body = js.slice(js.indexOf(fn));
+    const source = body.slice(0, body.indexOf('\n}\n'));
+    assert.match(source, /jobs\.add\(/, `${what} hands its works to the queue`);
+    /* Specifically: it never fetches a work. Looping over what it found to
+       write something down locally is not asking the archive for anything. */
+    assert.ok(!/fetchWorks\(|addWork\(/.test(source),
+      `${what} does not fetch works itself, at a rate only it knows about`);
+  }
 });
