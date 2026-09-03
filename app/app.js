@@ -2049,7 +2049,12 @@ function sayWhatIsHappening() {
 /* The notification's Pause. Everything stops; nothing is thrown away. */
 window.__pauseAll = () => {
   for (const job of jobs.list()) {
-    if (job.state === 'running' || job.state === 'queued') jobs.pause(job.id);
+    /* Including one still reading an index. Leaving that out meant Pause on
+       the notification stopped the downloading and left the app asking the
+       archive for page after page. */
+    if (job.state === 'running' || job.state === 'queued' || job.state === 'listing') {
+      jobs.pause(job.id);
+    }
   }
   keepQueue();
   sayWhatIsHappening();
@@ -2198,7 +2203,7 @@ function paintJobs() {
       acts.append(b);
     };
 
-    if (job.state === 'running') {
+    if (job.state === 'running' || job.state === 'listing') {
       act('pause', 'Pause', () => jobs.pause(job.id));
       act('stop', 'Stop', () => jobs.stop(job.id));
     } else if (job.state === 'paused') {
@@ -2465,7 +2470,10 @@ async function catchUpOn(name) {
 
   const seen = seenAuthors[name] ?? {};
   for (const part of ['works', 'bookmarks']) {
-    if (currentAuthor !== name) { closeAll(); return; }
+    /* Whose page is on screen has nothing to say about a job somebody asked
+       for. It used to end the walk here, so browsing to anyone else abandoned
+       the download you had just started. */
+    if (jobs.isStopped(opened[part])) { closeAll(); return; }
     const total = counts[part];
     /*
      * A count is a cheap first question and a poor last one.
@@ -2568,7 +2576,13 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
     let missed = 0;
     let reached = Math.max(1, fromPage);
     for (let page = Math.max(2, fromPage + 1); page <= pages; page++) {
-      if (currentAuthor !== name) { complete = false; break; }
+      /* The job decides, and Pause is honoured here as it is in the
+         downloading — reading an index is the most network of all, so it is
+         the last thing that should be exempt from being told to stop. */
+      if (jobId !== null && !(await jobs.waitUntilRunnable(jobId))) {
+        complete = false;
+        break;
+      }
       await wait(nextGap());
       try {
         keep(parseListing(await archivePage(url(name, page))).works);

@@ -1975,8 +1975,11 @@ test('the notification says what is happening, and goes when it stops', () => {
 test('an interrupted author walk is not recorded as a checked one', () => {
   const walk = js.slice(js.indexOf('async function walkAuthor('));
   const body = walk.slice(0, walk.indexOf('\n}\n'));
-  assert.match(body, /if \(currentAuthor !== name\) \{ complete = false; break; \}/,
-    'leaving is not finishing');
+  assert.match(body, /if \(jobId !== null && !\(await jobs\.waitUntilRunnable\(jobId\)\)\) \{[\s\S]{0,60}complete = false;/,
+    'stopped or paused is not finished — and it is the job that says so, not '
+    + 'whichever author happens to be on screen');
+  assert.ok(!/currentAuthor !== name/.test(body),
+    'browsing to somebody else must not abandon a download you asked for');
   assert.match(body, /return \{ complete, top, pages, reached \}/,
     'and the walk says which it was');
 

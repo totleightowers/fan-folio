@@ -130,7 +130,10 @@ export function createQueue({
   function pause(id) {
     const job = find(id);
     if (!job || job.state === 'done' || job.state === 'cancelled') return false;
-    // a running job stops after the work in flight; an unstarted one just waits
+    /* A running job stops after the work in flight; anything else — waiting
+       its turn, or still reading an index — simply waits. A job reading an
+       index is doing the most network of all, so it is the last thing that
+       should be exempt from Pause. */
     job.state = job.state === 'running' ? 'pausing' : 'paused';
     announce('paused', job);
     return true;
@@ -348,6 +351,35 @@ export function createQueue({
   }
 
   /**
+   * May this job make another request, and if not yet, wait until it may.
+   *
+   * A job is one thing to the person who started it — reading an index and
+   * fetching what it names — and it was two machines to the app: the queue,
+   * which honoured Pause, and the listing walk, which had never heard of it.
+   * So Pause stopped the downloading and left the walk asking the archive for
+   * page after page. Every long loop asks this before its next turn.
+   *
+   * Returns false when there is nothing left to run for: stopped, or gone.
+   */
+  async function waitUntilRunnable(id) {
+    for (;;) {
+      const job = find(id);
+      if (!job || job.state === 'cancelled') return false;
+      if (job.state !== 'paused' && job.state !== 'pausing') return true;
+      /* A floor, so this cannot become a spin if the gap is ever nothing. It
+         is asking how long somebody has left it paused, which is not a
+         question worth asking many times a second. */
+      await wait(Math.max(1000, gap()));
+    }
+  }
+
+  /** Whether this job has been stopped or removed out from under a loop. */
+  function isStopped(id) {
+    const job = find(id);
+    return !job || job.state === 'cancelled';
+  }
+
+  /**
    * The list is complete: whatever is in the job now is all of it.
    *
    * Called when a walk ends, however it ended. A job left open by a walk that
@@ -377,6 +409,7 @@ export function createQueue({
 
   return {
     add, append, note, seal, rerun, restore,
+    waitUntilRunnable, isStopped,
     pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
     /**
