@@ -2679,6 +2679,42 @@ function slowDown(ms = 5 * 60_000) {
   coolUntil = Math.max(coolUntil, Date.now() + ms);
 }
 
+/*
+ * The one wait that everything asked of the archive passes through — and the
+ * one place a backgrounded page goes quiet.
+ *
+ * A wake lock keeps the processor awake; it says nothing about the browser
+ * engine, which throttles a page's own timers once it is not being looked at.
+ * So the queue did not die when the app went away. It went to sleep on this
+ * line and was never woken, which looks exactly like dying and is worse,
+ * because the notification sits there claiming work is happening.
+ *
+ * The shell is awake and holding a service open, so the shell keeps the time:
+ * a tick from outside resolves any wait that is already due. The page's own
+ * timer still does the job whenever it is allowed to, and the tick is only
+ * ever a second opinion — nothing runs early because of it.
+ */
+const waitingOnTheArchive = new Set();
+
+function untilDue(ms) {
+  return new Promise((resolve) => {
+    const entry = { due: Date.now() + ms, resolve, timer: null };
+    entry.timer = setTimeout(() => { waitingOnTheArchive.delete(entry); resolve(); }, ms);
+    waitingOnTheArchive.add(entry);
+  });
+}
+
+/** The shell, saying time has passed. Only what is already owed goes. */
+window.__tick = () => {
+  const now = Date.now();
+  for (const entry of [...waitingOnTheArchive]) {
+    if (now < entry.due) continue;
+    clearTimeout(entry.timer);
+    waitingOnTheArchive.delete(entry);
+    entry.resolve();
+  }
+};
+
 function paced(run) {
   const turn = archiveTurn;
   let release;
@@ -2687,7 +2723,7 @@ function paced(run) {
     await turn;
     const now = Date.now();
     const owed = Math.max(coolUntil - now, nextGap() - (now - lastArchiveAt), 0);
-    if (owed > 0) await wait(owed);
+    if (owed > 0) await untilDue(owed);
     lastArchiveAt = Date.now();
     try {
       return await run();

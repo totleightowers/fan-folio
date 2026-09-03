@@ -2172,3 +2172,52 @@ test('the fonts that need no internet are named as such', () => {
   assert.ok(first.indexOf('Georgia') < first.indexOf('Literata'),
     'and offered before the ones that do');
 });
+
+/*
+ * A wake lock keeps the processor awake. It says nothing about the browser
+ * engine, which throttles a page's own timers once nobody is looking at it —
+ * so the queue did not die when the app went away, it went to sleep on the one
+ * wait every archive request passes through and was never woken. That looks
+ * exactly like dying, and is worse, because the notification sits there saying
+ * work is happening.
+ */
+test('a tick releases a wait that is owed, and only one that is owed', async () => {
+  const from = js.indexOf('const waitingOnTheArchive = new Set();');
+  const to = js.indexOf('function paced(run) {');
+  const source = js.slice(from, to) + '\nreturn untilDue;';
+
+  /* A clock that only moves when this test moves it, and timers that never
+     fire on their own — which is the situation the page is in once nobody is
+     looking at it. */
+  let clock = 1_000_000;
+  const scope = { window: {} };
+  const untilDue = new Function('setTimeout', 'clearTimeout', 'Date', 'window', source)(
+    () => 1, () => {}, { now: () => clock }, scope.window);
+
+  let done = false;
+  const waiting = untilDue(28_000).then(() => { done = true; });
+
+  clock += 10_000;
+  scope.window.__tick();
+  await Promise.resolve();
+  assert.equal(done, false,
+    'ten seconds into a twenty-eight second gap is not a reason to ask the archive');
+
+  clock += 20_000;                      // now past due
+  scope.window.__tick();
+  await waiting;
+  assert.equal(done, true, 'and once it is owed, being told the time is enough');
+});
+
+test('the shell keeps the time only while there is work', () => {
+  const service = readFileSync(
+    new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
+  assert.match(service, /clock\.postDelayed\(keepingTime, TICK_MS\)/, 'started with the work');
+  assert.match(service, /MainActivity\.tick\(\)/, 'and it tells the page time has passed');
+  const stops = [...service.matchAll(/clock\.removeCallbacks\(keepingTime\)/g)];
+  assert.ok(stops.length >= 3, `stopped when paused, and when the service goes: ${stops.length}`);
+
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  assert.match(java, /window\.__tick && window\.__tick\(\)/);
+});

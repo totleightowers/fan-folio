@@ -37,6 +37,20 @@ public class DownloadService extends Service {
 
     private PowerManager.WakeLock awake;
 
+    /*
+     * The clock the page cannot keep for itself once it is in the background.
+     * Every few seconds while there is work, the page is told that time has
+     * passed; it decides whether anything is owed.
+     */
+    private final android.os.Handler clock = new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final long TICK_MS = 5_000;
+    private final Runnable keepingTime = new Runnable() {
+        @Override public void run() {
+            MainActivity.tick();
+            clock.postDelayed(this, TICK_MS);
+        }
+    };
+
     @Override
     public IBinder onBind(Intent intent) { return null; }
 
@@ -48,6 +62,7 @@ public class DownloadService extends Service {
             /* The reader pressed Stop on the notification. Tell the page, which
                owns the queue, and stand down. */
             MainActivity.pauseFromNotification();
+            clock.removeCallbacks(keepingTime);
             release();
             stopForeground(true);
             stopSelf();
@@ -58,6 +73,8 @@ public class DownloadService extends Service {
         if (text == null || text.isEmpty()) text = "Downloading from the archive";
         startForegroundWith(text);
         hold();
+        clock.removeCallbacks(keepingTime);
+        clock.postDelayed(keepingTime, TICK_MS);
         return START_STICKY;
     }
 
@@ -128,6 +145,7 @@ public class DownloadService extends Service {
 
     @Override
     public void onDestroy() {
+        clock.removeCallbacks(keepingTime);
         release();
         super.onDestroy();
     }

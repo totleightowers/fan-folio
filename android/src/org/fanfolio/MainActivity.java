@@ -190,6 +190,25 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { }
     }
 
+    /**
+     * Time has passed.
+     *
+     * The page's own timers are throttled once it is not being looked at, and
+     * a wake lock does nothing about that — it keeps the processor awake, not
+     * the browser engine attentive. So the service, which is awake anyway,
+     * says so from outside. Nothing is made to run early: this only releases
+     * a wait that was already owed.
+     */
+    static void tick() {
+        final MainActivity self = alive.get();
+        if (self == null || self.web == null) return;
+        self.web.post(new Runnable() {
+            @Override public void run() {
+                self.toPage("window.__tick && window.__tick()");
+            }
+        });
+    }
+
     static void pauseFromNotification() {
         final MainActivity self = alive.get();
         if (self == null || self.web == null) return;
