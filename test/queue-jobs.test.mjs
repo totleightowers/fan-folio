@@ -424,3 +424,49 @@ test('a record from a version that kept no time does not claim to be recent', ()
   q.restore({ author: 'a', part: 'works', workIds: [], state: 'done', total: 2, added: 2 });
   assert.equal(q.list()[0].at, null, 'unknown, rather than this second');
 });
+
+/*
+ * A job is one thing to the person who started it — reading an index and
+ * fetching what it names — and it was two machines to the app: the queue,
+ * which honoured Pause, and the listing walk, which had never heard of it. So
+ * Pause stopped the downloading and left the walk asking for page after page.
+ */
+const yieldy = () => new Promise((r) => setTimeout(r, 1));
+
+test('a paused job may not take another turn until it is resumed', async () => {
+  let waits = 0;
+  const q = createQueue({
+    runTask: async () => {}, wait: async () => { waits += 1; await yieldy(); },
+    gap: () => 0, verify: async () => [],
+  });
+  const id = q.add({ author: 'a', part: 'works', open: true });   // reading its index
+  assert.equal(q.list()[0].state, 'listing');
+
+  assert.equal(await q.waitUntilRunnable(id), true, 'while it is running, it may');
+
+  q.pause(id);
+  let allowed = false;
+  const asking = q.waitUntilRunnable(id).then((ok) => { allowed = ok; });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(allowed, false, 'paused means no more requests, listing included');
+  assert.ok(waits > 0, 'it is waiting rather than spinning');
+
+  q.resume(id);
+  await asking;
+  assert.equal(allowed, true, 'and resuming lets it carry on');
+});
+
+test('a stopped job tells a loop to give up rather than making it wait', async () => {
+  const q = createQueue({
+    runTask: async () => {}, wait: yieldy, gap: () => 0, verify: async () => [],
+  });
+  const id = q.add({ author: 'a', part: 'works', open: true });
+  q.stop(id);
+  assert.equal(await q.waitUntilRunnable(id), false, 'no more turns, ever');
+  assert.equal(q.isStopped(id), true);
+
+  const gone = q.add({ author: 'b', part: 'works', open: true });
+  q.remove(gone);
+  assert.equal(await q.waitUntilRunnable(gone), false, 'and deleting a row cancels its work');
+  assert.equal(q.isStopped(gone), true);
+});
