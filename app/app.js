@@ -21,7 +21,7 @@ import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
-  keepWorking, stopWorking, pendingLink, pendingOpen } from './api.js';
+  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -2109,30 +2109,107 @@ function runAgain(job) {
  */
 let lastSaid = '';
 
+/* How a single job describes itself. A job still reading a list has nothing
+   to count towards, and a bookmark reconciliation never will — reported as
+   "0 of ?" for the tens of minutes it takes, which is saying nothing. */
+const oneJobSaid = (j) => `${j.author} · ${j.part} — ` + (
+  j.total ? `${j.added} of ${j.total}`
+    : j.page ? `page ${j.page}${j.pages ? ` of ${j.pages}` : ''}`
+    : 'reading the list');
+
+/* Which jobs this run of the notification has been about, so that when it all
+   settles there is something true to say about what happened. */
+let runJobs = new Set();
+
 function sayWhatIsHappening() {
   if (!isNative) return;
-  const busy = jobs.list().filter(
-    (j) => j.state === 'running' || j.state === 'queued' || j.state === 'listing');
-  if (!busy.length) {
-    if (lastSaid) { lastSaid = ''; stopWorking(); }
+  const list = jobs.list();
+  const busy = list.filter((j) => ['running', 'queued', 'listing'].includes(j.state));
+  const held = list.filter((j) => j.state === 'paused' || j.state === 'pausing');
+
+  /*
+   * Paused is a state the notification can be in, not the absence of one.
+   *
+   * Pressing Pause took the whole notification down, so the only sign the app
+   * had stopped mid-catalogue was the absence of something — and the only way
+   * back was to open the app and find the Activity screen. It stays now, and
+   * carries Resume.
+   */
+  if (!busy.length && held.length) {
+    const said = held.length === 1
+      ? `Paused · ${oneJobSaid(held[0])}`
+      : `Paused · ${held.length} jobs waiting`;
+    if (said !== lastSaid) { lastSaid = said; keepWorking(said, 'paused'); }
     return;
   }
-  const first = busy[0];
+
+  if (!busy.length) {
+    if (lastSaid) {
+      lastSaid = '';
+      /*
+       * An hour of work ending in silence is indistinguishable from an hour
+       * of work being killed. What the run came to is worth one notification
+       * that can be dismissed, and if anything never arrived it says so —
+       * that is the only moment somebody would think to ask for it again.
+       */
+      const mine = list.filter((j) => runJobs.has(j.id));
+      const added = mine.reduce((n, j) => n + (Number(j.added) || 0), 0);
+      const missing = mine.reduce((n, j) => n + (Number(j.unfinished) || 0), 0);
+      const outcome = mine.map((j) => j.say).filter(Boolean).at(-1);
+      runJobs = new Set();
+      if (missing) {
+        workFinished(`${fmt(added)} downloaded · ${fmt(missing)} never arrived`, true);
+      } else if (added) {
+        workFinished(`Finished — ${fmt(added)} downloaded`, false);
+      } else if (outcome) {
+        workFinished(outcome, false);
+      } else {
+        stopWorking();
+      }
+    }
+    return;
+  }
+
+  for (const j of busy) runJobs.add(j.id);
   const left = busy.reduce((n, j) => n + Math.max(0, j.total - j.added), 0);
-  /* A job still reading a list has nothing to count towards, and a bookmark
-     reconciliation never will — it was reported as "0 of ?" for the tens of
-     minutes it takes, which is the notification saying nothing. */
-  const one = (j) => `${j.author} · ${j.part} — ` + (
-    j.total ? `${j.added} of ${j.total}`
-      : j.page ? `page ${j.page}${j.pages ? ` of ${j.pages}` : ''}`
-      : 'reading the list');
-  const said = busy.length === 1
-    ? one(first)
-    : `${busy.length} jobs, about ${left} works to go`;
+  /* Why nothing appears to be happening, when nothing is. A job waiting out a
+     cool-off looks identical to a job that has died. */
+  const waiting = busy.some((j) => j.retrying) ? ' · archive busy, trying again'
+    : coolUntil > Date.now() ? ' · waiting out a rate limit'
+    : '';
+  const said = (busy.length === 1
+    ? oneJobSaid(busy[0])
+    : `${busy.length} jobs, about ${fmt(left)} works to go`) + waiting;
   if (said === lastSaid) return;
   lastSaid = said;
-  keepWorking(said);
+  keepWorking(said, 'working');
 }
+
+/* The notification's Resume: back to where it was, one job at a time. */
+window.__resumeAll = () => {
+  for (const job of jobs.list()) {
+    if (job.state === 'paused' || job.state === 'pausing') jobs.resume(job.id);
+  }
+  keepQueue();
+  sayWhatIsHappening();
+};
+
+/*
+ * The notification's Stop. Everything ends; the record of it does not.
+ *
+ * A stopped job stays on the Activity list with what it managed and what it
+ * never got, and Ask for this again puts it back — so this is recoverable
+ * from a lock screen, which is the only reason to offer it there.
+ */
+window.__stopAll = () => {
+  for (const job of jobs.list()) {
+    if (['running', 'queued', 'listing', 'paused', 'pausing'].includes(job.state)) {
+      jobs.stop(job.id);
+    }
+  }
+  keepQueue();
+  sayWhatIsHappening();
+};
 
 /* The notification's Pause. Everything stops; nothing is thrown away. */
 window.__pauseAll = () => {
