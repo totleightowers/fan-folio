@@ -204,7 +204,14 @@ body {
      measure now, and a phone is unaffected because the window is narrower
      than it. */
   padding-inline: max(.8rem, calc((100% - 44rem) / 2));
+  transition: translate var(--dur) var(--ease-out);
 }
+/* Out of the way while the page moves forwards, back the moment it moves
+   back — which is the same gesture as reaching for it. Two pixels past the
+   edge, so no hairline of the border is left showing. */
+#chapnav.away { translate: 0 calc(100% + 2px); }
+@media (prefers-reduced-motion: reduce) { #chapnav { transition: none; } }
+
 #chapnav button {
   font: inherit; background: var(--pane); color: inherit; border: 1px solid var(--rule);
   border-radius: 999px; padding: .45rem .6rem; cursor: pointer; min-width: 2.4rem;
