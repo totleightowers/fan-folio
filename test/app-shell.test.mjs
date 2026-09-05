@@ -99,6 +99,9 @@ function selectorMatches(parts, node) {
   return true;
 }
 
+const java_ = () => readFileSync(
+  new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+
 const nameOf = (button) => (button.id ? `#${button.id}`
   : button.classes.length ? `.${button.classes.join('.')}`
   : (button.attrs.match(/data-[\w-]+="[^"]*"/) || ['a bare button'])[0]);
@@ -2192,8 +2195,58 @@ test('the notification says what is happening, and goes when it stops', () => {
   assert.match(js, /window\.__pauseAll = \(\) => \{/, 'Pause on the notification reaches the queue');
   const java = readFileSync(
     new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  assert.match(java, /window\.__pauseAll && window\.__pauseAll\(\)/,
+  assert.match(java, /static void pauseFromNotification\(\) \{ fromNotification\("window\.__pauseAll"\)/,
     'and the shell is what calls it');
+});
+
+/*
+ * Pressing Pause took the whole notification down, so the only sign the app
+ * had stopped halfway through a catalogue was that something was missing —
+ * and the only way to start it again was to open the app and go looking for
+ * the Activity screen.
+ */
+test('the notification has a paused state, not an absence', () => {
+  const fn = js.slice(js.indexOf('function sayWhatIsHappening('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /if \(!busy\.length && held\.length\)/,
+    'paused work is still work, and still worth a notification');
+  assert.match(body, /keepWorking\(said, 'paused'\)/);
+  assert.match(body, /keepWorking\(said, 'working'\)/);
+
+  const service = readFileSync(
+    new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
+  const shown = service.slice(service.indexOf('private void startForegroundWith('));
+  const shape = shown.slice(0, shown.indexOf('\n    }'));
+  assert.match(shape, /"Resume", serviceAction\(\d, ACTION_RESUME\)/, 'a way back');
+  assert.match(shape, /"Stop", serviceAction\(\d, ACTION_STOP\)/, 'and a way out');
+  assert.match(shape, /"Pause", serviceAction\(\d, ACTION_PAUSE\)/);
+
+  for (const fn_ of ['resumeFromNotification', 'stopFromNotification']) {
+    assert.match(java_(), new RegExp(`static void ${fn_}\\(`), `${fn_} reaches the queue`);
+  }
+  assert.match(js, /window\.__resumeAll = \(\) => \{/);
+  assert.match(js, /window\.__stopAll = \(\) => \{/);
+});
+
+test('a run that ends says how it went', () => {
+  const fn = js.slice(js.indexOf('function sayWhatIsHappening('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  /* An hour of downloading that ends in silence is indistinguishable from an
+     hour of downloading that was killed. */
+  assert.match(body, /workFinished\(`Finished — \$\{fmt\(added\)\} downloaded`, false\)/);
+  assert.match(body, /never arrived`, true\)/,
+    'and what never arrived is the one thing worth interrupting somebody for');
+  assert.match(body, /archive busy, trying again/, 'a retry is not a stall');
+  assert.match(body, /waiting out a rate limit/,
+    'and a cool-off looks exactly like a job that has died');
+
+  const service = readFileSync(
+    new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
+  const done = service.slice(service.indexOf('private void showFinished('));
+  const body_ = done.slice(0, done.indexOf('\n    }'));
+  assert.match(body_, /setAutoCancel\(true\)/, 'it can be swiped away');
+  assert.match(body_, /setOngoing\(false\)/, 'and it outlives the service that raised it');
+  assert.match(body_, /CHANNEL_DONE/, 'on its own channel, so it can be silenced separately');
 });
 
 /*
@@ -2303,7 +2356,7 @@ test('search is an action, not a destination', () => {
 test('a download notification lands on the downloads', () => {
   const service = readFileSync(
     new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
-  assert.match(service, /open\.putExtra\("open", "activity"\)/,
+  assert.match(service, /openActivity\(\d, "activity"\)/,
     'not wherever the app happened to be left');
 
   const java = readFileSync(

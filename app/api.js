@@ -580,14 +580,36 @@ export function pendingLink() {
  * The queue runs in this page; this only asks Android to keep the app running
  * while it has something to do, and to say so where it can be seen.
  */
-export function keepWorking(summary) {
+/**
+ * Say that work is going on, and which state it is in.
+ *
+ * The state is what the notification is allowed to offer. Work in progress
+ * offers Pause; work that has been paused offers Resume and Stop, and stays
+ * on screen — pressing Pause used to take the whole notification down, so the
+ * only sign the app had stopped halfway through a catalogue was the absence
+ * of something, and the only way back was to go and find the Activity screen.
+ */
+export function keepWorking(summary, state = 'working') {
   if (!isNative) return;
-  try { native.keepWorking(String(summary)); } catch { /* the work carries on */ }
+  try { native.keepWorking(String(summary), String(state)); } catch { /* the work carries on */ }
 }
 
 export function stopWorking() {
   if (!isNative) return;
   try { native.stopWorking(); } catch { /* nothing to take down */ }
+}
+
+/**
+ * The run is over: one notification that can be dismissed, then stand down.
+ *
+ * An hour of downloading that ends in silence is indistinguishable from an
+ * hour of downloading that was killed. And what never arrived is worth
+ * saying, because that is the only moment somebody would think to ask for it
+ * again — by which time the ongoing notification has gone.
+ */
+export function workFinished(summary, attention = false) {
+  if (!isNative) return;
+  try { native.workFinished(String(summary), Boolean(attention)); } catch { /* it ended anyway */ }
 }
 
 export function saveMeta(key, value) {

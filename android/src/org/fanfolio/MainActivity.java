@@ -209,12 +209,26 @@ public class MainActivity extends Activity {
         });
     }
 
-    static void pauseFromNotification() {
+    static void pauseFromNotification() { fromNotification("window.__pauseAll"); }
+
+    static void resumeFromNotification() { fromNotification("window.__resumeAll"); }
+
+    static void stopFromNotification() { fromNotification("window.__stopAll"); }
+
+    /**
+     * A button on the notification, answered by the page that owns the queue.
+     *
+     * Three of these now, and they were one — because the only thing the
+     * notification could do was take itself away. The shell holds no queue
+     * state of its own on purpose: a second copy of what is running is a
+     * second thing that can be wrong.
+     */
+    private static void fromNotification(final String fn) {
         final MainActivity self = alive.get();
         if (self == null || self.web == null) return;
         self.web.post(new Runnable() {
             @Override public void run() {
-                self.toPage("window.__pauseAll && window.__pauseAll()");
+                self.toPage(fn + " && " + fn + "()");
             }
         });
     }
@@ -1555,19 +1569,44 @@ public class MainActivity extends Activity {
          * hour after the last work arrived.
          */
         @JavascriptInterface
-        public void keepWorking(String summary) {
+        public void keepWorking(String summary, String state) {
             mustBeOurPage();
             askAboutNotificationsOnce();
             try {
                 Intent go = new Intent(MainActivity.this, DownloadService.class)
                         .setAction(DownloadService.ACTION_START)
-                        .putExtra(DownloadService.EXTRA_TEXT, String.valueOf(summary));
+                        .putExtra(DownloadService.EXTRA_TEXT, String.valueOf(summary))
+                        /* Which of its states it is in, and therefore what it
+                           is allowed to offer: Pause, or Resume and Stop. */
+                        .putExtra(DownloadService.EXTRA_STATE, String.valueOf(state));
                 if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(go);
                 else startService(go);
             } catch (Exception ignored) {
                 /* A refusal to start it is not a reason to stop downloading —
                    the work carries on for as long as the app is open. */
             }
+        }
+
+        /**
+         * The run is over: say how it went, once, and stand down.
+         *
+         * An hour of downloading that ends in silence is indistinguishable
+         * from an hour of downloading that was killed. This notification can
+         * be dismissed and outlives the service, because the moment somebody
+         * would think to ask for missing works again is the moment they are
+         * told there are any.
+         */
+        @JavascriptInterface
+        public void workFinished(String summary, boolean attention) {
+            mustBeOurPage();
+            try {
+                Intent go = new Intent(MainActivity.this, DownloadService.class)
+                        .setAction(DownloadService.ACTION_DONE)
+                        .putExtra(DownloadService.EXTRA_TEXT, String.valueOf(summary))
+                        .putExtra(DownloadService.EXTRA_ATTENTION, attention);
+                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(go);
+                else startService(go);
+            } catch (Exception ignored) { }
         }
 
         /** Nothing left to do: take the notification down and let go. */
