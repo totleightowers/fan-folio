@@ -13,7 +13,7 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED, CHAPTERS } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -263,6 +263,34 @@ createServer(async (req, res) => {
           chapters_read = max(COALESCE(reading.chapters_read, 0), excluded.chapters_read),
           updated_at = excluded.updated_at,
           opened_at = excluded.opened_at`).run(workId, chapter, offset, Math.max(0, chapter - 1));
+      return json(res, { ok: true });
+    }
+
+    /*
+     * Finished, said rather than inferred.
+     *
+     * A chapter counts as complete once you have left it, so reading the last
+     * one stores every chapter but that one. Nothing ever wrote the last, and
+     * a work read end to end in this app stayed "reading" for ever. The count
+     * comes from the database rather than from whatever the page believed:
+     * the same fallback the reading states use, so finished means exactly
+     * what not-reading means.
+     */
+    if (p === '/api/finished' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId');
+      if (!workId) return json(res, { error: 'no work' }, 400);
+      if (url.searchParams.get('done') === '0') {
+        db.prepare(`UPDATE reading
+          SET chapters_read = max(0, COALESCE(chapter, 1) - 1), updated_at = datetime('now')
+          WHERE work_id = ?`).run(workId);
+      } else {
+        db.prepare(`
+          INSERT INTO reading (work_id, chapters_read, updated_at, opened_at)
+          SELECT w.work_id, ${CHAPTERS}, datetime('now'), datetime('now')
+          FROM works w WHERE w.work_id = ?
+          ON CONFLICT(work_id) DO UPDATE SET
+            chapters_read = excluded.chapters_read, updated_at = excluded.updated_at`).run(workId);
+      }
       return json(res, { ok: true });
     }
 
