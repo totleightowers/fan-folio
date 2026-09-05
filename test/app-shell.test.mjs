@@ -1374,6 +1374,30 @@ test('both backends agree on what continue reading means', () => {
   assert.equal(native, server, 'the two backends must not drift on this');
 });
 
+/*
+ * A bar pinned across the foot of a tall wide screen is a phone layout being
+ * worn by something that is not a phone: navigation as far from the hand as
+ * it can get, and a full-width strip spent on three words.
+ */
+test('an unfolded screen stands the tabs on their edge', () => {
+  const wide = css.slice(css.indexOf('On an unfolded screen the tabs stand up'));
+  const block = wide.slice(0, wide.indexOf('\n}\n\n'));
+  assert.match(block, /@media \(min-width: 44\.01rem\)/);
+  assert.match(block, /#tabs \{[^}]*flex-direction: column/s);
+  assert.match(block, /#tabs \{[^}]*border-right: 1px solid var\(--rule\)/s);
+  assert.match(block, /#tabs \{[^}]*border-top: 0/s, 'it is not the foot of anything any more');
+
+  /* Everything starts where the rail ends, the header included — a rail that
+     stops under a full-width bar is two ideas about where the app begins. */
+  assert.match(block, /body:has\(#tabs:not\(\[hidden\]\)\) #bar,\s*\n\s*body:has\(#tabs:not\(\[hidden\]\)\) #main \{ margin-left/);
+  assert.match(block, /\.view \{ padding-bottom: 1\.5rem/,
+    'and the room kept clear for a bar that is no longer there is given back');
+
+  /* Reading is the one screen with no tabs, so none of this reaches it. */
+  const tabs = js.slice(js.indexOf('const KEEPS_TABS'));
+  assert.ok(!/'reader'/.test(tabs.slice(0, tabs.indexOf(');'))));
+});
+
 test('nothing in a chapter can make the page scroll sideways', () => {
   const rule = css.slice(css.indexOf('html, body {'));
   const body_ = rule.slice(0, rule.indexOf('}'));
