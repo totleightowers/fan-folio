@@ -1289,7 +1289,7 @@ const TAPPABLE = [
   '.show-more', '.opt', '.account-btn', '.chapters-open', '.shelf-head button',
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
-  '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
+  '.linkish', 'button.ghost', '#chapnav button', '#chappos', '.archive-act',
   '#to-work', '#on-archive', '#kudos-here', '#reader-more', '.menu-list button',
   '.version-row', '#ab-current', '.job-act',
 ].join(',');

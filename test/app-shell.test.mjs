@@ -10,6 +10,99 @@ const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8')
 const js = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
 
+/* ---------------------------------------------------------------------------
+ * A very small stylesheet-and-markup matcher.
+ *
+ * Enough to answer one question honestly: does any rule in this stylesheet
+ * paint this button? Descendant combinators only, pseudo-classes ignored,
+ * `>` treated as a descendant — looser than a browser, which is the right
+ * direction for a guard: it never invents a failure, it only misses one.
+ * ------------------------------------------------------------------------ */
+
+const VOID_TAGS = new Set(['input', 'img', 'br', 'meta', 'link', 'use', 'path',
+  'circle', 'rect', 'source', 'hr', 'option']);
+
+/** Every button in a document, each with the elements it sits inside. */
+function buttonsWithAncestors(markup) {
+  const stack = [];
+  const found = [];
+  for (const m of markup.matchAll(/<(\/?)([a-z][\w-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi)) {
+    const [, closing, tag, attrs] = m;
+    if (closing) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].tag === tag) { stack.length = i; break; }
+      }
+      continue;
+    }
+    const node = {
+      tag,
+      id: (attrs.match(/\bid="([^"]+)"/) || [])[1],
+      classes: ((attrs.match(/\bclass="([^"]+)"/) || [, ''])[1]).split(/\s+/).filter(Boolean),
+      attrs,
+    };
+    if (tag === 'button') found.push({ ...node, chain: [...stack] });
+    if (!VOID_TAGS.has(tag) && !attrs.trim().endsWith('/')) stack.push(node);
+  }
+  return found;
+}
+
+/** Every rule in a stylesheet, with the rules inside @media flattened in. */
+function topLevelRules(sheet) {
+  const clean = sheet.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [];
+  let depth = 0; let selectorAt = 0; let bodyAt = 0; let selector = '';
+  for (let i = 0; i < clean.length; i++) {
+    if (clean[i] === '{') {
+      if (depth === 0) { selector = clean.slice(selectorAt, i).trim(); bodyAt = i + 1; }
+      depth++;
+    } else if (clean[i] === '}') {
+      depth--;
+      if (depth === 0) {
+        const body = clean.slice(bodyAt, i);
+        if (selector.startsWith('@')) {
+          for (const inner of body.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+            rules.push([inner[1].trim(), inner[2]]);
+          }
+        } else {
+          rules.push([selector, body]);
+        }
+        selectorAt = i + 1;
+      }
+    }
+  }
+  return rules;
+}
+
+/** Does one compound — `button`, `.chip`, `#q`, `[data-tab]` — fit this node? */
+function compoundFits(compound, node) {
+  const bare = compound.replace(/::?[a-z-]+(\([^)]*\))?/g, '');
+  if (!bare) return true;
+  for (const part of bare.match(/^[a-zA-Z][\w-]*|[.#][\w-]+|\[[^\]]+\]/g) ?? []) {
+    if (part.startsWith('#') && node.id !== part.slice(1)) return false;
+    if (part.startsWith('.') && !node.classes.includes(part.slice(1))) return false;
+    if (part.startsWith('[') && !(node.attrs ?? '').includes(part.slice(1).split(/[=\]]/)[0])) return false;
+    if (/^[a-zA-Z]/.test(part) && node.tag !== part) return false;
+  }
+  return true;
+}
+
+function selectorMatches(parts, node) {
+  if (!compoundFits(parts.at(-1), node)) return false;
+  const chain = [...node.chain];
+  for (let i = parts.length - 2; i >= 0; i--) {
+    let found = false;
+    while (chain.length) {
+      if (compoundFits(parts[i], chain.pop())) { found = true; break; }
+    }
+    if (!found) return false;
+  }
+  return true;
+}
+
+const nameOf = (button) => (button.id ? `#${button.id}`
+  : button.classes.length ? `.${button.classes.join('.')}`
+  : (button.attrs.match(/data-[\w-]+="[^"]*"/) || ['a bare button'])[0]);
+
 /**
  * Every element the code reaches for must exist.
  *
@@ -251,6 +344,37 @@ test('a shared link is found by scanning, not by a backtracking pattern', () => 
  * component is added and its pressed state is not, so it is checked rather
  * than remembered.
  */
+/**
+ * A button with no rule of its own is not a subtle bug: it is the system's
+ * own button, in the middle of an app that has a shape for everything else.
+ *
+ * `.ghost` was only ever written as `.filter-foot .ghost`, so the two ghost
+ * buttons outside the filter sheet — one of them the whole point of the
+ * author page — rendered as grey OS buttons for as long as they existed.
+ * Nothing failed, nothing logged, and reading the stylesheet showed a rule
+ * with the right name in it.
+ */
+test('every button in the markup is painted by something', () => {
+  const bare = buttonsWithAncestors(html);
+  assert.ok(bare.length > 30, 'the markup should have plenty of buttons');
+  const rules = topLevelRules(css);
+  const PAINTS = /background|border|font|padding/;
+
+  const naked = bare.filter((button) => !rules.some(([selector, body]) =>
+    PAINTS.test(body) && selector.split(',').some((one) => {
+      const parts = one.trim().split(/\s*>\s*|\s+/).filter(Boolean);
+      /* A rule that paints every element on the page says nothing about
+         whether this control was thought about. */
+      const leaf = parts.at(-1) ?? '';
+      if (!/^(button)?([.#][\w-]+)*(:|::|$)/.test(leaf) || leaf === '*' || leaf === ':root') return false;
+      if (!/[.#]|button/.test(leaf)) return false;
+      return selectorMatches(parts, button);
+    })));
+
+  assert.deepEqual(naked.map(nameOf), [],
+    'these render as the system\u2019s own buttons');
+});
+
 test('every tappable surface has a pressed state', () => {
   // the block appended under "interaction layer" is where presses are defined
   const layer = css.slice(css.indexOf('interaction layer'));
