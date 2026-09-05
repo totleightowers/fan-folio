@@ -63,6 +63,14 @@ export function createQueue({
        far rather than what there will be — the difference between a bar that
        can be trusted and one that slides backwards. */
     open: Boolean(j.open),
+    /* Where a walk has got to. A job that reads an index rather than a list of
+       works has no works to count, and "0 of 0" is what that looked like from
+       the outside — so the pages it is actually walking are part of what a job
+       can say about itself. */
+    page: j.page ?? 0, pages: j.pages ?? null,
+    /* A line the job has written about itself, for work whose outcome is not a
+       number of downloads: how many bookmarks were read, what changed. */
+    say: j.say ?? null,
     /* Work that ran out of retries rather than being refused, or that the
        database says never arrived: still owed either way. */
     unfinished: j.unfinished?.length ?? 0,
@@ -313,6 +321,7 @@ export function createQueue({
       page: saved.page ?? 0, pages: saved.pages ?? null,
       rounds: saved.rounds ?? 0, parallel: false, attempt: 0, retrying: null,
       lastError: saved.lastError ?? null,
+      say: saved.say ?? null,
       /* What it was ever about, kept as a number rather than worked out from a
          list it may have finished with. */
       wasTotal: Number(saved.total) || owed.length,
@@ -386,11 +395,15 @@ export function createQueue({
    * failed would sit saying it was still reading for ever.
    */
   /** The walk reporting where it has got to, so a restart can pick it up. */
-  function note(id, { page, pages } = {}) {
+  function note(id, { page, pages, say } = {}) {
     const job = find(id);
     if (!job) return false;
     if (page != null) job.page = page;
     if (pages != null) job.pages = pages;
+    /* Some work does not end in a count of downloads. A bookmark list that was
+       read and agreed with has an outcome worth keeping, and nowhere to put it
+       among added, failed and total. */
+    if (say != null) job.say = say;
     announce('noted', job);
     return true;
   }
@@ -455,6 +468,7 @@ export function createQueue({
           open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
           rounds: j.rounds ?? 0,
           lastError: j.lastError ?? null,
+          say: j.say ?? null,
           at: j.at ?? null,
         };
       })

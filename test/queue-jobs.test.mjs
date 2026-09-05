@@ -419,6 +419,82 @@ test('a record remembers how much it was ever about', async () => {
   assert.equal(q2.save()[0].total, 3, 'and saving it again does not lose it');
 });
 
+/*
+ * A bookmark sync is a job whose work is reading a list, not fetching from
+ * one. It was two module flags and a line of status text instead, so nothing
+ * could pause it, nothing survived a restart, and the foreground notification
+ * — which is raised from this queue — never knew it was happening at all.
+ */
+test('a job that reads a list can say where it has got to', async () => {
+  const { q } = harness();
+  const id = q.add({ author: 'Your bookmarks', part: 'the whole list', workIds: [], open: true });
+  await settle();
+
+  assert.equal(q.list()[0].state, 'listing', 'it stands there while the list is read');
+  q.note(id, { page: 3, pages: 12 });
+  const [walking] = q.list();
+  assert.equal(walking.page, 3);
+  assert.equal(walking.pages, 12);
+  assert.equal(walking.total, 0, 'and it has no works to count towards, which is not an error');
+
+  const saved = q.save()[0];
+  assert.equal(saved.page, 3, 'a walk closed halfway is not a walk forgotten');
+  assert.equal(saved.pages, 12);
+});
+
+test('a walk that ends in something other than downloads can say so', async () => {
+  const { q } = harness();
+  const id = q.add({ author: 'Your bookmarks', part: 'the whole list', workIds: [], open: true });
+  await settle();
+
+  /* Nothing was downloaded and nothing failed: the outcome is what changed
+     about the library, and there is no count that can carry it. Without this
+     the row read "0 of 0" — a job that did nothing, having read 1,204 pages. */
+  q.note(id, { say: '1,204 bookmarks, 3 no longer bookmarked' });
+  q.seal(id);
+  await settle();
+
+  const [done] = q.list();
+  assert.equal(done.state, 'done');
+  assert.equal(done.say, '1,204 bookmarks, 3 no longer bookmarked');
+
+  const { q: q2 } = harness();
+  q2.restore(q.save()[0]);
+  assert.equal(q2.list()[0].say, '1,204 bookmarks, 3 no longer bookmarked',
+    'and the record still says it after a restart');
+});
+
+test('a walk can be paused and stopped like any other job', async () => {
+  const { q } = harness();
+  const id = q.add({ author: 'Your bookmarks', part: 'new ones', workIds: [], open: true });
+  await settle();
+
+  q.pause(id);
+  assert.equal(q.list()[0].state, 'paused', 'the longest-running thing this app does');
+  q.resume(id);
+  assert.equal(q.isStopped(id), false);
+  q.stop(id);
+  assert.equal(q.isStopped(id), true, 'so a walk in a loop knows to give up');
+});
+
+test('what a walk finds is fetched by the walk\u2019s own job', async () => {
+  const { q, order, tick } = harness();
+  const id = q.add({ author: 'Your bookmarks', part: 'new ones', workIds: [], open: true });
+  await settle();
+
+  /* One row that walks, then fetches, then says how it went — rather than a
+     walk that hands a second job a list at the end, which is honest about the
+     pacing and dishonest about what somebody asked for. */
+  q.append(id, ['7', '8']);
+  q.seal(id);
+  await settle();
+  await tick();
+
+  assert.deepEqual(order, ['7', '8']);
+  assert.equal(q.list().length, 1, 'one job, not a walk and a download');
+  assert.equal(q.list()[0].added, 2);
+});
+
 test('a record from a version that kept no time does not claim to be recent', () => {
   const { q } = harness();
   q.restore({ author: 'a', part: 'works', workIds: [], state: 'done', total: 2, added: 2 });

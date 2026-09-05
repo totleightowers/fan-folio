@@ -1015,13 +1015,38 @@ test('settings offers a sync, and it can be stopped', () => {
  * requests twice as fast as either believed it was.
  */
 test('a sync owns no download loop of its own', () => {
-  const fn = js.slice(js.indexOf('async function syncBookmarks('));
+  const fn = js.slice(js.indexOf('async function runNewBookmarks('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /jobs\.add\(\{ author: 'New bookmarks'/,
-    'the works it finds go to the one queue, like every other batch');
-  assert.ok(!/fetchWorks\(/.test(body),
+  assert.match(body, /jobs\.append\(id, workIds\)/,
+    'the works it finds go to the job that found them, not a loop of its own');
+  assert.ok(!/fetchWorks\(|addWork\(/.test(body),
     'and it does not fetch them itself, at a rate only it knows about');
-  assert.match(body, /shouldStop: \(\) => stopRequested/, 'the listing can still be stopped');
+  assert.match(body, /shouldStop: \(\) => jobs\.isStopped\(id\)/,
+    'the walk is stopped the same way everything else is');
+  assert.match(body, /await jobs\.waitUntilRunnable\(id\)/,
+    'and paused — the walk is the most network this app does');
+});
+
+/*
+ * A bookmark sync was two module flags and a line of status text, so nothing
+ * could pause it, nothing survived a restart, and — since the foreground
+ * notification is raised from the queue — a bookmark walk on its own told
+ * Android nothing at all. A full reconciliation is tens of minutes.
+ */
+test('a bookmark sync is a job, so the system knows work is happening', () => {
+  for (const fn of ['async function syncBookmarks(', 'async function reconcileAllBookmarks(']) {
+    const body = js.slice(js.indexOf(fn));
+    const head = body.slice(0, body.indexOf('\n}\n'));
+    assert.match(head, /jobs\.add\(\{ \.\.\.BOOKMARKS_/, `${fn} puts a job up first`);
+    assert.match(head, /open: true/, 'and it stands there reading the list, like an author walk');
+  }
+  assert.ok(!/\bstopRequested\b|\blet syncing\b/.test(js),
+    'the flags it used instead of a job are gone, not left beside it');
+
+  /* The buttons follow the job: a stop from the Activity screen or a pause
+     from the notification is not something the settings screen is told. */
+  const paint = js.slice(js.indexOf('function paintSyncButtons()'));
+  assert.match(paint.slice(0, paint.indexOf('\n}\n')), /liveBookmarkJob\(\)/);
 });
 
 test('the sync reads who is signed in rather than asking', () => {
@@ -2297,12 +2322,18 @@ test('a download notification lands on the downloads', () => {
  * ever been bookmarked" rather than "is".
  */
 test('the whole bookmark list can be read, so removals are noticed', () => {
-  const fn = js.slice(js.indexOf('async function reconcileAllBookmarks('));
+  const fn = js.slice(js.indexOf('async function runReconcile('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /reconcileBookmarks\(all\)/, 'the whole list decides it, not a page of it');
-  assert.match(body, /if \(stopRequested\) \{/, 'and a half-read list decides nothing');
+  assert.match(body, /if \(stopped \|\| jobs\.isStopped\(id\)\) \{/,
+    'and a half-read list decides nothing, however it came to be half-read');
   assert.match(body, /Nothing changed/,
     'because everything unread would look like everything unbookmarked');
+
+  /* Now that it can be paused and put back after a restart, there is a second
+     way to hold half a list — and resuming from the page it reached would
+     conclude that everything on the pages it never read had been unbookmarked. */
+  assert.ok(!/fromPage|job\.page/.test(body), 'it starts from the first page, always');
 
   const java = readFileSync(
     new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
@@ -2429,8 +2460,10 @@ test('the Activity tab says when something is going on behind it', () => {
   assert.match(body, /unfinished\?\.length \|\| j\.lastError/, 'work that ended badly');
   assert.match(body, /setAttribute\('aria-label'/,
     'colour alone would be the only thing saying which of the three it is');
-  assert.match(js, /paintActivityBadge\(\);\n {4}if \(!\$\('#activity'\)\.hidden\)/,
-    'painted as the queue changes, not only when the screen is looked at');
+  /* Painted as the queue changes, not only when the screen is looked at —
+     the point of a badge is the times nobody is looking at Activity. */
+  const onEvent = js.slice(js.indexOf('sayWhatIsHappening();'));
+  assert.match(onEvent.slice(0, onEvent.indexOf('\n  },')), /paintActivityBadge\(\);/);
 });
 
 test('going to a tab does not throw away the way you came', () => {
