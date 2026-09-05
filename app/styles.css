@@ -1447,6 +1447,40 @@ button:disabled, .opt:disabled {
   .list { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 0 1.4rem; }
   #home, #library, #results, #detail { max-width: 62rem; margin-inline: auto; }
 }
+
+/*
+ * On an unfolded screen the tabs stand up.
+ *
+ * A bar pinned across the foot of a tall wide screen is a phone layout being
+ * worn by something that is not a phone: the navigation ends up as far from
+ * the hand as it can get, and a strip of screen the width of the device is
+ * spent on three words. Standing it on its left edge is the same three
+ * destinations, nearer the thumb that is already holding the thing, and it
+ * gives the rest of the width back.
+ *
+ * The reader keeps the whole screen: it hides the tabs, so nothing here
+ * applies to it, which is the point of reading being the immersive one.
+ */
+@media (min-width: 44.01rem) {
+  #tabs {
+    top: 0; bottom: 0; right: auto;
+    width: 5.5rem;
+    flex-direction: column; justify-content: flex-start; gap: .2rem;
+    border-top: 0; border-right: 1px solid var(--rule);
+    padding-top: max(.9rem, calc(env(safe-area-inset-top) + .6rem));
+    padding-bottom: max(.9rem, env(safe-area-inset-bottom));
+  }
+  #tabs button { flex: 0 0 auto; padding: .75rem .2rem; }
+
+  /* Everything else starts where the rail ends. The header too — a rail that
+     stops under a bar spanning the whole width reads as two separate ideas
+     about where the edge of the app is. */
+  body:has(#tabs:not([hidden])) #bar,
+  body:has(#tabs:not([hidden])) #main { margin-left: 5.5rem; }
+  /* And the room kept clear at the foot for a bar that is no longer there. */
+  body:has(#tabs:not([hidden])) .view { padding-bottom: 1.5rem; }
+  body:has(#tabs:not([hidden])) #toast { left: calc(50% + 2.75rem); }
+}
 @media (min-width: 70rem) {
   #home, #library, #results, #detail { max-width: 72rem; }
 }
