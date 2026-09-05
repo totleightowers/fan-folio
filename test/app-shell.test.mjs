@@ -1300,10 +1300,32 @@ test('the reader writes down reaching the end of the last chapter', () => {
   assert.match(body, /finishedThisVisit === current\.workId/,
     'the last screenful fires the scroll handler over and over');
   assert.match(body, /markFinished\(current\.workId, true\)/);
+});
+
+/*
+ * The regression this is here for.
+ *
+ * Opening a chapter was enough to finish it: a chapter with nothing to scroll
+ * is already at its own foot, so is one whose layout has not settled, and the
+ * scroll to where you left off fires the handler with nobody having moved. A
+ * one-chapter work — most of a library — came off the Continue reading shelf
+ * the moment it was opened.
+ */
+test('opening a chapter cannot finish it', () => {
+  const fn = js.slice(js.indexOf('function noteReachedTheEnd('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /const room = document\.documentElement\.scrollHeight - window\.innerHeight/);
+  assert.match(body, /if \(room < 200\) return/,
+    'a chapter with nothing to scroll is already at its own foot');
+  assert.match(body, /window\.scrollY <= readerOpenedAt \+ 40/,
+    'and the scroll back to where you were is not somebody reading to the end');
 
   const opened = js.slice(js.indexOf('async function openChapter('));
-  assert.match(opened.slice(0, opened.indexOf('\n}\n')), /if \(!transient\) noteReachedTheEnd\(\)/,
-    'a last chapter that fits on one screen has no scrolling left to say it with');
+  const body_ = opened.slice(0, opened.indexOf('\n}\n'));
+  assert.ok(!/noteReachedTheEnd\(\)/.test(body_),
+    'nothing about opening a chapter says it has been read');
+  assert.match(body_, /readerOpenedAt = offset/,
+    'where it opened, so reaching the end can mean having got there');
 });
 
 test('both backends agree on what continue reading means', () => {
@@ -2407,6 +2429,19 @@ test('the Activity tab says when something is going on behind it', () => {
     'colour alone would be the only thing saying which of the three it is');
   assert.match(js, /paintActivityBadge\(\);\n {4}if \(!\$\('#activity'\)\.hidden\)/,
     'painted as the queue changes, not only when the screen is looked at');
+});
+
+test('going to a tab does not throw away the way you came', () => {
+  const fn = js.slice(js.indexOf('function goToTab(tab)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.ok(!/stack\.reset\(\)/.test(body),
+    'Home, a work, the reader, More, Home — and Back closed the app');
+  assert.match(body, /if \(showing\(\) !== route\) stack\.go\(here\(\), \{ route, params: \{\} \}\)/,
+    'the place being left is pushed, and pressing the tab you are on is not a journey');
+
+  const open = js.slice(js.indexOf('window.__open = (where)'));
+  assert.ok(!/stack\.reset\(\)/.test(open.slice(0, open.indexOf('\n};'))),
+    'arriving from a notification is still arriving from somewhere');
 });
 
 test('the reader has a way into the app that is not the Back button', () => {

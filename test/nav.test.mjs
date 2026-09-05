@@ -109,7 +109,40 @@ test('up to the work does not pop somebody else', () => {
   assert.equal(h.depth, 1, 'so Home is still what Back leads to');
 });
 
-test('switching tabs starts a fresh branch', () => {
+/*
+ * Home, a work, the reader, More, Home — and Back closed the app.
+ *
+ * Tabs emptied the stack, on the reasoning that a tab is a new top-level
+ * branch. In the hand that meant everything you were looking at three taps
+ * ago was thrown away, and the gesture that means "back" meant "quit".
+ */
+test('a tab keeps the way you came', () => {
+  const h = new History();
+  h.go(at('home'), at('detail', { workId: '1' }));
+  h.go(at('detail', { workId: '1' }), at('reader', { workId: '1', chapter: 1 }));
+  /* the More sheet, going Home */
+  h.go(at('reader', { workId: '1', chapter: 1 }), at('home'));
+
+  assert.equal(h.back().route, 'reader', 'back retraces the way in');
+  assert.equal(h.back().route, 'detail', 'and keeps retracing it');
+  assert.equal(h.back().route, 'home');
+  assert.equal(h.back(), null, 'and only then is there nothing behind you');
+});
+
+test('pressing the tab you are already on leaves no trace', () => {
+  const h = new History();
+  h.go(at('library'), at('library'));
+  assert.equal(h.depth, 0, 'going where you are is not a journey');
+});
+
+test('the trail is a trail, not a log', () => {
+  const h = new History();
+  for (let i = 0; i < 200; i++) h.go(at('detail', { workId: String(i) }), at('home'));
+  assert.ok(h.depth <= 60, 'an evening of tab-hopping must still let somebody walk out');
+  assert.equal(h.back().params.workId, '199', 'and the newest is the one kept');
+});
+
+test('reset leaves nowhere to go back to', () => {
   const h = new History();
   h.go(at('library', 1840), 'detail');
   h.reset();
