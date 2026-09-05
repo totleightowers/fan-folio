@@ -176,19 +176,31 @@ INSERT INTO chapter_fts(chapter_fts) VALUES('rebuild');
  * Adding a column is the only migration attempted, and the only one needed so
  * far: SQLite records it in the table definition without touching a row, so it
  * is quick on a large library and safe to run every time.
+ *
+ * Both tables the library query touches, not just works. reading grew offset
+ * and opened_at after the first databases were written, and the question of
+ * what is being read now asks for both — so a library made before them failed
+ * on "no such column: r.opened_at", which is the whole library screen gone.
+ * The Android shell had been migrating both for a while; this had not.
  */
-export function ensureColumns(db) {
-  const declared = [...SCHEMA.slice(SCHEMA.indexOf('CREATE TABLE IF NOT EXISTS works'))
+/** The columns SCHEMA declares for one table, with enough DDL to add them. */
+function declaredColumns(table) {
+  return [...SCHEMA.slice(SCHEMA.indexOf(`CREATE TABLE IF NOT EXISTS ${table}`))
     .split('\n);')[0]
-    .matchAll(/^ {2}([a-z_]+)\s+(TEXT|INTEGER)([^,\n]*)/gm)]
+    .matchAll(/^ {2}([a-z_]+)\s+(TEXT|INTEGER|REAL)([^,\n]*)/gm)]
     .map(([, name, type, rest]) => ({ name, ddl: `${type}${/DEFAULT/.test(rest) ? rest : ''}`.trim() }));
+}
 
-  const have = new Set(db.prepare('PRAGMA table_info(works)').all().map((r) => r.name));
+export function ensureColumns(db) {
   const added = [];
-  for (const { name, ddl } of declared) {
-    if (have.has(name)) continue;
-    db.exec(`ALTER TABLE works ADD COLUMN ${name} ${ddl}`);
-    added.push(name);
+  for (const table of ['works', 'reading']) {
+    const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((r) => r.name));
+    if (!have.size) continue;   // no such table yet; SCHEMA will have made it
+    for (const { name, ddl } of declaredColumns(table)) {
+      if (have.has(name)) continue;
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`);
+      added.push(name);
+    }
   }
   return added;
 }

@@ -33,13 +33,47 @@ export const SORTS = {
   random: 'RANDOM()',
 };
 
+/**
+ * How many chapters a work really has.
+ *
+ * works.chapter_count is metadata, and metadata goes missing: a listing that
+ * parsed badly leaves it NULL, and in SQL `read < NULL` is unknown rather than
+ * true — so a work you are visibly halfway through drops out of every reading
+ * question on the strength of a column that has nothing to do with reading.
+ * Fall back to the chapters actually held, and failing that to one, so a work
+ * is never finished by arithmetic on a number nobody knows. COALESCE stops at
+ * its first non-null argument, so the count only runs for the works that need
+ * it, and chapters_by_work makes it an index read when it does.
+ */
+export const CHAPTERS = 'COALESCE(NULLIF(w.chapter_count, 0), '
+  + '(SELECT count(*) FROM chapters c WHERE c.work_id = w.work_id), 1)';
+
+/**
+ * Evidence a work has been read in at all.
+ *
+ * Four kinds, because reading leaves four different marks. opened_at is this
+ * app opening a chapter; offset is being partway down one, which is the only
+ * trace a library carried over from an older app leaves; chapters_read and
+ * chapter are progress recorded either way. Home used the first, third and
+ * fourth of those, the Library filter only the third and fourth, and neither
+ * used offset — so a work could sit on Continue reading and then vanish when
+ * See all took you to the same question asked differently.
+ */
+export const STARTED = '(r.opened_at IS NOT NULL OR COALESCE(r.offset, 0) > 0 '
+  + 'OR COALESCE(r.chapters_read, 0) > 0 OR COALESCE(r.chapter, 0) > 1)';
+
+/** Every chapter accounted for. */
+export const FINISHED = `COALESCE(r.chapters_read, 0) >= ${CHAPTERS}`;
+
 /** Reading state, which lives in the reading table rather than on the work. */
+/* One definition each, used everywhere: Home, the Library filter, the shelf's
+   See all and the counts beside them all ask these and nothing else. The three
+   partition the library — started and unfinished, not started, finished. */
 export const STATES = {
   all: '1=1',
-  reading: '(COALESCE(r.chapters_read, 0) > 0 OR COALESCE(r.chapter, 0) > 1) '
-    + 'AND COALESCE(r.chapters_read, 0) < w.chapter_count',
-  unread: 'COALESCE(r.chapters_read, 0) = 0 AND COALESCE(r.chapter, 0) <= 1',
-  finished: 'r.chapters_read >= w.chapter_count AND w.chapter_count > 0',
+  reading: `${STARTED} AND NOT (${FINISHED})`,
+  unread: `NOT ${STARTED}`,
+  finished: FINISHED,
   later: 'r.marked_later = 1',
   rec: 'w.rec = 1',
   /* Whether the text is actually here. A listing describes thousands of works

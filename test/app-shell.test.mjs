@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { SCHEMA } from '../app/core/store/schema.js';
 
 const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
@@ -1136,6 +1137,22 @@ test('opening a work is what puts it on the continue shelf', () => {
     'and it is written at the offset it opens to, so it cannot cost somebody their place');
 });
 
+test('the shell migrates every reading column the query asks for', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const block = java.slice(java.indexOf('READING_COLUMNS = {'));
+  const migrated = new Set([...block.slice(0, block.indexOf('};')).matchAll(/\{"([a-z_]+)"/g)]
+    .map((m) => m[1]));
+
+  const table = SCHEMA.slice(SCHEMA.indexOf('CREATE TABLE IF NOT EXISTS reading'));
+  const declared = [...table.slice(0, table.indexOf('\n);')).matchAll(/^ {2}([a-z_]+)\s+[A-Z]/gm)]
+    .map((m) => m[1]).filter((name) => name !== 'work_id');
+
+  /* A column the schema declares and the shell does not add is a column an
+     upgraded library does not have — and the library screen is one SELECT, so
+     a single missing one takes the whole thing out. */
+  assert.deepEqual(declared.filter((name) => !migrated.has(name)), []);
+});
+
 test('both backends agree on what continue reading means', () => {
   const shelfOf = (src_) => {
     const at = src_.indexOf("key: 'reading', title: 'Continue reading'");
@@ -1143,7 +1160,10 @@ test('both backends agree on what continue reading means', () => {
   };
   const native = shelfOf(readFileSync(new URL('../app/api.js', import.meta.url), 'utf8'));
   const server = shelfOf(readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8'));
-  assert.match(native, /r\.opened_at IS NOT NULL/, 'opened here counts');
+  assert.match(native, /STATES\.reading/,
+    'the shelf asks the Library filter its question, rather than writing out its own');
+  assert.ok(!/opened_at IS NOT NULL/.test(native),
+    'a predicate spelled out here is one that can disagree with the one over there');
   assert.match(native, /COALESCE\(r\.opened_at, r\.updated_at\) DESC/,
     'most recently opened first, whichever shelf it was opened from');
   assert.equal(native, server, 'the two backends must not drift on this');

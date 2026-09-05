@@ -13,7 +13,7 @@ import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED } from '../app/core/query.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
@@ -131,8 +131,8 @@ function home() {
     SELECT count(*) AS works, COALESCE(sum(words), 0) AS words,
            COALESCE(sum(chapter_count), 0) AS chapters FROM works`).get();
   const read = db.prepare(`
-    SELECT COALESCE(sum(CASE WHEN r.chapters_read >= w.chapter_count THEN w.words ELSE 0 END), 0) AS words,
-           count(CASE WHEN r.chapters_read >= w.chapter_count AND w.chapter_count > 0 THEN 1 END) AS finished
+    SELECT COALESCE(sum(CASE WHEN ${FINISHED} THEN w.words ELSE 0 END), 0) AS words,
+           count(CASE WHEN ${FINISHED} THEN 1 END) AS finished
     FROM works w JOIN reading r ON r.work_id = w.work_id`).get();
 
   return {
@@ -147,14 +147,11 @@ function home() {
     shelves: [
       { key: 'reading', title: 'Continue reading',
         works: shelf(
-          /* Anything this app has had open, plus whatever an import said was
-             already part-read, minus what is finished. Asking for chapter 2 or
-             later — as this did — meant a work you were halfway through the
-             first chapter of never reached the shelf, which is most of them
-             and every one-chapter work there is. */
-          '(r.opened_at IS NOT NULL OR COALESCE(r.chapters_read,0) > 0 '
-          + 'OR COALESCE(r.chapter,0) > 1) '
-          + 'AND COALESCE(r.chapters_read,0) < w.chapter_count',
+          /* The Library's Reading filter and nothing else — see STATES in
+             core/query.js. These were two hand-written predicates that
+             disagreed, so a work could sit on this shelf and then vanish
+             when See all asked the same question in the other file's words. */
+          STATES.reading,
           /* Most recently opened first, whichever shelf it was opened from. */
           'COALESCE(r.opened_at, r.updated_at) DESC') },
       { key: 'later', title: 'Marked for later',
@@ -162,9 +159,9 @@ function home() {
       { key: 'added', title: 'Recently added',
         works: shelf('1=1', 'COALESCE(w.downloaded_at, w.fetched_at) DESC') },
       { key: 'long', title: 'Settle in',
-        works: shelf('w.complete = 1 AND COALESCE(r.chapters_read,0) = 0', 'w.words DESC') },
+        works: shelf(`w.complete = 1 AND ${STATES.unread}`, 'w.words DESC') },
       { key: 'short', title: 'One sitting',
-        works: shelf('w.complete = 1 AND w.words < 5000 AND COALESCE(r.chapters_read,0) = 0',
+        works: shelf(`w.complete = 1 AND w.words < 5000 AND ${STATES.unread}`,
           'RANDOM()') },
     ].filter((s) => s.works.length),
     /*
@@ -194,7 +191,7 @@ const topTags = (kind, limit) => db.prepare(`
 function surprise() {
   const row = db.prepare(`
     SELECT w.work_id FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-    WHERE COALESCE(r.chapters_read, 0) = 0 ORDER BY RANDOM() LIMIT 1`).get();
+    WHERE ${STATES.unread} ORDER BY RANDOM() LIMIT 1`).get();
   return { work_id: row?.work_id ?? null };
 }
 
