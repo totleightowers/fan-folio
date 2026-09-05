@@ -2194,10 +2194,38 @@ test('opening an author shows the author', () => {
 test('what somebody came back for is first', () => {
   const home = html.slice(html.indexOf('<section id="home"'),
     html.indexOf('</section>', html.indexOf('<section id="home"')));
-  const order = ['id="shelves"', 'id="starthere"', 'id="fandoms"', 'id="stats"']
+  /* Continue reading, then what the library amounts to, then the ways in.
+     The counts were moved off the top of this screen because carrying on
+     with a work is why anybody opens a reading app — which was right — and
+     landed at the very bottom, under every shelf and the whole of Browse,
+     which made them present and functionally gone. They are what makes Home
+     read as somebody's own archive; both facts fit, in this order. */
+  const order = ['id="shelves"', 'id="stats"', 'id="starthere"', 'id="fandoms"']
     .map((id) => home.indexOf(id));
-  assert.deepEqual([...order].sort((a, b) => a - b), order,
-    'continue reading, then the ways in, then browse, then the counts');
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+});
+
+test('a shelf says how much of it is not on it', () => {
+  const fn = js.slice(js.indexOf('async function buildHome()'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /const total = Number\(shelf\.total \?\? shelf\.works\.length\)/);
+  assert.match(body, /`See all \$\{total\}`/,
+    'twelve works shown out of twenty, with nothing saying so, reads as eight lost');
+
+  /* And the button has to land on the same question the shelf asked. */
+  const map = js.slice(js.indexOf('const SHELF_VIEW = {'));
+  const table = map.slice(0, map.indexOf('};'));
+  assert.match(table, /reading: \{ state: 'reading' \}/);
+  assert.match(table, /long: \{ state: 'unread', complete: '1'/,
+    'Settle in is long, complete and unstarted — it used to open on the whole library');
+});
+
+test('both backends count a shelf as well as filling it', () => {
+  for (const path of ['../app/api.js', '../tools/serve.mjs']) {
+    const src = readFileSync(new URL(path, import.meta.url), 'utf8');
+    const fn = src.slice(src.indexOf('const shelf = (where, order'));
+    assert.match(fn.slice(0, 1200), /total:/, `${path} returns the size of the shelf`);
+  }
 });
 
 test('a library row does not offer twice what the row itself does', () => {

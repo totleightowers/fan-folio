@@ -3370,16 +3370,31 @@ async function buildHome() {
 
   const box = $('#shelves');
   box.textContent = '';
-  for (const shelf of data.shelves ?? []) {
+  const shelves = data.shelves ?? [];
+  for (const [i, shelf] of shelves.entries()) {
     const section = document.createElement('section');
     section.className = 'shelf';
-    section.innerHTML = '<div class="shelf-head"><h2></h2><button>See all</button></div>'
-      + '<div class="rail"></div>';
+    section.innerHTML = '<div class="shelf-head"><h2></h2><span class="shelf-n"></span>'
+      + '<button></button></div><div class="rail"></div>';
     section.querySelector('h2').textContent = shelf.title;
+
+    /*
+     * How much of the shelf is not on the shelf.
+     *
+     * Twelve at most, and nothing said so: twenty works on the go showed as
+     * twelve and the missing eight read as lost rather than folded away. The
+     * count is stated, and See all says how many it is about to show.
+     */
+    const total = Number(shelf.total ?? shelf.works.length);
+    const more = total > shelf.works.length;
+    section.querySelector('.shelf-n').textContent = more ? total : '';
+    section.querySelector('.shelf-head button').textContent = more ? `See all ${total}` : 'See all';
+
     section.querySelector('.shelf-head button').onclick = () => {
-      view.state = ['reading', 'later'].includes(shelf.key) ? shelf.key : 'all';
-      view.sort = shelf.key === 'added' ? 'added' : shelf.key === 'long' ? 'words'
-        : shelf.key === 'short' ? 'shortest' : view.sort;
+      /* The same question the shelf asked, or See all shows a different set of
+         works from the one it was pressed under. */
+      Object.assign(view, { state: 'all', complete: '', wordsMax: '', sort: view.sort },
+        SHELF_VIEW[shelf.key] ?? {});
       save(VIEW_KEY, view);
       $('#sort').value = view.sort;
       paintActiveFilters();
@@ -3389,10 +3404,36 @@ async function buildHome() {
     const rail = section.querySelector('.rail');
     for (const w of shelf.works) rail.append(workCard(w));
     box.append(section);
+    /* The counts, directly under the thing somebody came back for. Left at
+       the foot of the document they were below every shelf and the whole of
+       Browse, which is present and out of sight. */
+    if (i === 0) box.append(stats);
   }
+  /* Emptying the shelves takes the counts with them, since that is where they
+     now live. A library with no shelves at all still has counts. */
+  if (!stats.isConnected) $('#home').insertBefore(stats, $('#starthere'));
 
   buildBrowse(data.browse ?? {});
 }
+
+/**
+ * What See all is a way to see all of.
+ *
+ * Three of these used to land on the whole library with a sort applied, so
+ * "Settle in" — long, complete, not yet started — opened on everything there
+ * is, ordered by length, most of it neither complete nor unstarted. A shelf
+ * and the button under it have to be asking the same question.
+ *
+ * What is set here is set on top of the filters already in force, and shows
+ * up in the row of pills like any other, so nothing arrives invisibly.
+ */
+const SHELF_VIEW = {
+  reading: { state: 'reading' },
+  later: { state: 'later' },
+  added: { state: 'all', sort: 'added' },
+  long: { state: 'unread', complete: '1', sort: 'words' },
+  short: { state: 'unread', complete: '1', wordsMax: 5000, sort: 'shortest' },
+};
 
 const BROWSE_TABS = [
   ['fandom', 'Fandoms'], ['relationship', 'Pairings'], ['character', 'Characters'],
