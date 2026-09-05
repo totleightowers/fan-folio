@@ -2219,9 +2219,76 @@ test('upkeep is not a peer of leaving kudos', () => {
 });
 
 test('the reader does not offer to add a work', () => {
-  const fn = js.slice(js.indexOf('function show(name, motion'));
+  const fn = js.slice(js.indexOf('function paintChrome(name)'));
   assert.match(fn.slice(0, fn.indexOf('\n}\n')), /\$\('#add'\)\.hidden = name === 'reader'/,
     'never part of reading one');
+});
+
+/*
+ * Settings was the single control that never went away — on screen inside a
+ * chapter, and on screen before there was a library to configure — while
+ * Library and Activity disappeared the moment anybody opened a work. That is
+ * the hierarchy of a settings app, not a reading one.
+ */
+test('the app is at least as reachable as its settings', () => {
+  const chrome = js.slice(js.indexOf('function paintChrome(name)'));
+  const body = chrome.slice(0, chrome.indexOf('\n}\n'));
+  assert.match(body, /\$\('#open-settings'\)\.hidden = !KEEPS_TABS\.has\(name\)/,
+    'the cog is offered exactly where the tabs are, and nowhere they are not');
+
+  const keeps = js.slice(js.indexOf('const KEEPS_TABS'));
+  const set = keeps.slice(0, keeps.indexOf(');'));
+  assert.match(set, /'detail'/, 'opening a work is navigation within a library, not out of it');
+  assert.ok(!/'reader'/.test(set), 'reading is the one screen that earns an empty chrome');
+
+  const shown = js.slice(js.indexOf("$('#tabs').hidden"));
+  assert.match(shown.slice(0, 60), /!KEEPS_TABS\.has\(name\)/);
+});
+
+test('the Activity tab says when something is going on behind it', () => {
+  const fn = js.slice(js.indexOf('function paintActivityBadge()'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /'running', 'queued', 'listing'/, 'work happening');
+  assert.match(body, /'paused', 'pausing'/, 'work stopped, waiting for a decision');
+  assert.match(body, /unfinished\?\.length \|\| j\.lastError/, 'work that ended badly');
+  assert.match(body, /setAttribute\('aria-label'/,
+    'colour alone would be the only thing saying which of the three it is');
+  assert.match(js, /paintActivityBadge\(\);\n {4}if \(!\$\('#activity'\)\.hidden\)/,
+    'painted as the queue changes, not only when the screen is looked at');
+});
+
+test('the reader has a way into the app that is not the Back button', () => {
+  assert.match(html, /id="reader-more"/, 'a chapter had no route out but Back, repeated');
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const body = menu.slice(0, menu.indexOf('</dialog>'));
+  for (const where of ['home', 'library', 'activity', 'settings']) {
+    assert.match(body, new RegExp(`data-go="${where}"`), `${where} is reachable from a chapter`);
+  }
+  assert.match(js, /\$\('#reader-more'\)\.onclick = \(\) => openSheet/);
+});
+
+test('the way back to the work is not the library icon', () => {
+  const button = html.slice(html.indexOf('<button id="to-work"'));
+  assert.match(button.slice(0, button.indexOf('</button>')), /#i-work/,
+    'it opens one work\u2019s own page; three books on a shelf is a different place');
+  assert.match(html, /<symbol id="i-work"/);
+});
+
+test('a box that would not know what it was searching is not shown', () => {
+  const chrome = js.slice(js.indexOf('function paintChrome(name)'));
+  assert.match(chrome.slice(0, chrome.indexOf('\n}\n')), /\$\('#q'\)\.hidden = !SEARCHABLE\.has\(name\)/);
+  const set = js.slice(js.indexOf('const SEARCHABLE'));
+  const names = set.slice(0, set.indexOf(');'));
+  assert.ok(!/'activity'|'settings'|'setup'/.test(names),
+    'search fell through to whatever scope was last in force on these');
+  assert.match(js, /\$\('#bar-gap'\)\.hidden = !\$\('#q'\)\.hidden/,
+    'and the bar keeps its shape without it');
+});
+
+test('first run offers nothing that needs a library', () => {
+  const chrome = js.slice(js.indexOf('function paintChrome(name)'));
+  assert.match(chrome.slice(0, chrome.indexOf('\n}\n')), /\$\('#bar'\)\.hidden = name === 'setup'/,
+    'search, reading settings and the cog all want a library that does not exist yet');
 });
 
 test('the fonts that need no internet are named as such', () => {

@@ -70,6 +70,18 @@
       <path d="M10.4 10.8v5.4M13.6 10.8v5.4"/>
     </symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2.8 6.2 13.4h5l-1.6 7.8 7.2-10.6h-5z"/></symbol>
+    <!-- The way back to the work being read. This was the Library icon, which
+         is a different place: three books on a shelf, for a button that opens
+         one work's own page. A single page with its title line and its text. -->
+    <symbol id="i-work" viewBox="0 0 24 24">
+      <path d="M6.4 3.6h8l4.2 4.2v12.6a.9.9 0 0 1-.9.9H6.4a.9.9 0 0 1-.9-.9V4.5a.9.9 0 0 1 .9-.9z"/>
+      <path d="M14.2 3.8v4.2h4.2M8.6 12.4h6.8M8.6 16h4.6"/>
+    </symbol>
+    <!-- Everywhere else in the app, from inside a chapter. -->
+    <symbol id="i-more" viewBox="0 0 24 24">
+      <circle cx="5.4" cy="12" r="1.35"/><circle cx="12" cy="12" r="1.35"/>
+      <circle cx="18.6" cy="12" r="1.35"/>
+    </symbol>
     <symbol id="i-bookmark" viewBox="0 0 24 24">
       <path d="M6.6 4.4h10.8a.8.8 0 0 1 .8.8v14.2l-6.2-4-6.2 4V5.2a.8.8 0 0 1 .8-.8z"/>
     </symbol>
@@ -84,6 +96,9 @@
 <header id="bar">
   <button id="back" class="icon" hidden aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
   <input id="q" type="search" placeholder="Search your archive…" autocomplete="off" spellcheck="false">
+  <!-- Holds the width open on the screens where the search box has no meaning
+       and is not shown, so the controls stay where the hand expects them. -->
+  <span id="bar-gap" hidden></span>
   <button id="add" class="icon" aria-label="Add a work from a link"><svg class="ic" aria-hidden="true"><use href="#i-add"/></svg></button>
   <button id="typo" class="icon" aria-label="Reading settings"><svg class="ic" aria-hidden="true"><use href="#i-text"/></svg></button>
   <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
@@ -304,12 +319,21 @@
     <article id="workskin"></article>
     <aside id="endnotes" hidden></aside>
     <nav id="chapnav">
-      <button id="to-work" aria-label="Back to this work"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg></button>
+      <button id="to-work" aria-label="Back to this work"><svg class="ic" aria-hidden="true"><use href="#i-work"/></svg></button>
       <button id="prev" aria-label="Previous chapter"><svg class="ic" aria-hidden="true"><use href="#i-prev"/></svg></button>
       <button id="chappos" aria-label="Jump to chapter"></button>
       <button id="next" aria-label="Next chapter"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
       <button id="kudos-here" aria-label="Leave kudos on this work"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
       <button id="on-archive" aria-label="Open this chapter on the archive"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></button>
+      <!--
+          The way out of the reader that is not the way you came in.
+
+          Reading is the one screen with no tab bar, which is right: a chapter
+          should be a chapter. But the only route back into the app was Back,
+          repeated until something recognisable appeared, and Settings — of
+          all things — was the single control that stayed on screen.
+      -->
+      <button id="reader-more" aria-label="Go elsewhere"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
     </nav>
     <div id="progress"><div id="progress-bar"></div></div>
   </section>
@@ -318,13 +342,26 @@
 <nav id="tabs" hidden>
   <button data-tab="home" class="on"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
   <button data-tab="library"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
-  <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-bolt"/></svg>Activity</button>
+  <!-- A catalogue download runs for an hour; without this the tab it runs
+       behind looks exactly like a tab nobody has ever pressed. -->
+  <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-bolt"/></svg>Activity<span id="activity-dot" hidden></span></button>
 </nav>
 
 <dialog id="chapters-dialog">
   <h2>Chapters</h2>
   <div id="chapter-list"></div>
   <button class="close" data-close="chapters-dialog">Done</button>
+</dialog>
+
+<dialog id="reader-menu">
+  <h2>Go to</h2>
+  <div class="menu-list">
+    <button data-go="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
+    <button data-go="library"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
+    <button data-go="activity"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Activity</button>
+    <button data-go="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
+  </div>
+  <button class="close" data-close="reader-menu">Stay here</button>
 </dialog>
 
 <dialog id="addwork">

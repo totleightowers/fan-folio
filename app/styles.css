@@ -77,6 +77,9 @@ body {
   flex: 1; min-width: 0; font: inherit; padding: .5rem .7rem;
   border: 1px solid var(--rule); border-radius: 999px; background: var(--pane); color: inherit;
 }
+/* Stands in for the search box on the screens where searching means nothing,
+   so the controls keep the side of the bar they are always on. */
+#bar-gap { flex: 1; }
 .icon {
   font: inherit; background: none; border: 1px solid var(--rule); border-radius: 999px;
   color: inherit; padding: .4rem .7rem; cursor: pointer; min-width: 2.6rem;
@@ -204,7 +207,7 @@ body {
 }
 #chapnav button {
   font: inherit; background: var(--pane); color: inherit; border: 1px solid var(--rule);
-  border-radius: 999px; padding: .45rem .9rem; cursor: pointer;
+  border-radius: 999px; padding: .45rem .6rem; cursor: pointer;
 }
 #chapnav button:disabled { opacity: .35; }
 /* This is the way to every other chapter, and it was styled as a caption —
@@ -332,11 +335,22 @@ button.primary:active { opacity: .85; }
 
 /* ------------------------------------------------------- chapter picker */
 
-#chapnav button { min-width: 2.6rem; }
+#chapnav button { min-width: 2.4rem; }
 #chappos {
   font: inherit; font-size: .85rem; color: var(--muted); background: none;
   border: 1px solid var(--rule); border-radius: 999px; padding: .45rem 1rem; cursor: pointer;
 }
+/* The reader's way back into the rest of the app. Rows, not a row of icons:
+   these are places, and a place is worth its name. */
+.menu-list { display: flex; flex-direction: column; }
+.menu-list button {
+  display: flex; align-items: center; gap: .7rem; width: 100%; text-align: left;
+  font: inherit; background: none; color: inherit; cursor: pointer;
+  border: 0; border-bottom: 1px solid var(--rule); padding: .8rem .2rem;
+}
+.menu-list button:last-child { border-bottom: 0; }
+.menu-list .ic { width: 1.25rem; height: 1.25rem; color: var(--muted); }
+
 #chapter-list { max-height: 60vh; overflow-y: auto; }
 #chapter-list button {
   display: block; width: 100%; text-align: left; font: inherit; background: none;
@@ -386,6 +400,16 @@ dialog button.close {
   padding: .5rem 0 .55rem; display: flex; flex-direction: column; align-items: center; gap: .15rem;
 }
 #tabs button.on { color: var(--accent); }
+/* Work going on behind a tab nobody is looking at. Colour alone would be the
+   only thing saying which of the three states it is, so each has a label the
+   screen reader can say, and paused is a ring rather than a disc. */
+#activity-dot {
+  position: absolute; margin: -1.55rem 0 0 1.05rem;
+  width: .5rem; height: .5rem; border-radius: 999px; background: var(--accent);
+}
+#activity-dot[data-state="held"] { background: none; border: 2px solid var(--muted); }
+#activity-dot[data-state="failed"] { background: var(--no); }
+#tabs button { position: relative; }
 #tabs .ic-tab { width: 1.45rem; height: 1.45rem; }
 /* the tab bar must never sit on top of the last row of content */
 body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
@@ -1078,8 +1102,8 @@ button.primary, .linkish {
               opacity var(--dur-tap) ease-out;
 }
 
-#chapnav button:active, #read-now:active, #closetypo:active, #chappos:active,
-.archive-act:active,
+#chapnav button:active, #reader-more:active, #read-now:active, #closetypo:active,
+#chappos:active, .archive-act:active,
 .work:active, .hit:active, .card:active, .continue-card:active, .start-tile:active,
 .work-card:active, .tagpill:active, .chip:active, .icon:active, .browse-tab:active,
 .filter-btn:active, .active-pill:active, .close-x:active, .sec-head:active,
@@ -1087,7 +1111,8 @@ button.primary, .linkish {
 .shelf-head button:active, .fandom-list button:active,
 #tabs button:active, #chapter-list button:active, #detail .chapters button:active,
 .work-card .rowactions button:active, .addwork-signin button:active,
-.filter-foot button:active, button.primary:active, .linkish:active {
+.filter-foot button:active, button.primary:active, .linkish:active,
+.menu-list button:active {
   box-shadow: inset 0 0 0 999px var(--press);
 }
 
