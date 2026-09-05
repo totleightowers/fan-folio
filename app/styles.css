@@ -207,12 +207,15 @@ body {
 }
 #chapnav button {
   font: inherit; background: var(--pane); color: inherit; border: 1px solid var(--rule);
-  border-radius: 999px; padding: .45rem .6rem; cursor: pointer;
+  border-radius: 999px; padding: .45rem .6rem; cursor: pointer; min-width: 2.4rem;
 }
 #chapnav button:disabled { opacity: .35; }
 /* This is the way to every other chapter, and it was styled as a caption —
    muted text reading "3 / 12" that nobody would think to press. It is the one
-   control in the reader that has to look like one. */
+   control in the reader that has to look like one, and it takes the same pill
+   as its six neighbours: the second rule that used to sit further down this
+   file quietly put the caption back, transparent and grey in a row of filled
+   panes. */
 #chappos {
   display: inline-flex; align-items: center; gap: .4rem;
   font-size: .85rem; color: inherit;
@@ -230,11 +233,6 @@ body {
   display: block; width: 100%; text-align: left; font: inherit; background: none;
   border: 0; border-bottom: 1px solid var(--rule); padding: .7rem .2rem; color: inherit; cursor: pointer;
 }
-#read-now {
-  font: inherit; background: var(--accent); color: #fff; border: 0; border-radius: 999px;
-  padding: .6rem 1.2rem; cursor: pointer; margin: .5rem 0 1rem;
-}
-
 /* --------------------------------------------------------------- settings */
 
 dialog {
@@ -250,9 +248,6 @@ dialog select, dialog input[type=range] { font: inherit; max-width: 55%; }
   font-weight: var(--read-weight); text-align: var(--read-align);
   border-top: 1px solid var(--rule); padding-top: .8rem; margin-top: 1rem;
 }
-#closetypo { font: inherit; width: 100%; padding: .55rem; border-radius: 999px;
-  border: 1px solid var(--rule); background: none; color: inherit; cursor: pointer; margin-top: .6rem; }
-
 .empty { color: var(--muted); padding: 2rem .2rem; text-align: center; }
 
 /* ------------------------------------------------------------- first run */
@@ -272,6 +267,21 @@ button.primary {
   padding: .6rem 1.3rem; cursor: pointer;
 }
 button.primary:active { opacity: .85; }
+
+/*
+ * The quieter of two actions: the same pill, outlined instead of filled.
+ *
+ * This existed only as `.filter-foot .ghost`, so the two of these outside the
+ * filter sheet — "Read the whole bookmark list" and "Fetch their works and
+ * bookmarks", the second of which is the main thing an author page is for —
+ * were raw browser buttons sitting in an app that has a shape for everything
+ * else. Nothing said so; a button with no rule simply looks like the system's.
+ */
+button.ghost {
+  font: inherit; background: none; color: inherit;
+  border: 1px solid var(--rule); border-radius: 999px;
+  padding: .6rem 1.2rem; cursor: pointer;
+}
 
 /* -------------------------------------------------------------- toolbar */
 
@@ -335,11 +345,6 @@ button.primary:active { opacity: .85; }
 
 /* ------------------------------------------------------- chapter picker */
 
-#chapnav button { min-width: 2.4rem; }
-#chappos {
-  font: inherit; font-size: .85rem; color: var(--muted); background: none;
-  border: 1px solid var(--rule); border-radius: 999px; padding: .45rem 1rem; cursor: pointer;
-}
 /* The reader's way back into the rest of the app. Rows, not a row of icons:
    these are places, and a place is worth its name. */
 .menu-list { display: flex; flex-direction: column; }
@@ -395,6 +400,7 @@ dialog button.close {
   padding-bottom: max(0px, env(safe-area-inset-bottom));
 }
 #tabs button {
+  position: relative;
   flex: 1; font: inherit; font-size: .7rem; letter-spacing: .02em;
   background: none; border: 0; color: var(--muted); cursor: pointer;
   padding: .5rem 0 .55rem; display: flex; flex-direction: column; align-items: center; gap: .15rem;
@@ -404,12 +410,11 @@ dialog button.close {
    only thing saying which of the three states it is, so each has a label the
    screen reader can say, and paused is a ring rather than a disc. */
 #activity-dot {
-  position: absolute; margin: -1.55rem 0 0 1.05rem;
+  position: absolute; top: .4rem; left: 50%; translate: .5rem 0;
   width: .5rem; height: .5rem; border-radius: 999px; background: var(--accent);
 }
 #activity-dot[data-state="held"] { background: none; border: 2px solid var(--muted); }
 #activity-dot[data-state="failed"] { background: var(--no); }
-#tabs button { position: relative; }
 #tabs .ic-tab { width: 1.45rem; height: 1.45rem; }
 /* the tab bar must never sit on top of the last row of content */
 body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
@@ -1095,7 +1100,7 @@ dialog h2 {
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --press: rgb(255 255 255 / .11); } }
 
 .work, .hit, .card, .continue-card, .start-tile, .work-card, .tagpill, .chip,
-#chapnav button, #read-now, #closetypo, #chappos, .archive-act,
+#chapnav button, #chappos, .archive-act,
 .icon, .browse-tab, .filter-btn, .active-pill, .close-x, .sec-head, .show-more,
 .opt, .account-btn, .chapters-open, .shelf-head button, .fandom-list button,
 #tabs button, #chapter-list button, #detail .chapters button,
@@ -1110,8 +1115,7 @@ button.primary, .linkish {
               opacity var(--dur-tap) ease-out;
 }
 
-#chapnav button:active, #reader-more:active, #read-now:active, #closetypo:active,
-#chappos:active, .archive-act:active,
+#chapnav button:active, #reader-more:active, #chappos:active, .archive-act:active,
 .work:active, .hit:active, .card:active, .continue-card:active, .start-tile:active,
 .work-card:active, .tagpill:active, .chip:active, .icon:active, .browse-tab:active,
 .filter-btn:active, .active-pill:active, .close-x:active, .sec-head:active,
@@ -1119,8 +1123,8 @@ button.primary, .linkish {
 .shelf-head button:active, .fandom-list button:active,
 #tabs button:active, #chapter-list button:active, #detail .chapters button:active,
 .work-card .rowactions button:active, .addwork-signin button:active,
-.filter-foot button:active, button.primary:active, .linkish:active,
-.menu-list button:active {
+.filter-foot button:active, button.primary:active, button.ghost:active,
+.linkish:active, .menu-list button:active {
   box-shadow: inset 0 0 0 999px var(--press);
 }
 
@@ -1804,8 +1808,6 @@ button:disabled, .opt:disabled {
   border: 1px solid var(--rule); border-radius: 12px;
   background: var(--pane);
 }
-#ab-who { font-weight: 650; }
-#ab-note { color: var(--muted); font-size: .8rem; flex: 1 1 100%; }
 .author-acts { display: flex; flex-wrap: wrap; gap: .9rem; }
 
 /* Work the app owes the archive. Shown because the alternative is an app that
