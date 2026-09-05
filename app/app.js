@@ -1470,7 +1470,15 @@ function buildActivity() {
  * were only reachable by opening each author in turn, which is a lot of taps
  * to say something simple.
  */
-const STUBS_JOB = { author: 'Your library', part: 'described but not held' };
+const STUBS_JOB = { author: 'Your library', part: 'not downloaded' };
+
+/* What this job used to be called. A queue record is written down and read
+   back weeks later, and a job is identified by the two words it is named
+   with — so renaming it silently turned every saved record into one nothing
+   could act on: Ask for this again would fall through to the author path and
+   look for a person called Your library. */
+const STUBS_PARTS = new Set([STUBS_JOB.part, 'described but not held']);
+const isStubsJob = (job) => job.author === STUBS_JOB.author && STUBS_PARTS.has(job.part);
 
 /* Newest first, because a run this long will not finish in one sitting and
    the recent ones are the likelier want. Capped, because a queue is a list in
@@ -2081,7 +2089,7 @@ function paintActivityBadge() {
  */
 function runAgain(job) {
   if (job.unfinished && jobs.rerun(job.id)) return;
-  if (job.author === STUBS_JOB.author && job.part === STUBS_JOB.part) {
+  if (isStubsJob(job)) {
     const queued = stubIds();
     if (!queued.length) { toast('Everything described has been downloaded'); paintStubs(); return; }
     jobs.add({ ...STUBS_JOB, workIds: queued });
@@ -2384,7 +2392,7 @@ function paintJobs() {
       act('play', 'Resume', () => jobs.resume(job.id));
       act('stop', 'Stop', () => jobs.stop(job.id));
     } else if (job.state === 'queued') {
-      act('bolt', 'Start now, alongside what is running', () => jobs.startNow(job.id));
+      act('bolt', 'Prioritise: run this alongside what is going', () => jobs.startNow(job.id));
       act('prev', 'Move up', () => jobs.moveUp(job.id));
       act('next', 'Move down', () => jobs.moveDown(job.id));
     } else if (job.state === 'done' || job.state === 'cancelled') {
