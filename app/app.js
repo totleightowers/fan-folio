@@ -2604,19 +2604,35 @@ function paintAuthorBar() {
     + (known ? `, ${fmt(known)} known but not` : '')
     + (checked ? '. Checked before.' : '. Not checked against the archive yet.');
 
-  const button = $('#author-sync');
-  button.disabled = false;
-  button.textContent = 'Fetch their works and bookmarks';
-  button.onclick = () => {
-    if (!signedIn()) { toast('Sign in to the archive first'); return; }
-    button.disabled = true;
-    button.textContent = 'Reading their index…';
-    catchUpOn(name);
-    toast(`Reading ${name}'s works and bookmarks`);
-  };
+  /*
+   * Both halves, or one of them.
+   *
+   * Both is the usual want and stays the plain button. But somebody who
+   * follows a writer for their own fic and not their reading — or the other
+   * way round — was made to fetch twice as much archive as they asked for,
+   * and it is hours either way. The two halves are already separate jobs, so
+   * offering them separately costs nothing but two words.
+   */
+  const asking = [
+    [$('#author-sync'), ['works', 'bookmarks'], 'Fetch their works and bookmarks',
+      `Reading ${name}'s works and bookmarks`],
+    [$('#author-works'), ['works'], 'Works only', `Reading ${name}'s works`],
+    [$('#author-bookmarks'), ['bookmarks'], 'Bookmarks only', `Reading ${name}'s bookmarks`],
+  ];
+  for (const [button, parts, label, said] of asking) {
+    button.disabled = false;
+    button.textContent = label;
+    button.onclick = () => {
+      if (!signedIn()) { toast('Sign in to the archive first'); return; }
+      for (const [other] of asking) other.disabled = true;
+      button.textContent = 'Reading their index…';
+      catchUpOn(name, parts);
+      toast(said);
+    };
+  }
 }
 
-async function catchUpOn(name) {
+async function catchUpOn(name, parts = ['works', 'bookmarks']) {
   /* Orphaning keeps the work and loses the author on purpose: the pseud page
      404s even though the byline still links to it. Queueing a walk here would
      spend a request to be told no, every time one of these is opened. */
@@ -2636,7 +2652,7 @@ async function catchUpOn(name) {
    * the list, and fill in as it is read.
    */
   const opened = {};
-  for (const part of ['works', 'bookmarks']) {
+  for (const part of parts) {
     opened[part] = jobs.add({ author: name, part, workIds: [], open: true });
   }
   const closeAll = () => { for (const id of Object.values(opened)) jobs.seal(id); };
@@ -2651,7 +2667,7 @@ async function catchUpOn(name) {
   }
 
   const seen = seenAuthors[name] ?? {};
-  for (const part of ['works', 'bookmarks']) {
+  for (const part of parts) {
     /* Whose page is on screen has nothing to say about a job somebody asked
        for. It used to end the walk here, so browsing to anyone else abandoned
        the download you had just started. */

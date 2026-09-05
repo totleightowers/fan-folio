@@ -2412,10 +2412,31 @@ test('opening an author shows the author', () => {
 
   const bar = js.slice(js.indexOf('function paintAuthorBar('));
   const bbody = bar.slice(0, bar.indexOf('\n}\n'));
-  assert.match(bbody, /catchUpOn\(name\)/, 'the work is still one tap');
-  assert.match(bbody, /works and bookmarks/,
-    'and still both halves, because choosing between them is a decision nobody wants');
+  assert.match(bbody, /catchUpOn\(name, parts\)/, 'the work is still one tap');
   assert.match(bbody, /if \(!signedIn\(\)\)/, 'and it needs an account like everything else');
+
+  /* Both halves stays the plain button, because choosing is a decision most
+     people do not want to make. But somebody who follows a writer for their
+     own fic and not their reading was fetching twice the archive they asked
+     for, and it is hours either way. */
+  const both = bbody.indexOf("['works', 'bookmarks']");
+  assert.ok(both !== -1 && both < bbody.indexOf("['works']"),
+    'the pair is offered first and plainly');
+  assert.match(bbody, /\$\('#author-works'\), \['works'\]/);
+  assert.match(bbody, /\$\('#author-bookmarks'\), \['bookmarks'\]/);
+  assert.match(bbody, /for \(const \[other\] of asking\) other\.disabled = true/,
+    'and asking for one half is not an invitation to ask for the other at the same time');
+});
+
+test('a half asked for is the only half fetched', () => {
+  const fn = js.slice(js.indexOf('async function catchUpOn('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /catchUpOn\(name, parts = \['works', 'bookmarks'\]\)/,
+    'both by default, so every other caller is unchanged');
+  assert.ok(!/for \(const part of \['works', 'bookmarks'\]\)/.test(body),
+    'nothing walks a listing nobody asked for');
+  assert.match(body, /for \(const part of parts\) \{\n {4}opened\[part\]/,
+    'the jobs that go up are the ones asked for');
 });
 
 /*
