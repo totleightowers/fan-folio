@@ -76,6 +76,63 @@ test('reading state filters use the reading table', () => {
   assert.deepEqual(run(db, { state: 'unread' }), ['2', '3']);
 });
 
+/*
+ * The bug this file is now the guard for.
+ *
+ * Home asked one question about what "reading" means and the Library asked
+ * another, so a work could sit on Continue reading and disappear the moment
+ * See all took you to the same shelf by its other name. There is one
+ * predicate now, and these are the cases the two of them used to differ on.
+ */
+test('a saved place in chapter one is reading, however it was recorded', () => {
+  const db = library();
+  const work = db.prepare(`INSERT INTO works
+    (work_id, title, authors, words, chapter_count, complete)
+    VALUES (?,?,?,?,?,?)`);
+  const read = db.prepare(
+    'INSERT INTO reading (work_id, chapter, offset, chapters_read, opened_at) VALUES (?,?,?,?,?)');
+
+  /* Partway down chapter one of a library carried over from an older app: a
+     scroll offset and nothing else, which both old predicates ignored. */
+  work.run('4', 'Delta', '["dee"]', 2000, 4, 0);
+  read.run('4', 1, 1840, 0, null);
+  /* Opened here, not yet scrolled. Home counted this; the Library did not. */
+  work.run('5', 'Echo', '["eee"]', 2000, 4, 0);
+  read.run('5', 1, 0, 0, '2026-01-01');
+
+  assert.deepEqual(run(db, { state: 'reading' }), ['1', '4', '5']);
+  assert.deepEqual(run(db, { state: 'unread' }), ['2', '3']);
+});
+
+test('a work whose chapter count nobody knows is still readable', () => {
+  const db = library();
+  db.prepare(`INSERT INTO works (work_id, title, authors, words, chapter_count, complete)
+    VALUES (?,?,?,?,?,?)`).run('6', 'Foxtrot', '["eff"]', 2000, null, 0);
+  const chapter = db.prepare('INSERT INTO chapters (work_id, number, html) VALUES (?,?,?)');
+  chapter.run('6', 1, '<p>one</p>'); chapter.run('6', 2, '<p>two</p>');
+  const read = db.prepare('INSERT INTO reading (work_id, chapter, chapters_read) VALUES (?,?,?)');
+  read.run('6', 2, 1);
+
+  /* `1 < NULL` is unknown, not true, so a missing chapter_count used to drop
+     the work out of every state at once — neither reading nor finished nor
+     unread. The chapters actually held answer it instead. */
+  assert.ok(run(db, { state: 'reading' }).includes('6'), 'one of the two held chapters read');
+  assert.ok(!run(db, { state: 'finished' }).includes('6'));
+  assert.ok(!run(db, { state: 'unread' }).includes('6'));
+
+  db.prepare('UPDATE reading SET chapters_read = 2 WHERE work_id = ?').run('6');
+  assert.ok(run(db, { state: 'finished' }).includes('6'), 'and both of them is finished');
+});
+
+test('every work is in exactly one reading state', () => {
+  const db = library();
+  const all = run(db, {});
+  const seen = [...run(db, { state: 'reading' }), ...run(db, { state: 'unread' }),
+    ...run(db, { state: 'finished' })].sort();
+  assert.deepEqual(seen, all.slice().sort(),
+    'reading, unread and finished must cover the library once each, with no work in two');
+});
+
 test('count matches the rows returned', () => {
   const db = library();
   assert.equal(count(db, { include: ['BTS'] }), 2);

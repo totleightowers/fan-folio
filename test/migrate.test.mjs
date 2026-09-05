@@ -19,7 +19,9 @@ function oldLibrary() {
     source TEXT, source_file TEXT, fetched_at TEXT);
     CREATE TABLE reading (work_id TEXT PRIMARY KEY, chapter INTEGER,
       chapters_read INTEGER, marked_later INTEGER);
-    CREATE TABLE tags (work_id TEXT, kind TEXT, name TEXT);`);
+    CREATE TABLE tags (work_id TEXT, kind TEXT, name TEXT);
+    CREATE TABLE chapters (id INTEGER PRIMARY KEY, work_id TEXT, number INTEGER,
+      html TEXT);`);
   db.prepare('INSERT INTO works (work_id, title, complete) VALUES (?,?,?)').run('1', 'Alpha', 1);
   return db;
 }
@@ -55,10 +57,19 @@ test('a current database is left completely alone', () => {
   assert.deepEqual(ensureColumns(db), []);
 });
 
+test('the reading columns are migrated too, not just the works ones', () => {
+  const db = oldLibrary();
+  const added = ensureColumns(db);
+  assert.ok(added.includes('opened_at') && added.includes('offset'),
+    'what is being read now asks the reading table for both of these');
+  const have = db.prepare('PRAGMA table_info(reading)').all().map((r) => r.name);
+  assert.ok(have.includes('opened_at') && have.includes('offset'));
+});
+
 test('every state filter works after migrating', () => {
   const db = oldLibrary();
   ensureColumns(db);
-  for (const state of ['all', 'rec', 'bookmarked', 'history', 'unread', 'finished', 'later']) {
+  for (const state of ['all', 'rec', 'bookmarked', 'history', 'reading', 'unread', 'finished', 'later']) {
     const q = buildWorksQuery({ state });
     assert.doesNotThrow(() => db.prepare(q.sql).all(...q.args), `state=${state} still fails`);
   }

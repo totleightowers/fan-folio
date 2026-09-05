@@ -402,16 +402,28 @@ public class MainActivity extends Activity {
     };
 
     /*
-     * When this app last had the work open.
+     * Where the reader was, and how the app knows.
      *
      * A `reading` row is not proof anybody read anything: an import from
      * Archive Reader writes one for every work marked for later, chapter 1,
-     * offset 0. Without a column that only this app writes there is no way to
-     * tell those from a work actually being read, and "Continue reading" has
-     * to guess — which it did, by asking for chapter 2 or later, so a work
-     * you were partway through the first chapter of never appeared at all.
+     * offset 0. opened_at is the column only this app writes, and it is what
+     * tells those apart — without it "Continue reading" had to guess, which it
+     * did by asking for chapter 2 or later, so a work you were partway through
+     * the first chapter of never appeared at all.
+     *
+     * Every column the reading table declares, not just that one. What is
+     * being read now is one shared predicate (STATES in core/query.js) and it
+     * asks for offset as well; a library made before that column existed
+     * answered "no such column: r.offset", which is the library screen gone.
      */
     private static final String[][] READING_COLUMNS = {
+        {"chapter", "INTEGER"},
+        {"offset", "REAL"},
+        {"chapters_read", "INTEGER"},
+        {"chapter_count", "INTEGER"},
+        {"marked_later", "INTEGER DEFAULT 0"},
+        {"imported_from", "TEXT"},
+        {"updated_at", "TEXT"},
         {"opened_at", "TEXT"},
     };
 
@@ -477,7 +489,9 @@ public class MainActivity extends Activity {
         for (String[] col : columns) {
             if (have.contains(col[0])) continue;
             try {
-                db.execSQL("ALTER TABLE " + table + " ADD COLUMN " + col[0] + " " + col[1]);
+                /* Quoted, because one of these columns is called offset and
+                   that is a keyword everywhere else in a SELECT. */
+                db.execSQL("ALTER TABLE " + table + " ADD COLUMN \"" + col[0] + "\" " + col[1]);
             } catch (Exception e) {
                 // a column that cannot be added must not stop the ones that can
             }
