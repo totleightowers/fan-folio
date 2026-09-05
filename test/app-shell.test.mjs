@@ -1533,12 +1533,26 @@ test('a job row says how much, what went wrong, and where it stands', () => {
   assert.match(body, /finished\$\{job\.at \? ` \$\{whenShort\(job\.at\)\}` : ''\}/);
 });
 
+/*
+ * A queue record is written down and read back weeks later, and a job is
+ * identified by the two words it is named with. Renaming one silently turns
+ * every saved record into something nothing can act on: Ask for this again
+ * falls through to the author path and goes looking for a person called
+ * "Your library".
+ */
+test('a job renamed is still the job it was', () => {
+  assert.match(js, /const STUBS_PARTS = new Set\(\[STUBS_JOB\.part, 'described but not held'\]\)/,
+    'what it used to be called is part of what it is');
+  const fn = js.slice(js.indexOf('const isStubsJob = '));
+  assert.match(fn.slice(0, 200), /STUBS_PARTS\.has\(job\.part\)/);
+});
+
 test('a finished job can always be asked for again', () => {
   const fn = js.slice(js.indexOf('function runAgain('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /if \(job\.unfinished && jobs\.rerun\(job\.id\)\) return/,
     'what it could not get, when the ids are still to hand');
-  assert.match(body, /job\.author === STUBS_JOB\.author/,
+  assert.match(body, /if \(isStubsJob\(job\)\)/,
     'and otherwise worked out from what the job was: the backlog off the database');
   assert.match(body, /walkAuthor\(job\.author, \{ listing: part, jobId: id \}\)/,
     'or the author walked again');
@@ -1595,7 +1609,7 @@ test('a queued job can be started, reordered or deleted; a running one paused', 
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   for (const [label, call] of [
     ['Pause', 'jobs.pause'], ['Stop', 'jobs.stop'], ['Resume', 'jobs.resume'],
-    ['Start now', 'jobs.startNow'], ['Up', 'jobs.moveUp'], ['Down', 'jobs.moveDown'],
+    ['Prioritise', 'jobs.startNow'], ['Up', 'jobs.moveUp'], ['Down', 'jobs.moveDown'],
     ['Delete', 'jobs.remove'],
   ]) {
     assert.ok(body.includes(label) && body.includes(call), `${label} is missing`);
