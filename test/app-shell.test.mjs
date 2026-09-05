@@ -2626,12 +2626,41 @@ test('first run offers nothing that needs a library', () => {
 });
 
 test('the fonts that need no internet are named as such', () => {
-  assert.match(html, /Georgia, System and Monospace are always available/,
+  assert.match(html, /are here\s+already and work with no connection/,
     'in an app whose point is having things without asking for them');
   const list = html.slice(html.indexOf('<datalist id="fonts">'));
   const first = list.slice(0, list.indexOf('</datalist>'));
-  assert.ok(first.indexOf('Georgia') < first.indexOf('Literata'),
-    'and offered before the ones that do');
+  for (const face of ['Literata', 'Atkinson Hyperlegible']) {
+    assert.ok(first.indexOf(face) < first.indexOf('Merriweather'),
+      `${face} is here already, and is offered before the ones that are not`);
+    assert.equal(first.split(face).length - 1, 1, `${face} is offered once`);
+  }
+});
+
+/*
+ * An app whose whole point is a library that reads with no internet was
+ * asking for the internet to change typeface. Offline, choosing any family
+ * but the three the phone already had did nothing at all, silently, and the
+ * text stayed in the fallback.
+ */
+test('a face that ships with the app is not fetched from Google', () => {
+  const fn = js.slice(js.indexOf('function loadGoogleFont('));
+  assert.match(fn.slice(0, fn.indexOf('\n}\n')), /BUNDLED_FACES\.has\(family\)/);
+
+  const fonts = readFileSync(new URL('../app/fonts.css', import.meta.url), 'utf8');
+  const declared = [...fonts.matchAll(/font-family: '([^']+)'/g)].map((m) => m[1]);
+  const bundled = js.slice(js.indexOf('const BUNDLED_FACES'));
+  for (const face of new Set(declared)) {
+    assert.ok(bundled.slice(0, bundled.indexOf(');')).includes(face),
+      `${face} is declared in fonts.css but the page would still go and ask for it`);
+  }
+  assert.ok(!/https:/.test(fonts), 'and the files it names are the ones in this repository');
+
+  /* The licence is the condition of shipping them, so it travels with them. */
+  for (const name of ['OFL-Literata.txt', 'OFL-Atkinson.txt']) {
+    const text = readFileSync(new URL(`../app/fonts/${name}`, import.meta.url), 'utf8');
+    assert.match(text, /SIL OPEN FONT LICENSE/i, `${name} is the licence it claims to be`);
+  }
 });
 
 /*
