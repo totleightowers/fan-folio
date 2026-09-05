@@ -8,6 +8,7 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
+import { reachedTheEnd } from './core/reading.js';
 import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
@@ -4259,27 +4260,16 @@ function noteReachedTheEnd() {
   if (current.chapter < (current.count || 1)) return;
   if (finishedThisVisit === current.workId) return;
 
-  /*
-   * Three ways this was true the instant a chapter opened, and every one of
-   * them marked a work finished before it had been read — which took it
-   * straight off the Continue reading shelf. For a one-chapter work, which is
-   * most of a library, that meant opening it was enough to lose it.
-   *
-   * A chapter with nothing to scroll is already at its own foot. So is one
-   * whose layout has not settled, because scrollHeight has not caught up with
-   * the text yet. And opening a chapter scrolls it to where you left off,
-   * which fires the scroll handler with nobody having moved at all.
-   *
-   * So: there has to be a chapter's worth of scrolling to do, the reader has
-   * to be at the end of it, and they have to have got there from somewhere.
-   * A chapter too short to scroll is never marked from here — Mark finished
-   * on the work page says it in one tap, and being slow to notice is much
-   * cheaper than taking a work off the shelf somebody was reading it from.
-   */
-  const room = document.documentElement.scrollHeight - window.innerHeight;
-  if (room < 200) return;
-  if (window.scrollY < room - 120) return;
-  if (window.scrollY <= readerOpenedAt + 40) return;
+  /* The rule itself is in core/reading.js, as arithmetic on four numbers.
+     It was three conditions on `window` written inline here, which is the one
+     place no test could reach it — and it was wrong in a way that only showed
+     up on a phone, by finishing works nobody had read. */
+  if (!reachedTheEnd({
+    scrollY: window.scrollY,
+    innerHeight: window.innerHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+    openedAt: readerOpenedAt,
+  })) return;
 
   finishedThisVisit = current.workId;
   markFinished(current.workId, true);
