@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { SCHEMA } from '../app/core/store/schema.js';
+import { CHAPTERS } from '../app/core/query.js';
 
 const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
 const js = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
@@ -1151,6 +1152,34 @@ test('the shell migrates every reading column the query asks for', () => {
      upgraded library does not have — and the library screen is one SELECT, so
      a single missing one takes the whole thing out. */
   assert.deepEqual(declared.filter((name) => !migrated.has(name)), []);
+});
+
+test('the shell and the query agree on how many chapters a work has', () => {
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const body = java.slice(java.indexOf('public String markFinished('));
+  const sql = body.slice(0, body.indexOf('} catch')).replace(/"\s*\+\s*"/g, '').replace(/\s+/g, ' ');
+
+  /* Finished has to mean exactly not-still-reading, and the two are written
+     in different languages in different files. The shell cannot import the
+     predicate, so it is held to it here. */
+  assert.ok(sql.includes(CHAPTERS.replace(/\s+/g, ' ')),
+    'the shell counts a finished work the same way the reading states do');
+  assert.ok(!/chapter_count\b(?![,)])/.test(sql.replace(CHAPTERS.replace(/\s+/g, ' '), '')),
+    'and does not fall back on the metadata column by itself');
+});
+
+test('the reader writes down reaching the end of the last chapter', () => {
+  const fn = js.slice(js.indexOf('function noteReachedTheEnd('));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /readingIsTransient/,
+    'a peek from a search result that lands near the foot of a chapter is not finishing a work');
+  assert.match(body, /finishedThisVisit === current\.workId/,
+    'the last screenful fires the scroll handler over and over');
+  assert.match(body, /markFinished\(current\.workId, true\)/);
+
+  const opened = js.slice(js.indexOf('async function openChapter('));
+  assert.match(opened.slice(0, opened.indexOf('\n}\n')), /if \(!transient\) noteReachedTheEnd\(\)/,
+    'a last chapter that fits on one screen has no scrolling left to say it with');
 });
 
 test('both backends agree on what continue reading means', () => {

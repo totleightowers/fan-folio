@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, SORTS, STATES } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, SORTS, STATES, CHAPTERS } from '../app/core/query.js';
 import { SCHEMA } from '../app/core/store/schema.js';
 import { executable } from '../tools/emit-schema-sql.mjs';
 
@@ -122,6 +122,32 @@ test('a work whose chapter count nobody knows is still readable', () => {
 
   db.prepare('UPDATE reading SET chapters_read = 2 WHERE work_id = ?').run('6');
   assert.ok(run(db, { state: 'finished' }).includes('6'), 'and both of them is finished');
+});
+
+test('saying a work is finished is enough to make it finished', () => {
+  const db = library();
+  db.prepare(`INSERT INTO works (work_id, title, authors, words, chapter_count, complete)
+    VALUES (?,?,?,?,?,?)`).run('6', 'Foxtrot', '["eff"]', 2000, null, 0);
+  const chapter = db.prepare('INSERT INTO chapters (work_id, number, html) VALUES (?,?,?)');
+  chapter.run('6', 1, '<p>one</p>'); chapter.run('6', 2, '<p>two</p>');
+
+  /* Word for word what the shell and the dev server run when the reader gets
+     to the end of the last chapter. A chapter completes by being left, so
+     reading the last one recorded every chapter but that one, and a work read
+     here end to end was never finished by anything. */
+  db.exec(`INSERT INTO reading (work_id, chapters_read, updated_at, opened_at)
+    SELECT w.work_id, ${CHAPTERS}, datetime('now'), datetime('now')
+    FROM works w WHERE w.work_id = '6'
+    ON CONFLICT(work_id) DO UPDATE SET
+      chapters_read = excluded.chapters_read, updated_at = excluded.updated_at`);
+
+  assert.ok(run(db, { state: 'finished' }).includes('6'),
+    'and it counts even though nobody ever told this work how many chapters it has');
+  assert.ok(!run(db, { state: 'reading' }).includes('6'));
+
+  db.exec(`UPDATE reading SET chapters_read = max(0, COALESCE(chapter, 1) - 1)
+           WHERE work_id = '6'`);
+  assert.ok(!run(db, { state: 'finished' }).includes('6'), 'and it can be taken back');
 });
 
 test('every work is in exactly one reading state', () => {

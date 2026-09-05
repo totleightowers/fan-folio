@@ -19,7 +19,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
+import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, pendingLink, pendingOpen } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -3763,6 +3763,25 @@ async function openWork(workId) {
     restart.onclick = () => openChapter(workId, 1);
     actions.append(restart);
   }
+  /* Finished is a state somebody is allowed to simply declare. The reader
+     writes it on reaching the end of the last chapter, but a work read before
+     this app existed, or read on the archive, or abandoned three chapters
+     from the end and never coming back, needs saying rather than inferring. */
+  if (w.has_text) {
+    const done = Number(w.chapters_read) >= chapterTotal(w);
+    const finish = document.createElement('button');
+    finish.className = 'linkish';
+    finish.textContent = done ? 'Not finished after all' : 'Mark finished';
+    finish.onclick = async () => {
+      finish.disabled = true;
+      finishedThisVisit = null;
+      await markFinished(workId, !done);
+      toast(done ? 'Back on the reading shelf' : 'Marked finished');
+      await refresh({ works: true, force: true });
+      openWork(workId);
+    };
+    actions.append(finish);
+  }
   box.append(actions);
 
   if (w.summary) {
@@ -3885,6 +3904,16 @@ async function fetchOnArrival(workId, token) {
 
 let current = { workId: null, chapter: 1, count: 1 };
 
+/**
+ * How many chapters a work really has.
+ *
+ * chapter_count is metadata and metadata goes missing; the chapters actually
+ * held answer it when it does. The same fallback the database uses to decide
+ * what is still being read, so the reader and the shelf cannot disagree about
+ * which chapter is the last one.
+ */
+const chapterTotal = (w) => Number(w?.chapter_count) || w?.chapters?.length || 1;
+
 /*
  * A glance stays a glance; reading becomes reading.
  *
@@ -3947,7 +3976,10 @@ async function openChapter(workId, number, { transient = false } = {}) {
      faithfully restored, landing the reader somewhere arbitrary in a chapter
      they have never seen. The chapter being left has already been recorded. */
   clearTimeout(posTimer);
-  current = { workId, chapter: number, count: w.chapter_count };
+  current = { workId, chapter: number, count: chapterTotal(w) };
+  /* Going back into an earlier chapter is reading it again, and the end of
+     the last one should count again when it is reached again. */
+  if (number < chapterTotal(w)) finishedThisVisit = null;
 
   // the skin is already scoped to #workskin; this element holds one work's CSS,
   // replaced wholesale on every navigation
@@ -3996,6 +4028,9 @@ async function openChapter(workId, number, { transient = false } = {}) {
   requestAnimationFrame(() => {
     if (current.workId === workId && current.chapter === number) window.scrollTo(0, offset);
     updateProgress();
+    /* A last chapter that fits on one screen is finished by being opened:
+       there is nothing left to scroll to, so no scroll will ever say so. */
+    if (!transient) noteReachedTheEnd();
     readerAnchor = blockAtTop();
   });
   updateProgress();
@@ -4087,6 +4122,34 @@ function updateProgress() {
   $('#progress-bar').style.width = `${pct}%`;
 }
 
+/**
+ * Reaching the end, written down rather than worked out afterwards.
+ *
+ * Progress is stored as chapters completed, and a chapter completes by being
+ * left: opening chapter 6 of 6 stores five. Nothing ever stored the sixth, so
+ * a work read here from first line to last stayed "reading" for ever, and
+ * Home's finished count and words read were short by every work anybody had
+ * genuinely finished in this app.
+ *
+ * The end of the last chapter is a real event and this is where it happens.
+ * Not a peek — arriving two chapters back from a search result and scrolling
+ * to the foot of that chapter is not finishing a work — and not twice, since
+ * the last screenful fires the scroll handler repeatedly.
+ */
+let finishedThisVisit = null;
+
+function noteReachedTheEnd() {
+  if (!current.workId || readingIsTransient) return;
+  if (current.chapter < (current.count || 1)) return;
+  if (finishedThisVisit === current.workId) return;
+  const doc = document.documentElement;
+  /* Within a hand's width of the foot of the page, or a chapter short enough
+     that there was never anything to scroll. */
+  if (window.scrollY + window.innerHeight < doc.scrollHeight - 120) return;
+  finishedThisVisit = current.workId;
+  markFinished(current.workId, true);
+}
+
 /* Remember the place, but not on every scroll event — that writes constantly. */
 let posTimer;
 addEventListener('scroll', () => {
@@ -4106,6 +4169,7 @@ addEventListener('scroll', () => {
     };
     save(POS_KEY, positions);
     saveProgress(current.workId, current.chapter, window.scrollY);
+    noteReachedTheEnd();
     readerAnchor = blockAtTop();     // in case the screen changes shape next
   }, 400);
 }, { passive: true });

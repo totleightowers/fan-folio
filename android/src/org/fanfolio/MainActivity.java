@@ -1699,6 +1699,50 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Finished, said rather than inferred.
+         *
+         * A chapter counts as complete once you have left it, so saveProgress
+         * stores chapter - 1 and reading the last chapter of a work stores
+         * every chapter but that one. Nothing ever wrote the last, so a work
+         * read from first line to last inside this app stayed "reading" for
+         * ever, and Home's finished count and words read were short by every
+         * work anybody had actually finished here.
+         *
+         * The total comes from the database rather than from whatever the
+         * page believed: metadata first, the chapters actually held when
+         * there is none, which is the same fallback the reading states use.
+         * Finished therefore means exactly what not-still-reading means.
+         */
+        @JavascriptInterface
+        public String markFinished(String workId, boolean done) {
+            mustBeOurPage();
+            if (db == null) return "{\"error\":\"no database\"}";
+            try {
+                if (done) {
+                    db.execSQL(
+                        "INSERT INTO reading (work_id, chapters_read, updated_at, opened_at) "
+                      + "SELECT w.work_id, "
+                      + "COALESCE(NULLIF(w.chapter_count, 0), "
+                      + "(SELECT count(*) FROM chapters c WHERE c.work_id = w.work_id), 1), "
+                      + "datetime('now'), datetime('now') "
+                      + "FROM works w WHERE w.work_id = ? "
+                      + "ON CONFLICT(work_id) DO UPDATE SET "
+                      + "  chapters_read = excluded.chapters_read, "
+                      + "  updated_at = excluded.updated_at",
+                        new Object[]{ workId });
+                } else {
+                    db.execSQL(
+                        "UPDATE reading SET chapters_read = max(0, COALESCE(chapter, 1) - 1), "
+                      + "updated_at = datetime('now') WHERE work_id = ?",
+                        new Object[]{ workId });
+                }
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
         @JavascriptInterface
         public String saveProgress(String workId, int chapter, double offset) {
             mustBeOurPage();

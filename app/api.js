@@ -656,6 +656,26 @@ export async function saveProgress(workId, chapter, offset) {
   } catch { /* the reader carries on regardless */ }
 }
 
+/**
+ * Finished, said rather than inferred.
+ *
+ * Progress is stored as chapters completed, and a chapter is only complete
+ * once you have left it: reading chapter 6 of 6 stores five. Nothing ever
+ * stored the sixth, so a work read from first line to last inside this app
+ * stayed "reading" for ever, and the finished count and words read on Home
+ * were quietly short by every work anybody had actually finished here.
+ *
+ * The reader says this when it reaches the end of the last chapter, and the
+ * work page offers it directly for the ones this app never saw you read.
+ */
+export async function markFinished(workId, done = true) {
+  try {
+    if (isNative) { native.markFinished(String(workId), !!done); return; }
+    await fetch(`/api/finished?workId=${encodeURIComponent(workId)}&done=${done ? 1 : 0}`,
+      { method: 'POST' });
+  } catch { /* the reader carries on regardless */ }
+}
+
 /* --------------------------------------------------------------- signing in */
 
 /**
