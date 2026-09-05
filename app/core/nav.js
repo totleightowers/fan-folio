@@ -39,6 +39,12 @@ export function samePlace(a, b) {
   return true;
 }
 
+/* A trail, not a log. Somebody who spends an evening moving between tabs
+   should still be able to walk back out of the app, rather than through four
+   hundred rooms — and the oldest entry is the one they are least likely to
+   want, so that is the end it is trimmed from. */
+const DEEPEST = 60;
+
 export class History {
   constructor() { this.entries = []; }
 
@@ -54,6 +60,7 @@ export class History {
   go(from, to) {
     if (!from || samePlace(from, to)) return false;
     this.entries.push(from);
+    if (this.entries.length > DEEPEST) this.entries.shift();
     return true;
   }
 
@@ -83,8 +90,14 @@ export class History {
   }
 
   /**
-   * A tab is a new top-level branch: Back from one leaves the app rather than
-   * retracing the branch the reader has just left.
+   * Start again with nowhere behind you.
+   *
+   * Tabs used to do this, on the reasoning that a tab is a new top-level
+   * branch. What that meant in the hand was Home, a work, More, Home — and
+   * Back closes the app, having thrown away the work being looked at two taps
+   * earlier. Pressing a tab is a journey like any other now, and Back
+   * retraces it. Nothing in the app resets the trail; this is kept for a
+   * genuine fresh start, and tested as the rule it is.
    */
   reset() { this.entries = []; }
 }

@@ -4139,13 +4139,11 @@ async function openChapter(workId, number, { transient = false } = {}) {
      the reader, and the position is set again on the next frame, once the new
      chapter has actually been laid out. */
   const offset = openingOffset(positions, workId, number, { transient });
+  readerOpenedAt = offset;
   window.scrollTo(0, offset);
   requestAnimationFrame(() => {
     if (current.workId === workId && current.chapter === number) window.scrollTo(0, offset);
     updateProgress();
-    /* A last chapter that fits on one screen is finished by being opened:
-       there is nothing left to scroll to, so no scroll will ever say so. */
-    if (!transient) noteReachedTheEnd();
     readerAnchor = blockAtTop();
   });
   updateProgress();
@@ -4253,14 +4251,36 @@ function updateProgress() {
  */
 let finishedThisVisit = null;
 
+/* Where the chapter opened. Reaching the end has to mean something moved. */
+let readerOpenedAt = 0;
+
 function noteReachedTheEnd() {
   if (!current.workId || readingIsTransient) return;
   if (current.chapter < (current.count || 1)) return;
   if (finishedThisVisit === current.workId) return;
-  const doc = document.documentElement;
-  /* Within a hand's width of the foot of the page, or a chapter short enough
-     that there was never anything to scroll. */
-  if (window.scrollY + window.innerHeight < doc.scrollHeight - 120) return;
+
+  /*
+   * Three ways this was true the instant a chapter opened, and every one of
+   * them marked a work finished before it had been read — which took it
+   * straight off the Continue reading shelf. For a one-chapter work, which is
+   * most of a library, that meant opening it was enough to lose it.
+   *
+   * A chapter with nothing to scroll is already at its own foot. So is one
+   * whose layout has not settled, because scrollHeight has not caught up with
+   * the text yet. And opening a chapter scrolls it to where you left off,
+   * which fires the scroll handler with nobody having moved at all.
+   *
+   * So: there has to be a chapter's worth of scrolling to do, the reader has
+   * to be at the end of it, and they have to have got there from somewhere.
+   * A chapter too short to scroll is never marked from here — Mark finished
+   * on the work page says it in one tap, and being slow to notice is much
+   * cheaper than taking a work off the shelf somebody was reading it from.
+   */
+  const room = document.documentElement.scrollHeight - window.innerHeight;
+  if (room < 200) return;
+  if (window.scrollY < room - 120) return;
+  if (window.scrollY <= readerOpenedAt + 40) return;
+
   finishedThisVisit = current.workId;
   markFinished(current.workId, true);
 }
@@ -4528,10 +4548,23 @@ for (const [id, key, transform] of [
  * pressed until something recognisable appeared.
  */
 function goToTab(tab) {
-  stack.reset();
-  if (tab === 'settings') { go('settings'); buildSettings(); return; }
-  if (tab === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
-  if (tab === 'search') {
+  const route = tab === 'search' ? 'results' : tab;
+
+  /*
+   * The way you came, kept.
+   *
+   * This emptied the stack, on the reasoning that a tab is a new top-level
+   * branch. What that meant in the hand: Home, a work, the reader, More,
+   * Home — and Back closes the app, having thrown away everything you were
+   * looking at three taps ago. Back retraces now, the way it does everywhere
+   * else in the app and everywhere else on the system. Pressing the tab you
+   * are already on is not a journey and leaves no trace.
+   */
+  if (showing() !== route) stack.go(here(), { route, params: {} });
+
+  if (route === 'settings') { show('settings', 'lateral'); buildSettings(); return; }
+  if (route === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
+  if (route === 'results') {
     /* The results screen is one reused element, so arriving at it with an
        empty box used to show whatever was searched for last — an old result
        set under a field that says nothing was asked. */
@@ -4543,8 +4576,8 @@ function goToTab(tab) {
     $('#q').focus();
     return;
   }
-  show(tab, 'lateral');
-  if (tab === 'library' && !offset) loadMore(true);
+  show(route, 'lateral');
+  if (route === 'library' && !offset) loadMore(true);
   // Home is refreshed by show(), the same way arriving at it any other way is
 }
 
@@ -4578,7 +4611,9 @@ function paintAccount() {
  */
 window.__open = (where) => {
   if (!VIEWS.includes(String(where))) return;
-  stack.reset();
+  /* Arriving from outside is still arriving from somewhere: if the app was
+     open at a chapter, Back belongs to that chapter and not to the desktop. */
+  if (showing() !== String(where)) stack.go(here(), { route: String(where), params: {} });
   show(String(where), 'lateral');
   if (where === 'activity') buildActivity();
 };

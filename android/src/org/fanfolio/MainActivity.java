@@ -1724,7 +1724,7 @@ public class MainActivity extends Activity {
                         "INSERT INTO reading (work_id, chapters_read, updated_at, opened_at) "
                       + "SELECT w.work_id, "
                       + "COALESCE(NULLIF(w.chapter_count, 0), "
-                      + "(SELECT count(*) FROM chapters c WHERE c.work_id = w.work_id), 1), "
+                      + "NULLIF((SELECT count(*) FROM chapters c WHERE c.work_id = w.work_id), 0), 1), "
                       + "datetime('now'), datetime('now') "
                       + "FROM works w WHERE w.work_id = ? "
                       + "ON CONFLICT(work_id) DO UPDATE SET "

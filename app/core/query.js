@@ -45,8 +45,13 @@ export const SORTS = {
  * its first non-null argument, so the count only runs for the works that need
  * it, and chapters_by_work makes it an index read when it does.
  */
+/* Both fallbacks are NULLIF'd, and the second one is the whole point: count(*)
+   over no rows is 0, not NULL, so COALESCE stopped there and every work whose
+   text has not been downloaded — which is most of a library — had a chapter
+   total of zero. "Read at least none of them" is true of everything, so the
+   entire backlog was classified finished. */
 export const CHAPTERS = 'COALESCE(NULLIF(w.chapter_count, 0), '
-  + '(SELECT count(*) FROM chapters c WHERE c.work_id = w.work_id), 1)';
+  + 'NULLIF((SELECT count(*) FROM chapters c WHERE c.work_id = w.work_id), 0), 1)';
 
 /**
  * Evidence a work has been read in at all.

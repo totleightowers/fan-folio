@@ -150,6 +150,24 @@ test('saying a work is finished is enough to make it finished', () => {
   assert.ok(!run(db, { state: 'finished' }).includes('6'), 'and it can be taken back');
 });
 
+test('a work whose text is not here yet is not a work you have finished', () => {
+  const db = library();
+  /* A stub: described by a listing, never downloaded, so it has no chapter
+     rows and no chapter count. count(*) over no rows is 0 rather than NULL,
+     so the fallback stopped there and gave it a total of nought — and
+     "chapters read >= 0" is true of every work there has ever been. The
+     entire undownloaded backlog was reported as finished. */
+  db.prepare(`INSERT INTO works (work_id, title, authors, words, chapter_count, complete)
+    VALUES (?,?,?,?,?,?)`).run('7', 'Golf', '["gee"]', null, null, 0);
+
+  assert.ok(!run(db, { state: 'finished' }).includes('7'), 'nobody has read this');
+  assert.ok(run(db, { state: 'unread' }).includes('7'));
+
+  db.prepare('INSERT INTO reading (work_id, opened_at) VALUES (?,?)').run('7', '2026-01-01');
+  assert.ok(run(db, { state: 'reading' }).includes('7'),
+    'and opening it puts it on the shelf rather than straight into finished');
+});
+
 test('every work is in exactly one reading state', () => {
   const db = library();
   const all = run(db, {});
