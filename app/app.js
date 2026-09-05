@@ -87,6 +87,19 @@ const SYSTEM_FACES = {
   System: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
   Monospace: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
 };
+/**
+ * Faces that ship with the app, declared in fonts.css.
+ *
+ * An app whose whole point is a library that reads with no internet was asking
+ * for the internet to change typeface: every family but the three the phone
+ * already had was fetched from Google the first time it was chosen, so offline
+ * the choice silently did nothing and the text stayed in the fallback. These
+ * two are here already — a face made for long-form reading, and one drawn to
+ * be legible to low vision, which is the one where needing a connection to
+ * have it is least defensible.
+ */
+const BUNDLED_FACES = new Set(['Literata', 'Atkinson Hyperlegible']);
+
 const loadedFonts = new Set();
 
 /**
@@ -95,7 +108,7 @@ const loadedFonts = new Set();
  * word came from the archive on disk.
  */
 function loadGoogleFont(family, weight = 400) {
-  if (!family || SYSTEM_FACES[family]) return;
+  if (!family || SYSTEM_FACES[family] || BUNDLED_FACES.has(family)) return;
   const key = `${family}:${weight}`;
   if (loadedFonts.has(key)) return;
   loadedFonts.add(key);
