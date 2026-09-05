@@ -8,7 +8,7 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
-import { reachedTheEnd } from './core/reading.js';
+import { reachedTheEnd, chromeHidden } from './core/reading.js';
 import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
@@ -4374,6 +4374,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
      chapter has actually been laid out. */
   const offset = openingOffset(positions, workId, number, { transient });
   readerOpenedAt = offset;
+  showChrome();
   window.scrollTo(0, offset);
   requestAnimationFrame(() => {
     if (current.workId === workId && current.chapter === number) window.scrollTo(0, offset);
@@ -4508,11 +4509,45 @@ function noteReachedTheEnd() {
   markFinished(current.workId, true);
 }
 
+/*
+ * The controls get out of the way of the reading.
+ *
+ * The rule is in core/reading.js; this is the part that has to touch the
+ * document. Nothing is removed — the bar comes back on any movement back up
+ * the page, which is the same gesture as reaching for it.
+ */
+let chromeLastY = 0;
+let chromeAway = false;
+
+function quietenChrome() {
+  const away = chromeHidden({
+    scrollY: window.scrollY,
+    lastY: chromeLastY,
+    innerHeight: window.innerHeight,
+    scrollHeight: document.documentElement.scrollHeight,
+    hidden: chromeAway,
+  });
+  /* Only the movements big enough to have a direction move the mark, or a
+     slow drift never adds up to one. */
+  if (Math.abs(window.scrollY - chromeLastY) > 24) chromeLastY = window.scrollY;
+  if (away === chromeAway) return;
+  chromeAway = away;
+  $('#chapnav').classList.toggle('away', away);
+}
+
+/** A chapter opens with its controls in view, whatever the last one did. */
+function showChrome() {
+  chromeAway = false;
+  chromeLastY = window.scrollY;
+  $('#chapnav').classList.remove('away');
+}
+
 /* Remember the place, but not on every scroll event — that writes constantly. */
 let posTimer;
 addEventListener('scroll', () => {
   if ($('#reader').hidden || !current.workId) return;
   updateProgress();
+  quietenChrome();
   clearTimeout(posTimer);
   posTimer = setTimeout(() => {
     /* Far enough past where the search dropped you that this is no longer a

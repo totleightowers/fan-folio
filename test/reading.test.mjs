@@ -67,3 +67,38 @@ test('numbers that are not numbers decide nothing', () => {
   assert.equal(reachedTheEnd(phone({ scrollHeight: NaN, scrollY: NaN })), false);
   assert.equal(reachedTheEnd(phone({ scrollHeight: undefined, scrollY: 500 })), false);
 });
+
+/* ------------------------------------------------- the reader's own chrome */
+
+import { chromeHidden } from '../app/core/reading.js';
+
+/** Deep into a long chapter, which is where the question arises at all. */
+const deep = (over) => ({
+  innerHeight: 780, scrollHeight: 12000, scrollY: 5000, lastY: 5000, ...over,
+});
+
+test('reading onwards puts the controls away', () => {
+  assert.equal(chromeHidden(deep({ scrollY: 5400, lastY: 5000 })), true);
+});
+
+test('looking back brings them straight out', () => {
+  assert.equal(chromeHidden(deep({ scrollY: 4600, lastY: 5000, hidden: true })), false);
+});
+
+test('a hand on a train does not flicker the bar', () => {
+  /* Movements too small to have a direction leave it exactly as it was. */
+  assert.equal(chromeHidden(deep({ scrollY: 5010, lastY: 5000, hidden: true })), true);
+  assert.equal(chromeHidden(deep({ scrollY: 4990, lastY: 5000, hidden: false })), false);
+});
+
+test('the controls are there at the start of a chapter and at its end', () => {
+  assert.equal(chromeHidden(deep({ scrollY: 100, lastY: 0, hidden: true })), false,
+    'nobody has started reading yet');
+  assert.equal(chromeHidden(deep({ scrollY: 11220, lastY: 10000, hidden: true })), false,
+    'and the next chapter is the whole point of being at the foot of this one');
+});
+
+test('a chapter with nothing to scroll keeps its controls', () => {
+  assert.equal(chromeHidden({ innerHeight: 780, scrollHeight: 700, scrollY: 0, lastY: 0 }), false);
+  assert.equal(chromeHidden(), false);
+});
