@@ -177,6 +177,22 @@ const stack = new History();
    deserved a tab was the thing with no home at all: what the app is doing. */
 const TABBED = new Set(['home', 'library', 'activity']);
 
+/**
+ * Where the app still looks like the app.
+ *
+ * Opening a work is ordinary navigation inside a library, not stepping out of
+ * it — but the tab bar was shown on exactly the three views that own a tab,
+ * so a work page took Library and Activity off the screen and left the cog
+ * where it was. Settings was more globally reachable than the library, which
+ * is backwards for something whose whole purpose is reading.
+ *
+ * Only the reader is immersive, and only setup has nothing to navigate yet.
+ */
+const KEEPS_TABS = new Set([...TABBED, 'detail', 'results']);
+
+/** The tab whose part of the app you are in, lit even a screen or two down. */
+let inTab = 'home';
+
 /** The view currently on screen. */
 const showing = () => VIEWS.find((v) => !$(`#${v}`).hidden) ?? 'home';
 
@@ -198,8 +214,7 @@ let suppressMotion = false;
 
 function show(name, motion = 'none') {
   if (name !== 'reader') keepAwake(false);
-  /* Adding a work is never part of reading one. */
-  $('#add').hidden = name === 'reader';
+  paintChrome(name);
   clearBackPreview();
   const entering = $(`#${name}`);
   const changing = entering.hidden;
@@ -214,7 +229,7 @@ function show(name, motion = 'none') {
       () => entering.classList.remove(MOTION[motion]), { once: true });
   }
   $('#back').hidden = stack.depth === 0;
-  $('#tabs').hidden = !TABBED.has(name);
+  $('#tabs').hidden = !KEEPS_TABS.has(name);
 
   /*
    * Arriving at Home rebuilds it.
@@ -229,11 +244,46 @@ function show(name, motion = 'none') {
    * on actually arriving, not on every redraw.
    */
   if (name === 'home' && changing) refresh({ force: true });
+  /* A work opened from the library is still the library, and the tab bar says
+     so rather than going blank the moment you touch anything. */
+  if (TABBED.has(name)) inTab = name;
   for (const b of $$('#tabs button')) {
-    b.classList.toggle('on', b.dataset.tab === (name === 'results' ? 'search' : name));
+    b.classList.toggle('on', b.dataset.tab === (TABBED.has(name) ? name : inTab));
   }
   paintSearchPlaceholder();
+  paintActivityBadge();
   window.scrollTo(0, 0);
+}
+
+/**
+ * Screens where the search box means something.
+ *
+ * It deliberately changes what it searches according to where you are, and on
+ * Activity and Settings there is nothing for it to mean — so it fell through
+ * to whatever scope was last in force, and the box on the Settings screen
+ * could still be quietly searching inside a work you had left two screens
+ * ago. A box with no meaning is not shown.
+ */
+const SEARCHABLE = new Set(['home', 'library', 'results', 'detail', 'reader']);
+
+/**
+ * What the top bar offers, screen by screen.
+ *
+ * Settings used to be the one control that never went away — present inside a
+ * chapter, present before there was a library to configure, and therefore the
+ * most reachable thing in the whole app. It is a secondary screen and it is
+ * offered where the rest of the app is offered: alongside the tabs. The
+ * reader reaches it through More, and first run has nothing to configure yet.
+ */
+function paintChrome(name) {
+  $('#bar').hidden = name === 'setup';
+  /* Adding a work is never part of reading one. */
+  $('#add').hidden = name === 'reader';
+  $('#open-settings').hidden = !KEEPS_TABS.has(name);
+  $('#q').hidden = !SEARCHABLE.has(name);
+  /* The box is what stretches the bar; without it the controls would bunch up
+     against the Back button with the rest of the width left empty. */
+  $('#bar-gap').hidden = !$('#q').hidden;
 }
 
 /**
@@ -1240,7 +1290,8 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', '#chapnav button', '#read-now', '#closetypo', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here', '.version-row', '#ab-current', '.job-act',
+  '#to-work', '#on-archive', '#kudos-here', '#reader-more', '.menu-list button',
+  '.version-row', '#ab-current', '.job-act',
 ].join(',');
 
 /* Far enough to be a scroll rather than an unsteady finger. Below this a
@@ -1976,6 +2027,7 @@ const jobs = createQueue({
     }
     keepQueue();
     sayWhatIsHappening();
+    paintActivityBadge();
     if (!$('#activity').hidden) { paintJobs(); paintStubs(); }
   },
 });
@@ -1989,6 +2041,28 @@ function whenShort(at) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.round(hours / 24);
   return days === 1 ? 'yesterday' : `${days}d ago`;
+}
+
+/**
+ * A tab that says whether anything is going on behind it.
+ *
+ * A download of a catalogue runs for an hour, and while it does the Activity
+ * tab looked exactly like a tab nobody had ever pressed. Three states are
+ * worth a glance: work happening, work stopped and waiting for a decision,
+ * and work that ended badly.
+ */
+function paintActivityBadge() {
+  const dot = $('#activity-dot');
+  if (!dot) return;
+  const list = jobs.list();
+  const busy = list.some((j) => ['running', 'queued', 'listing'].includes(j.state));
+  const held = list.some((j) => ['paused', 'pausing'].includes(j.state));
+  const failed = list.some((j) => j.state === 'done' && (j.unfinished?.length || j.lastError));
+  const state = busy ? 'busy' : held ? 'held' : failed ? 'failed' : '';
+  dot.hidden = !state;
+  dot.dataset.state = state;
+  dot.setAttribute('aria-label', state === 'busy' ? 'Downloading'
+    : state === 'held' ? 'Paused' : state === 'failed' ? 'Needs attention' : '');
 }
 
 /**
@@ -4405,27 +4479,39 @@ for (const [id, key, transform] of [
 
 /* ------------------------------------------------------------------ start */
 
-for (const b of $$('#tabs button')) {
-  b.onclick = () => {
-    stack.reset();
-    const tab = b.dataset.tab;
-    if (tab === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
-    if (tab === 'search') {
-      /* The results screen is one reused element, so arriving at it with an
-         empty box used to show whatever was searched for last — an old result
-         set under a field that says nothing was asked. */
-      if (!$('#q').value.trim()) {
-        $('#results').innerHTML =
-          '<p class="empty">Search your library — works, tags, and every word held.</p>';
-      }
-      show('results', 'lateral');
-      $('#q').focus();
-      return;
+/**
+ * Going to one of the places the app is made of.
+ *
+ * The tab bar's job, and now the reader's More sheet's too — a chapter is the
+ * one screen with no tabs, and its only way back into the app used to be Back
+ * pressed until something recognisable appeared.
+ */
+function goToTab(tab) {
+  stack.reset();
+  if (tab === 'settings') { go('settings'); buildSettings(); return; }
+  if (tab === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
+  if (tab === 'search') {
+    /* The results screen is one reused element, so arriving at it with an
+       empty box used to show whatever was searched for last — an old result
+       set under a field that says nothing was asked. */
+    if (!$('#q').value.trim()) {
+      $('#results').innerHTML =
+        '<p class="empty">Search your library — works, tags, and every word held.</p>';
     }
-    show(tab, 'lateral');
-    if (tab === 'library' && !offset) loadMore(true);
-    // Home is refreshed by show(), the same way arriving at it any other way is
-  };
+    show('results', 'lateral');
+    $('#q').focus();
+    return;
+  }
+  show(tab, 'lateral');
+  if (tab === 'library' && !offset) loadMore(true);
+  // Home is refreshed by show(), the same way arriving at it any other way is
+}
+
+for (const b of $$('#tabs button')) b.onclick = () => goToTab(b.dataset.tab);
+
+$('#reader-more').onclick = () => openSheet($('#reader-menu'));
+for (const b of $$('#reader-menu [data-go]')) {
+  b.onclick = () => { closeSheet($('#reader-menu')); goToTab(b.dataset.go); };
 }
 
 /* --------------------------------------------------------------- account */
