@@ -1412,6 +1412,8 @@ function tick(kind = 'tick') {
 }
 
 async function buildSettings() {
+  /* Whatever a bookmark job is doing, the controls that start one say so. */
+  paintSyncButtons();
   const facts = $('#library-facts');
   facts.textContent = '';
   const add = (term, value) => {
@@ -2029,6 +2031,10 @@ const jobs = createQueue({
     keepQueue();
     sayWhatIsHappening();
     paintActivityBadge();
+    /* Stopping a bookmark sync from the Activity screen, or pausing it from
+       the notification, is not something the settings screen would otherwise
+       hear about — and it is where the buttons that started it live. */
+    paintSyncButtons();
     if (!$('#activity').hidden) { paintJobs(); paintStubs(); }
   },
 });
@@ -2113,8 +2119,15 @@ function sayWhatIsHappening() {
   }
   const first = busy[0];
   const left = busy.reduce((n, j) => n + Math.max(0, j.total - j.added), 0);
+  /* A job still reading a list has nothing to count towards, and a bookmark
+     reconciliation never will — it was reported as "0 of ?" for the tens of
+     minutes it takes, which is the notification saying nothing. */
+  const one = (j) => `${j.author} · ${j.part} — ` + (
+    j.total ? `${j.added} of ${j.total}`
+      : j.page ? `page ${j.page}${j.pages ? ` of ${j.pages}` : ''}`
+      : 'reading the list');
   const said = busy.length === 1
-    ? `${first.author} · ${first.part} — ${first.added} of ${first.total || '?'}`
+    ? one(first)
     : `${busy.length} jobs, about ${left} works to go`;
   if (said === lastSaid) return;
   lastSaid = said;
@@ -2220,10 +2233,19 @@ function paintJobs() {
      * became the words "36 downloaded" and nothing else.
      */
     const counting = job.state === 'listing' && !job.total;
+    /* Where a walk has got to. A job reading an index has no works to count
+       yet, and a bookmark reconciliation never has any at all — it reads the
+       list and changes what is marked. "0 of 0" was what that looked like. */
+    const walking = job.page
+      ? `page ${fmt(job.page)}${job.pages ? ` of ${fmt(job.pages)}` : ''}`
+      : null;
     /* A total lost by the older fault cannot come back, and "36 of 0" reads as
        a job asked for nothing that did thirty-six anyway. */
     const count = counting
-      ? (job.part === 'works' ? 'reading their works…' : 'reading their bookmarks…')
+      ? (walking ? `reading ${walking}…`
+        : job.part === 'works' ? 'reading their works…' : 'reading their bookmarks…')
+      /* Work whose outcome is not a number of downloads says what it was. */
+      : !job.total && job.say ? job.say
       : !job.total && (job.added || job.failed)
       ? `${job.added} downloaded`
       : `${job.added} of ${job.total}${job.open ? '+' : ''}`;
@@ -2385,7 +2407,15 @@ function resumeJobs() {
      * walk entirely: what it had already queued was kept, and the pages it
      * had not reached yet were simply forgotten.
      */
-    if (job.open && isNative && signedIn()) {
+    if (job.open && isNative && signedIn() && isBookmarkJob(job)) {
+      /* A bookmark walk goes back to the first page rather than the one it
+         had reached. Catching up with what is new is a page or two, and
+         reading the whole list is the only way the other one can say what has
+         been removed — resumed halfway it would decide that everything on the
+         pages it never read had been unbookmarked. */
+      const again = job.part === BOOKMARKS_ALL.part ? runReconcile : runNewBookmarks;
+      again(id).catch(() => {});
+    } else if (job.open && isNative && signedIn()) {
       walkAuthor(job.author, {
         listing: job.part, jobId: id,
         fromPage: Math.max(1, Number(job.page) || 0),
@@ -2717,8 +2747,51 @@ const asStubs = (works) => works.map((w) => ({
  * walks somebody's bookmarks impatiently gets their account limited and they
  * will not know why.
  */
-let syncing = false;
-let stopRequested = false;
+/*
+ * A bookmark sync is a job like any other.
+ *
+ * It was two module flags and a line of status text on the settings screen.
+ * So it could not be paused, it did not survive closing the app, it left no
+ * record of what it had done, and — because the notification that keeps
+ * Android from killing this app is driven by the queue — a bookmark walk
+ * running on its own told the system nothing at all. A full reconciliation
+ * is tens of minutes of paced requests. That is exactly the work the
+ * notification exists for, and it was the one kind that never raised it.
+ *
+ * Two jobs, because they are two different undertakings: catching up with
+ * what is new, and reading the whole list to find what is gone.
+ */
+const BOOKMARKS_NEW = { author: 'Your bookmarks', part: 'new ones' };
+const BOOKMARKS_ALL = { author: 'Your bookmarks', part: 'the whole list' };
+
+const isBookmarkJob = (j) => j.author === BOOKMARKS_NEW.author;
+
+/** The bookmark job now going, if there is one. */
+const liveBookmarkJob = () => jobs.list().find(
+  (j) => isBookmarkJob(j) && j.state !== 'done' && j.state !== 'cancelled');
+
+/**
+ * A bookmark list being read right now.
+ *
+ * What has to be prevented is two walks at once, not two of anything. A sync
+ * that has found four hundred new bookmarks spends the next few hours
+ * downloading them, and greying out "check for new bookmarks" for all of it
+ * would be the app refusing a perfectly reasonable question because it is
+ * busy with the answer to the last one. `open` is true exactly while a list
+ * is being read, pause included, and false the moment the walk seals it.
+ */
+const walkingBookmarks = () => jobs.list().find(
+  (j) => isBookmarkJob(j) && j.open && j.state !== 'done' && j.state !== 'cancelled');
+
+/* The buttons follow the job rather than a flag, so they are right after a
+   restart, after a pause from the notification, and after a stop from the
+   Activity screen — none of which the settings screen knows about. */
+function paintSyncButtons() {
+  const walking = walkingBookmarks();
+  $('#sync-now').disabled = Boolean(walking);
+  $('#sync-all').disabled = Boolean(walking);
+  $('#sync-stop').hidden = !liveBookmarkJob();
+}
 
 const syncSay = (text) => {
   const el = $('#sync-status');
@@ -2884,34 +2957,50 @@ function forgetArchiveUser() {
  * you asked to lose.
  */
 async function reconcileAllBookmarks() {
-  if (syncing) return;
+  if (walkingBookmarks()) { toast('A bookmark list is already being read'); go('activity'); return; }
   if (!isNative) { toast('Syncing needs the app'); return; }
   if (!signedIn()) { toast('Sign in to the archive first'); return; }
 
-  syncing = true;
-  stopRequested = false;
-  $('#sync-now').disabled = true;
-  $('#sync-all').disabled = true;
-  $('#sync-stop').hidden = false;
-  syncSay('Asking the archive who you are…');
+  const id = jobs.add({ ...BOOKMARKS_ALL, workIds: [], open: true });
+  paintSyncButtons();
+  await runReconcile(id);
+}
 
+/**
+ * The walk itself, so a restart can start it again.
+ *
+ * Always from the first page, whatever page it had reached. This one decides
+ * what is no longer bookmarked, and it can only do that from the whole list —
+ * a walk resumed halfway would conclude that everything on the pages it never
+ * read had been unbookmarked, and quietly drop it.
+ */
+async function runReconcile(id) {
+  syncSay('Asking the archive who you are…');
+  let stopped = false;
   try {
     const user = await whoAmI();
     const all = [];
     let pages = null;
     for (let page = 1; page <= 200; page++) {
-      if (stopRequested) break;
+      /* Pause and Stop, from the Activity screen or the notification. The
+         walk is the longest-running thing this app does and it was the one
+         thing with no way to interrupt it. */
+      if (!await jobs.waitUntilRunnable(id)) { stopped = true; break; }
       const listing = parseListing(await archivePage(bookmarksUrl(user, page)));
       pages = listing.pagination?.total ?? pages;
       for (const w of listing.works) if (w.workId) all.push(String(w.workId));
+      jobs.note(id, { page, pages });
       syncSay(`Page ${page}${pages ? ` of ${pages}` : ''} — ${all.length} bookmarks read`);
       if (pages && page >= pages) break;
       if (!listing.works.length) break;
     }
 
-    if (stopRequested) {
+    if (stopped || jobs.isStopped(id)) {
       /* A partial list would read as "everything else was unbookmarked". */
-      syncSay(`Stopped after ${all.length}. Nothing changed — a half-read list `
+      const say = `stopped after ${fmt(all.length)} — nothing changed, `
+        + 'a half-read list cannot say what was removed';
+      jobs.note(id, { say });
+      syncSay(`Stopped after ${fmt(all.length)}. Nothing changed — a half-read list `
         + 'cannot say what was removed.');
       return;
     }
@@ -2919,30 +3008,41 @@ async function reconcileAllBookmarks() {
     const { kept, dropped } = reconcileBookmarks(all);
     await refresh({ works: true, force: true });
     tick('commit');
-    syncSay(`${fmt(kept)} bookmark${kept === 1 ? '' : 's'}`
-      + (dropped ? `, ${fmt(dropped)} no longer bookmarked.` : ', nothing removed.')
-      + ' Works already downloaded were kept.');
+    const say = `${fmt(kept)} bookmark${kept === 1 ? '' : 's'}`
+      + (dropped ? `, ${fmt(dropped)} no longer bookmarked` : ', nothing removed');
+    jobs.note(id, { say });
+    syncSay(`${say}. Works already downloaded were kept.`);
   } catch (e) {
+    jobs.note(id, { say: e.message });
     syncSay(e.message);
   } finally {
-    syncing = false;
-    $('#sync-now').disabled = false;
-    $('#sync-all').disabled = false;
-    $('#sync-stop').hidden = true;
+    jobs.seal(id);
+    paintSyncButtons();
+    keepQueue();
   }
 }
 
 async function syncBookmarks() {
-  if (syncing) return;
+  if (walkingBookmarks()) { toast('A bookmark list is already being read'); go('activity'); return; }
   if (!isNative) { toast('Syncing needs the app'); return; }
   if (!signedIn()) { toast('Sign in to the archive first'); return; }
 
-  syncing = true;
-  stopRequested = false;
-  $('#sync-now').disabled = true;
-  $('#sync-stop').hidden = false;
-  syncSay('Asking the archive who you are…');
+  const id = jobs.add({ ...BOOKMARKS_NEW, workIds: [], open: true });
+  paintSyncButtons();
+  await runNewBookmarks(id);
+}
 
+/**
+ * Catching up with what is new, as a job.
+ *
+ * The walk finds them and the same job fetches them, rather than a walk here
+ * handing a fresh job a list at the end. One job is what somebody asked for —
+ * "check my bookmarks" — and it can be paused, stopped, put back after a
+ * restart and counted towards the notification from the moment it starts
+ * rather than from whenever the walk happened to finish.
+ */
+async function runNewBookmarks(id) {
+  syncSay('Asking the archive who you are…');
   try {
     const user = await whoAmI();
     /*
@@ -2963,7 +3063,6 @@ async function syncBookmarks() {
       return known.get(key);
     };
 
-    let first = true;
     /* Whether the library already lists it as one of yours, which is what
        says where the new bookmarks stop — not whether its text is here. */
     const bookmarked = new Map();
@@ -2983,54 +3082,68 @@ async function syncBookmarks() {
 
     const { workIds, seen } = await findNewBookmarks({
       fetchPage: async (page) => {
-        if (!first) await wait(nextGap());
-        first = false;
+        /* Pause and Stop reach the walk, not only the downloading that
+           follows it. Nothing waits on a clock of its own here: archivePage
+           goes through the one pacer, and the half-minute this used to add on
+           top of it was a second schedule for the same requests. */
+        if (!await jobs.waitUntilRunnable(id)) return { works: [], pagination: null };
         return parseListing(await archivePage(bookmarksUrl(user, page)));
       },
       isHeld,
       isBookmarked,
-      shouldStop: () => stopRequested,
-      onProgress: ({ page, found }) =>
-        syncSay(`Page ${page} — ${found} new bookmark${found === 1 ? '' : 's'} so far`),
+      shouldStop: () => jobs.isStopped(id),
+      onProgress: ({ page, totalPages, found }) => {
+        jobs.note(id, { page, pages: totalPages ?? null });
+        syncSay(`Page ${page} — ${found} new bookmark${found === 1 ? '' : 's'} so far`);
+      },
     });
+
+    if (jobs.isStopped(id)) { syncSay('Stopped.'); return; }
 
     /* Every bookmark the walk saw is one of yours, whether or not its text
        needed fetching. Recording that is the point of a bookmark sync; the
        downloading is a consequence of it. */
     let noted = 0;
-    for (const id of seen ?? []) if (markBookmarked(id)) noted += 1;
+    for (const workId of seen ?? []) if (markBookmarked(workId)) noted += 1;
 
     if (!workIds.length) {
+      const say = noted
+        ? `${fmt(noted)} bookmark${noted === 1 ? '' : 's'} checked, all already here`
+        : 'nothing new';
+      jobs.note(id, { say });
       syncSay(noted
-        ? `Up to date. ${noted} bookmark${noted === 1 ? '' : 's'} checked, all already here.`
+        ? `Up to date. ${say}.`
         : 'Nothing new. The library already has everything you have bookmarked.');
       await refresh({ works: true, force: true });
       return;
     }
 
     /*
-     * The works go through the queue rather than being fetched here.
+     * The works go to this same job rather than a new one.
      *
-     * This had its own loop with its own half-minute clock, which is the very
-     * thing the shared pacer was built to stop: an author job and a bookmark
-     * sync running together made requests twice as fast as either believed it
-     * was. Sequential is not paced, and a second clock is not a schedule.
-     *
-     * As a job it also gains everything a job has — it survives closing the
-     * app, it can be paused and stopped, it keeps the notification alive, and
-     * it says what it is doing in the same place as everything else.
+     * The downloading had its own loop with its own half-minute clock, which
+     * is the very thing the shared pacer was built to stop: an author job and
+     * a bookmark sync running together made requests twice as fast as either
+     * believed. Then it was a second job, which is honest about the pacing
+     * and dishonest about what happened — "check my bookmarks" is one thing
+     * somebody asked for, and it should be one row that walks, then fetches,
+     * then says how it went.
      */
-    jobs.add({ author: 'New bookmarks', part: 'works', workIds });
+    jobs.append(id, workIds);
     await refresh({ works: true, force: true });
     tick('commit');
     syncSay(`${fmt(workIds.length)} work${workIds.length === 1 ? '' : 's'} to fetch, `
       + 'queued below. They arrive one at a time, and carry on if you go elsewhere.');
   } catch (e) {
+    jobs.note(id, { say: e.message });
     syncSay(e.message);
   } finally {
-    syncing = false;
-    $('#sync-now').disabled = false;
-    $('#sync-stop').hidden = true;
+    /* The list is complete however it ended, so the job stops saying it is
+       still reading one. What it found, if anything, is now ordinary queued
+       work and finishes on its own. */
+    jobs.seal(id);
+    paintSyncButtons();
+    keepQueue();
   }
 }
 
@@ -3111,7 +3224,13 @@ function heldWithText(ids, { unknownIsHeld = true } = {}) {
 
 $('#sync-now').onclick = syncBookmarks;
 $('#sync-all').onclick = reconcileAllBookmarks;
-$('#sync-stop').onclick = () => { stopRequested = true; syncSay('Stopping after this one…'); };
+$('#sync-stop').onclick = () => {
+  const live = liveBookmarkJob();
+  if (!live) { paintSyncButtons(); return; }
+  jobs.stop(live.id);
+  syncSay('Stopping after this one…');
+  paintSyncButtons();
+};
 
 /* ------------------------------------------------------------------ sheets */
 
