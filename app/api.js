@@ -67,13 +67,25 @@ const LOCAL = {
    * entire point of the seam.
    */
   home: () => {
-    const shelf = (where, order, limit = 12) => sql(`
+    /*
+     * A shelf, and how much of it is not on it.
+     *
+     * Twelve works at most, with nothing anywhere saying so — twenty active
+     * works showed as twelve and the other eight looked lost rather than
+     * folded away. See all is the way to the rest, and it can only be trusted
+     * if the shelf admits there is a rest.
+     */
+    const shelf = (where, order, limit = 12) => ({
+      works: sql(`
       SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count, w.complete, w.rating,
              w.rec,
              r.chapter AS at_chapter, r.chapters_read, r.marked_later,
              (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
       FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-      WHERE ${where} ORDER BY ${order} LIMIT ${lim(limit, 12)}`);
+      WHERE ${where} ORDER BY ${order} LIMIT ${lim(limit, 12)}`),
+      total: sql(`SELECT count(*) AS n FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+                  WHERE ${where}`)[0].n,
+    });
 
     const totals = sql('SELECT count(*) AS works, COALESCE(sum(words),0) AS words FROM works')[0];
     const read = sql(`
@@ -93,7 +105,7 @@ const LOCAL = {
       },
       shelves: [
         { key: 'reading', title: 'Continue reading',
-          works: shelf(
+          ...shelf(
             /* The Library's Reading filter and nothing else — see STATES in
                core/query.js. These were two hand-written predicates that
                disagreed, so a work could sit on this shelf and then vanish
@@ -102,12 +114,12 @@ const LOCAL = {
             /* Most recently opened first, whichever shelf it was opened from. */
             'COALESCE(r.opened_at, r.updated_at) DESC') },
         { key: 'later', title: 'Marked for later',
-          works: shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
-        { key: 'added', title: 'Recently added', works: shelf('1=1', 'COALESCE(w.downloaded_at, w.fetched_at) DESC') },
+          ...shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
+        { key: 'added', title: 'Recently added', ...shelf('1=1', 'COALESCE(w.downloaded_at, w.fetched_at) DESC') },
         { key: 'long', title: 'Settle in',
-          works: shelf(`w.complete = 1 AND ${STATES.unread}`, 'w.words DESC') },
+          ...shelf(`w.complete = 1 AND ${STATES.unread}`, 'w.words DESC') },
         { key: 'short', title: 'One sitting',
-          works: shelf(`w.complete = 1 AND w.words < 5000 AND ${STATES.unread}`, 'RANDOM()') },
+          ...shelf(`w.complete = 1 AND w.words < 5000 AND ${STATES.unread}`, 'RANDOM()') },
       ].filter((sh) => sh.works.length),
       browse: {
         fandom: top('fandom', 14), relationship: top('relationship', 14),
