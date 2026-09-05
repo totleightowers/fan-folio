@@ -1312,13 +1312,15 @@ test('the reader writes down reaching the end of the last chapter', () => {
  * the moment it was opened.
  */
 test('opening a chapter cannot finish it', () => {
+  /* The rule itself is exercised in reading.test.mjs, against the numbers a
+     phone actually reports. What this file can say is that the reader asks
+     it, rather than working the answer out again inline — which is how it
+     came to be wrong somewhere no test could see. */
   const fn = js.slice(js.indexOf('function noteReachedTheEnd('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /const room = document\.documentElement\.scrollHeight - window\.innerHeight/);
-  assert.match(body, /if \(room < 200\) return/,
-    'a chapter with nothing to scroll is already at its own foot');
-  assert.match(body, /window\.scrollY <= readerOpenedAt \+ 40/,
-    'and the scroll back to where you were is not somebody reading to the end');
+  assert.match(body, /if \(!reachedTheEnd\(\{/, 'one rule, in one place');
+  assert.match(body, /scrollHeight: document\.documentElement\.scrollHeight/);
+  assert.match(body, /openedAt: readerOpenedAt/);
 
   const opened = js.slice(js.indexOf('async function openChapter('));
   const body_ = opened.slice(0, opened.indexOf('\n}\n'));
