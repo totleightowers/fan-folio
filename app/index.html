@@ -290,6 +290,17 @@
       <div id="author-bar" hidden>
         <p id="author-known" class="setting-note"></p>
         <button id="author-sync" class="ghost">Fetch their works and bookmarks</button>
+        <!--
+            Both halves is the usual want and stays the plain button. But
+            somebody who follows a writer for their own fic and not their
+            reading, or the other way round, was made to fetch twice as much
+            archive as they asked for — and the two halves are separate jobs
+            already, so offering them separately costs nothing.
+        -->
+        <div class="author-acts">
+          <button id="author-works" class="linkish">Works only</button>
+          <button id="author-bookmarks" class="linkish">Bookmarks only</button>
+        </div>
       </div>
       <div id="count" class="count"></div>
       <div id="chips" class="chips"></div>
