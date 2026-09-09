@@ -157,6 +157,20 @@ CREATE TABLE IF NOT EXISTS reading (
   opened_at      TEXT
 );
 
+-- Works removed on purpose.
+--
+-- A library only ever grew: there was no delete anywhere in this app, so the
+-- only way to lose a work was to lose the database. Removing one is not just
+-- a matter of taking the rows out, because everything that reads a listing
+-- would put it straight back — a bookmark sync, an author walk, the backlog.
+-- This is what those consult. The title is kept so the undo list can name
+-- what it is holding rather than showing a row of numbers.
+CREATE TABLE IF NOT EXISTS deleted (
+  work_id TEXT PRIMARY KEY,
+  title   TEXT,
+  at      TEXT
+);
+
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 `;
 

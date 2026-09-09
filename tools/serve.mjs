@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
+import { INDEX_FIRST, deleteStatements, TOMBSTONE } from '../app/core/store/delete.js';
 import { search } from '../app/core/discover.js';
 import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED, CHAPTERS } from '../app/core/query.js';
 
@@ -275,6 +276,43 @@ createServer(async (req, res) => {
           chapters_read = max(COALESCE(reading.chapters_read, 0), excluded.chapters_read),
           updated_at = excluded.updated_at,
           opened_at = excluded.opened_at`).run(workId, chapter, offset, Math.max(0, chapter - 1));
+      return json(res, { ok: true });
+    }
+
+    /*
+     * Remove a work, everything it owns, and remember that it went.
+     *
+     * The index goes first and by hand: chapter_fts is external-content FTS4
+     * keyed on the chapter's rowid, so deleting the chapters first leaves
+     * index rows pointing at chapters that are not there. The tables and
+     * their order come from core/store/delete.js, which the shell mirrors —
+     * two implementations of "everything a work owns" that drift is a
+     * library that grows a little every time somebody tidies it.
+     */
+    if (p === '/api/delete' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId');
+      if (!workId) return json(res, { error: 'no work' }, 400);
+      const title = db.prepare('SELECT title FROM works WHERE work_id = ?').get(workId)?.title ?? null;
+      db.exec('BEGIN');
+      try {
+        for (const row of db.prepare('SELECT id FROM chapters WHERE work_id = ?').all(workId)) {
+          db.prepare(`DELETE FROM ${INDEX_FIRST} WHERE rowid = ?`).run(row.id);
+        }
+        for (const sql of deleteStatements()) db.prepare(sql).run(workId);
+        db.prepare(TOMBSTONE).run(workId, title);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        return json(res, { error: e.message }, 500);
+      }
+      return json(res, { ok: true });
+    }
+
+    /* The work is gone either way; this only drops the refusal. */
+    if (p === '/api/allow' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId');
+      if (!workId) return json(res, { error: 'no work' }, 400);
+      db.prepare('DELETE FROM deleted WHERE work_id = ?').run(workId);
       return json(res, { ok: true });
     }
 

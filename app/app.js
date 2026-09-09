@@ -15,11 +15,11 @@ import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/a
 import { languageName } from './core/ao3/markup.js';
 import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
   authorBookmarks as authorBookmarksUrl, authorProfile as authorProfileUrl,
-  isOrphan, ORIGIN as AO3 } from './core/ao3/urls.js';
+  isOrphan, linkTarget, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, allowAgain } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen } from './api.js';
 
@@ -1424,9 +1424,66 @@ function tick(kind = 'tick') {
   haptic(kind);
 }
 
+/**
+ * What was deleted on purpose, and the way to take it back.
+ *
+ * Deleting is the one thing in this app that pressing again does not undo, so
+ * there has to be somewhere it is written down. Allowing a work again does
+ * not bring it back — the text is gone — it only drops the refusal, so the
+ * next walk that names it may fetch it afresh.
+ */
+function buildRemoved() {
+  const box = $('#removed-list');
+  if (!box) return;
+  box.textContent = '';
+
+  let rows = [];
+  if (nativeStatus().hasDatabase) {
+    try {
+      const out = JSON.parse(window.ArchiveNative.query(
+        'SELECT work_id, title, at FROM deleted ORDER BY at DESC LIMIT 200',
+        JSON.stringify([])));
+      rows = out.rows ?? [];
+    } catch { rows = []; }
+  }
+
+  if (!rows.length) {
+    const none = document.createElement('p');
+    none.className = 'setting-note';
+    none.textContent = 'Nothing deleted.';
+    box.append(none);
+    return;
+  }
+
+  for (const row of rows) {
+    const line = document.createElement('div');
+    line.className = 'removed-row';
+    const what = document.createElement('span');
+    what.className = 'removed-what';
+    what.textContent = row.title || `Work ${row.work_id}`;
+    const back = document.createElement('button');
+    back.className = 'linkish';
+    back.textContent = 'Allow again';
+    back.onclick = async () => {
+      back.disabled = true;
+      try {
+        await allowAgain(String(row.work_id));
+        toast(`“${row.title || row.work_id}” can be fetched again`);
+        buildRemoved();
+      } catch (e) {
+        back.disabled = false;
+        toast(e.message);
+      }
+    };
+    line.append(what, back);
+    box.append(line);
+  }
+}
+
 async function buildSettings() {
   /* Whatever a bookmark job is doing, the controls that start one say so. */
   paintSyncButtons();
+  buildRemoved();
   const facts = $('#library-facts');
   facts.textContent = '';
   const add = (term, value) => {
@@ -1742,9 +1799,21 @@ function archiveActions(w) {
    */
   row.append(kudos, bookmark, comment);
 
+  /*
+   * Getting rid of it.
+   *
+   * Upkeep rather than a peer of leaving kudos, and marked as the one thing
+   * here that cannot be undone by pressing it again. A library that can only
+   * grow is not a library somebody tidies; it is one they eventually abandon.
+   */
+  const remove = document.createElement('button');
+  remove.className = 'archive-act archive-danger';
+  remove.append(icon('trash', 'ic ic-inline'), document.createTextNode('Delete'));
+  remove.onclick = () => askToDelete(w);
+
   const upkeep = document.createElement('div');
   upkeep.className = 'actions archive-upkeep';
-  upkeep.append(onArchive, refetch);
+  upkeep.append(onArchive, refetch, remove);
   if (w.versions > 0) {
     const earlier = document.createElement('button');
     earlier.className = 'archive-act';
@@ -1758,6 +1827,50 @@ function archiveActions(w) {
   both.append(row, upkeep);
   return both;
 }
+
+/**
+ * Deleting is asked about, once, naming what will go.
+ *
+ * Everything else on this screen can be pressed again to undo it. This
+ * cannot: the text is gone and getting it back means asking the archive for
+ * it again, which for a work that has since been taken down means never. So
+ * it says what it is about to remove, in the terms somebody would miss it in
+ * — a title and a length, not a work id.
+ */
+let deleteTarget = null;
+
+function askToDelete(w) {
+  deleteTarget = w;
+  const words = Number(w.words) || 0;
+  $('#del-what').textContent = `“${w.title ?? 'Untitled'}”`
+    + (words ? `, ${fmt(words)} words` : '')
+    + (w.chapters?.length ? ` in ${fmt(w.chapters.length)} chapter${w.chapters.length === 1 ? '' : 's'}` : '');
+  openSheet($('#delete-dialog'));
+}
+
+$('#del-go').onclick = async () => {
+  const w = deleteTarget;
+  if (!w) return;
+  const button = $('#del-go');
+  button.classList.add('is-busy');
+  try {
+    await deleteWork(String(w.work_id));
+    closeSheet($('#delete-dialog'));
+    deleteTarget = null;
+    currentWork = null;
+    toast(`Deleted “${w.title ?? 'that work'}”`);
+    tick('commit');
+    await refresh({ works: true, force: true });
+    /* Back to wherever the work was opened from. Staying on the page of a
+       work that no longer exists is the app insisting on a place that is not
+       there any more. */
+    if (!goBack()) goToTab('library');
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    button.classList.remove('is-busy');
+  }
+};
 
 let bookmarkTarget = null;
 let commentTarget = null;
@@ -3214,6 +3327,14 @@ async function runNewBookmarks(id) {
 
     if (jobs.isStopped(id)) { syncSay('Stopped.'); return; }
 
+    /* Something you bookmarked and later deleted is still bookmarked on the
+       archive, and this walk will name it on every sync for ever. The
+       deletion is the more recent statement of what you want. */
+    const gone = deletedAmong(workIds);
+    if (gone.size) for (let i = workIds.length - 1; i >= 0; i--) {
+      if (gone.has(String(workIds[i]))) workIds.splice(i, 1);
+    }
+
     /* Every bookmark the walk saw is one of yours, whether or not its text
        needed fetching. Recording that is the point of a bookmark sync; the
        downloading is a consequence of it. */
@@ -3281,6 +3402,32 @@ async function runNewBookmarks(id) {
  * which is the point: an author of ninety works whose ninety are current
  * should cost the pages of their index and not one request more.
  */
+/**
+ * Which of these were deleted on purpose.
+ *
+ * The rows of a deleted work are easy to remove; keeping it gone is the hard
+ * half, because every listing this app reads describes it again — an author's
+ * index, your own bookmarks, somebody else's. Without this a work deleted on
+ * Monday is back by Tuesday and nothing said why.
+ */
+function deletedAmong(ids) {
+  const gone = new Set();
+  if (!nativeStatus().hasDatabase || !ids.length) return gone;
+  for (let i = 0; i < ids.length; i += 400) {
+    const block = ids.slice(i, i + 400).map(String);
+    const marks = block.map(() => '?').join(',');
+    try {
+      const out = JSON.parse(window.ArchiveNative.query(
+        `SELECT work_id FROM deleted WHERE work_id IN (${marks})`, JSON.stringify(block)));
+      for (const r of out.rows ?? []) gone.add(String(r.work_id));
+    } catch {
+      /* A library from before this existed has no such table, so nothing has
+         been deleted and nothing is refused. */
+    }
+  }
+  return gone;
+}
+
 function needsFetching(works) {
   const ids = works.map((w) => String(w.workId));
   const known = new Map();
@@ -3297,7 +3444,13 @@ function needsFetching(works) {
     }
   }
 
+  /* A deleted work has no row, so "never seen" would be true of it and every
+     walk would fetch it back. This is where that is stopped, once, for every
+     listing the app reads. */
+  const gone = deletedAmong(ids);
+
   return works.filter((w) => {
+    if (gone.has(String(w.workId))) return false;
     const held = known.get(String(w.workId));
     if (!held) return true;                       // never seen
     if (!held.has_text) return true;              // described, not held
@@ -4913,6 +5066,18 @@ async function submitAddWork() {
   button.disabled = true;
 
   try {
+    /*
+     * Pasting a link outranks a refusal made last month.
+     *
+     * Everything automatic honours the tombstone — that is the point of it —
+     * but somebody typing in the address of a work they deleted is asking for
+     * this work today, and a refusal that cannot be revoked by asking plainly
+     * is a bug wearing a safeguard's clothes. Only this path clears it; the
+     * queue calls the same fetch and must not.
+     */
+    const named = linkTarget(input);
+    if (named.kind === 'work') await allowAgain(String(named.workId)).catch(() => {});
+
     const out = await addWork(input);
     status.className = 'addwork-status ok';
 

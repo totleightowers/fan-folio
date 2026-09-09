@@ -178,6 +178,18 @@
     </div>
 
     <div class="setting-group">
+      <h3 class="group">Removed</h3>
+      <!--
+          What was deleted on purpose, and the way to take that back.
+          Deleting is the one thing in this app that cannot be undone by
+          pressing it again, so there has to be somewhere it is written down.
+      -->
+      <p class="setting-note">Works you deleted. Fan Folio will not fetch these again — not
+        from a bookmark sync, not from an author's index — until you allow them.</p>
+      <div id="removed-list"></div>
+    </div>
+
+    <div class="setting-group">
       <h3 class="group">Not downloaded</h3>
       <!--
           Works read off somebody's index and never fetched. They cost nothing
@@ -399,6 +411,23 @@
   <div class="addwork-actions">
     <button class="close" data-close="addwork">Cancel</button>
     <button id="addwork-go" class="primary">Add</button>
+  </div>
+</dialog>
+
+<dialog id="delete-dialog">
+  <h2>Delete this work?</h2>
+  <p id="del-what" class="setting-note"></p>
+  <!--
+      Said plainly, because this is the one control in the app that cannot be
+      undone by pressing it again. Getting the text back means asking the
+      archive, and for a work since taken down there is nothing to ask.
+  -->
+  <p class="setting-note">The text, the pictures and your place in it all go. Fan Folio
+    remembers that you deleted it, so a bookmark sync or an author's index will not quietly
+    put it back — you can allow it again under Removed in settings.</p>
+  <div class="filter-foot">
+    <button data-close="delete-dialog">Keep it</button>
+    <button id="del-go" class="primary danger">Delete</button>
   </div>
 </dialog>
 

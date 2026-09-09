@@ -710,6 +710,40 @@ export async function markFinished(workId, done = true) {
   } catch { /* the reader carries on regardless */ }
 }
 
+/**
+ * Remove a work and remember that it went.
+ *
+ * The remembering is the half that matters. Taking the rows out is easy and
+ * every listing this app reads would put them straight back — a bookmark
+ * sync, an author walk, the backlog of works described but not held — so a
+ * deletion without a tombstone is a work that disappears until the next time
+ * anybody looks at the archive.
+ */
+export async function deleteWork(workId) {
+  if (isNative) {
+    const out = JSON.parse(native.deleteWork(String(workId)));
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  const res = await fetch(`/api/delete?workId=${encodeURIComponent(workId)}`, { method: 'POST' });
+  const out = await res.json();
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
+/** Let it be fetched again. The work is gone; this drops the refusal. */
+export async function allowAgain(workId) {
+  if (isNative) {
+    const out = JSON.parse(native.allowAgain(String(workId)));
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  const res = await fetch(`/api/allow?workId=${encodeURIComponent(workId)}`, { method: 'POST' });
+  const out = await res.json();
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
 /* --------------------------------------------------------------- signing in */
 
 /**
