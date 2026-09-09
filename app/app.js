@@ -20,7 +20,7 @@ import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen } from './api.js';
 
@@ -728,7 +728,8 @@ function filterParams(extra = {}) {
   }
   for (const key of ['complete', 'language', 'wordsMin', 'wordsMax',
                      'chaptersMin', 'chaptersMax',
-                     'updatedAfter', 'updatedBefore', 'crossover', 'otp']) {
+                     'updatedAfter', 'updatedBefore', 'crossover', 'otp',
+                     'bookmarkedBy']) {
     if (view[key]) p.set(key, view[key]);
   }
   return p;
@@ -1276,7 +1277,7 @@ $('#clear-filters').onclick = async () => {
   /* Every filter the panel can set. Miss one and Clear leaves it on, with the
      count in the header disagreeing with the list underneath it. */
   Object.assign(view, {
-    state: 'all', include: [], exclude: [], rating: [], author: [],
+    state: 'all', include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
     complete: '', language: '', wordsMin: '', wordsMax: '',
     chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   });
@@ -2753,7 +2754,35 @@ let currentAuthor = null;
  */
 function openAuthor(name) {
   currentAuthor = name;
-  filterBy('author', name);
+  showAuthorAs(name, 'works');
+}
+
+/** How many works are recorded as being in one person's bookmark list. */
+function bookmarkedByCount(name) {
+  if (!nativeStatus().hasDatabase) return 0;
+  try {
+    const out = JSON.parse(window.ArchiveNative.query(
+      'SELECT count(*) AS n FROM bookmarked_by WHERE person = ?', JSON.stringify([String(name)])));
+    return Number(out.rows?.[0]?.n ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * One person, two ways: what they wrote, or what they liked.
+ *
+ * The two are mutually exclusive filters rather than a filter and a mode,
+ * so everything else the library can do — sorting, narrowing by tag or
+ * rating, searching within — works the same on either.
+ */
+function showAuthorAs(name, which) {
+  currentAuthor = name;
+  if (which === 'bookmarks') {
+    filterBy('bookmarkedBy', name);
+  } else {
+    filterBy('author', name);
+  }
   paintAuthorBar();
 }
 
@@ -2761,10 +2790,25 @@ function openAuthor(name) {
 function paintAuthorBar() {
   const bar = $('#author-bar');
   if (!bar) return;
+  /* Whose page this is, however you came to be looking at it: filtered to
+     what they wrote, or filtered to what they liked. */
   const chosen = view.author ?? [];
-  const name = chosen.length === 1 ? chosen[0] : null;
+  const name = chosen.length === 1 ? chosen[0] : (view.bookmarkedBy || null);
   bar.hidden = !name || !isNative;
   if (bar.hidden) return;
+
+  /*
+   * What they wrote, and what they liked.
+   *
+   * Two different questions about one person, and the library could only ask
+   * the first — a walk of somebody's bookmark list kept the works and threw
+   * away whose list it was, so there was nothing to ask the second of.
+   */
+  const onBookmarks = Boolean(view.bookmarkedBy);
+  $('#author-view-works').classList.toggle('on', !onBookmarks);
+  $('#author-view-bookmarks').classList.toggle('on', onBookmarks);
+  $('#author-view-works').onclick = () => showAuthorAs(name, 'works');
+  $('#author-view-bookmarks').onclick = () => showAuthorAs(name, 'bookmarks');
 
   const note = $('#author-known');
   let held = 0;
@@ -2781,9 +2825,25 @@ function paintAuthorBar() {
 
   const seen = seenAuthors[name] ?? {};
   const checked = seen.works?.n != null || seen.bookmarks?.n != null;
-  note.textContent = `${fmt(held)} of theirs downloaded`
-    + (known ? `, ${fmt(known)} known but not` : '')
-    + (checked ? '. Checked before.' : '. Not checked against the archive yet.');
+  if (onBookmarks) {
+    /*
+     * It fills in going forward.
+     *
+     * For anybody walked before this existed the list is empty, because the
+     * membership was discarded at the time and there is no way to recover it
+     * without reading their index again. Saying so is better than an empty
+     * screen that looks like a person who bookmarks nothing.
+     */
+    const n = bookmarkedByCount(name);
+    note.textContent = n
+      ? `${fmt(n)} work${n === 1 ? '' : 's'} in their bookmarks.`
+      : 'Nothing recorded yet. Reading their bookmarks — with the button below — '
+        + 'is what fills this in.';
+  } else {
+    note.textContent = `${fmt(held)} of theirs downloaded`
+      + (known ? `, ${fmt(known)} known but not` : '')
+      + (checked ? '. Checked before.' : '. Not checked against the archive yet.');
+  }
 
   /*
    * Both halves, or one of them.
@@ -3001,6 +3061,14 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
 
   const keep = (works) => {
     saveStubs(asStubs(works));
+    /* Whose list this is, in the same pass that saves the descriptions. The
+       fact was always on the page being read and was simply thrown away, so
+       "ann's bookmarks" could not be asked of the library at all. No extra
+       requests, and nothing about what downloads or when. */
+    if (listing === 'bookmarks') {
+      noteBookmarkedBy(name, works.map((w) => String(w.workId)).filter(Boolean))
+        .catch(() => { /* a record of taste is not worth failing a walk over */ });
+    }
     const missing = needsFetching(works);
     if (!missing.length) return;
     if (jobId === null) jobId = jobs.add({ author: name, part: listing, workIds: missing });
@@ -4061,17 +4129,27 @@ function buildBrowse(browse) {
 const FILTERS = {
   tag: (value) => { view.include = [value]; },
   author: (value) => { view.author = [value]; },   // openAuthor adds the archive half
+  /* What one person liked, which is a different question from what they
+     wrote and was one the library had no way to ask. */
+  bookmarkedBy: (value) => { view.bookmarkedBy = value; },
   rating: (value) => { view.rating = [value]; },
   language: (value) => { view.language = value; },
 };
+
+/** The two ways of looking at a person; either one keeps the author bar up. */
+const ABOUT_A_PERSON = new Set(['author', 'bookmarkedBy']);
 
 function filterBy(kind, value) {
   const apply = FILTERS[kind];
   if (!apply || !value) return;
   // filtering by anything else means we are no longer looking at a person
-  if (kind !== 'author') currentAuthor = null;
+  if (!ABOUT_A_PERSON.has(kind)) currentAuthor = null;
   Object.assign(view, {
     state: 'all', include: [], exclude: [], rating: [], author: [],
+    /* Cleared here rather than only when leaving a person: switching from
+       their bookmarks back to their works would otherwise ask for both at
+       once, which is the handful of works they wrote and also bookmarked. */
+    bookmarkedBy: '',
     complete: '', language: '', wordsMin: '', wordsMax: '',
   });
   apply(value);

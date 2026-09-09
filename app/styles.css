@@ -1865,6 +1865,9 @@ button:disabled, .opt:disabled {
   background: var(--pane);
 }
 .author-acts { display: flex; flex-wrap: wrap; gap: .9rem; }
+/* What they wrote, or what they liked. Two views of one person, so they sit
+   together above the counts rather than among the actions. */
+.author-tabs { display: flex; gap: .4rem; flex: 1 1 100%; margin-bottom: .1rem; }
 
 /* Work the app owes the archive. Shown because the alternative is an app that
    is quietly busy for an hour and never says so. */

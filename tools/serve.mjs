@@ -344,6 +344,27 @@ createServer(async (req, res) => {
       return json(res, { ok: true });
     }
 
+    /* Whose bookmark list these works are in. */
+    if (p === '/api/bookmarked-by' && req.method === 'POST') {
+      const person = url.searchParams.get('person');
+      if (!person) return json(res, { error: 'no person' }, 400);
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      let ids = [];
+      try { ids = JSON.parse(Buffer.concat(chunks).toString() || '[]'); } catch { ids = []; }
+      const note = db.prepare(
+        "INSERT OR IGNORE INTO bookmarked_by (person, work_id, at) VALUES (?,?,datetime('now'))");
+      db.exec('BEGIN');
+      try {
+        for (const id of ids) note.run(person, String(id));
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        return json(res, { error: e.message }, 500);
+      }
+      return json(res, { ok: true });
+    }
+
     /* The work is gone either way; this only drops the refusal. */
     if (p === '/api/allow' && req.method === 'POST') {
       const workId = url.searchParams.get('workId');
