@@ -1330,6 +1330,47 @@ test('nothing brings back a work that was deleted on purpose', () => {
     'and the queue, which calls the same fetch, must not clear it');
 });
 
+/*
+ * Blocking is two promises: nothing of theirs is fetched again, and what is
+ * already here stops being shown. The first one has more doors than the
+ * author page — somebody blocked is still reachable through another person's
+ * bookmarks, and through the byline of a collaboration.
+ */
+test('a blocked author is refused at every door, not just their own page', () => {
+  const walk = js.slice(js.indexOf('async function walkAuthor(name,'));
+  assert.match(walk.slice(0, 900), /if \(blockedNames\(\)\.has\(String\(name\)\)\)/,
+    'refused in the walk, so a job restored after a restart is refused too');
+
+  const fn = js.slice(js.indexOf('function needsFetching(works)'));
+  assert.match(fn.slice(0, fn.indexOf('\n}\n')), /if \(isHidden\(w\.authors, unwanted\)\) return false/,
+    'and in the funnel every listing passes through');
+
+  /* One rule for what "solely theirs" means, shared by the hiding, the bulk
+     delete and the shell. */
+  const java = java_();
+  assert.match(java, /private boolean hiddenBy\(String authorsJson/);
+  const rule = java.slice(java.indexOf('private boolean hiddenBy(String authorsJson'));
+  const body = rule.slice(0, rule.indexOf('\n        }\n'));
+  assert.match(body, /if \(!blocked\.contains\(names\.optString\(i\)\)\) return false/,
+    'every author, not any: a collaboration is not solely theirs');
+  assert.match(body, /if \(names\.length\(\) == 0\) return false/,
+    'and a work whose authors cannot be read is never hidden');
+});
+
+test('the front page hides what the library hides', () => {
+  /* Home builds its shelves by hand rather than through buildWorksQuery, so
+     the hiding is said in two places — which is exactly the arrangement that
+     let Home and the Library disagree about what "reading" meant. */
+  for (const path of ['../app/api.js', '../tools/serve.mjs']) {
+    const src = readFileSync(new URL(path, import.meta.url), 'utf8');
+    const fn = src.slice(src.indexOf('const shelf = (where, order'));
+    assert.match(fn.slice(0, 1400), /shown\(where\)/, `${path} hides them on the shelves`);
+    assert.match(src, /COALESCE\(w\.hidden, 0\) = 0/, `${path} hides them in the counts`);
+  }
+  const query = readFileSync(new URL('../app/core/query.js', import.meta.url), 'utf8');
+  assert.match(query, /export const shown = \(where\)/, 'one helper, imported by both');
+});
+
 test('an older library gets somewhere to record what was deleted', () => {
   const java = java_();
   const migrate = java.slice(java.indexOf('private void migrate(SQLiteDatabase db)'));

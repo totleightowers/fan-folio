@@ -70,6 +70,17 @@ export const STARTED = '(r.opened_at IS NOT NULL OR COALESCE(r.offset, 0) > 0 '
 /** Every chapter accounted for. */
 export const FINISHED = `COALESCE(r.chapters_read, 0) >= ${CHAPTERS}`;
 
+/**
+ * The same question, asked only of what a blocked author has not taken out.
+ *
+ * Home builds its shelves by hand rather than through buildWorksQuery, so the
+ * hiding has to be said in both places — which is exactly the arrangement that
+ * let Home and the Library disagree about what "reading" meant. One helper,
+ * imported by both, so the two cannot drift into a blocked author being
+ * hidden from the library and offered on the front page.
+ */
+export const shown = (where) => `COALESCE(w.hidden, 0) = 0 AND (${where})`;
+
 /** Reading state, which lives in the reading table rather than on the work. */
 /* One definition each, used everywhere: Home, the Library filter, the shelf's
    See all and the counts beside them all ask these and nothing else. The three
@@ -127,6 +138,17 @@ function likeLiteral(text) {
 export function buildWorksQuery(filters = {}) {
   const where = ['1=1'];
   const args = [];
+
+  /*
+   * Blocked authors, everywhere at once.
+   *
+   * One column rather than a predicate over the authors JSON, because that
+   * would need JSON1 and Android's SQLite may not have it. Written here so
+   * every question the library asks — the list, the counts, the facets, the
+   * search that narrows to a set of ids — inherits it, rather than each
+   * remembering separately and one of them forgetting.
+   */
+  where.push('COALESCE(w.hidden, 0) = 0');
 
   where.push(STATES[filters.state] ?? STATES.all);
 

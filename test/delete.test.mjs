@@ -122,12 +122,21 @@ test('the shell lets go of everything the shared list names', () => {
      reconciliation ended up with, for the same reason. */
   assert.deepEqual(WORK_OWNS.filter((t) => !named.has(t)), []);
 
-  const fn = java.slice(java.indexOf('public String deleteWork('));
+  const fn = java.slice(java.indexOf('private void removeWork(String workId)'));
   const body = fn.slice(0, fn.indexOf('\n        }\n'));
   assert.match(body, /SELECT id FROM chapters WHERE work_id/,
     'the index is cleared by chapter rowid, before the chapters go');
   assert.ok(body.indexOf('chapter_fts') < body.indexOf('for (String table : WORK_OWNS)'),
     'and it is cleared first');
-  assert.match(body, /beginTransaction/, 'a half-deleted work is not a state to end in');
   assert.match(body, /INSERT OR REPLACE INTO deleted/);
+
+  /* One work or five hundred, the caller owns the transaction: getting rid of
+     somebody prolific in five hundred separate ones is five hundred chances
+     to be interrupted with the library in a state nobody asked for. */
+  for (const caller of ['public String deleteWork(', 'public String deleteWorks(']) {
+    const at = java.slice(java.indexOf(caller));
+    const one = at.slice(0, at.indexOf('\n        }\n'));
+    assert.match(one, /beginTransaction/, `${caller} must own a transaction`);
+    assert.match(one, /removeWork\(/, `${caller} must go through the one removal`);
+  }
 });

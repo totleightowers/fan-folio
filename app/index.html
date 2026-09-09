@@ -178,6 +178,13 @@
     </div>
 
     <div class="setting-group">
+      <h3 class="group">Blocked</h3>
+      <p class="setting-note">Authors whose work is not fetched and not shown. A work with
+        another author on it is left alone.</p>
+      <div id="blocked-list"></div>
+    </div>
+
+    <div class="setting-group">
       <h3 class="group">Removed</h3>
       <!--
           What was deleted on purpose, and the way to take that back.
@@ -313,6 +320,8 @@
         <div class="author-acts">
           <button id="author-works" class="linkish">Works only</button>
           <button id="author-bookmarks" class="linkish">Bookmarks only</button>
+          <!-- The other direction: somebody you do not want to read at all. -->
+          <button id="author-block" class="linkish danger">Block</button>
         </div>
       </div>
       <div id="count" class="count"></div>
@@ -428,6 +437,23 @@
   <div class="filter-foot">
     <button data-close="delete-dialog">Keep it</button>
     <button id="del-go" class="primary danger">Delete</button>
+  </div>
+</dialog>
+
+<dialog id="block-dialog">
+  <h2>Block <span id="block-who"></span>?</h2>
+  <p id="block-what" class="setting-note"></p>
+  <!--
+      Two halves of one want: not this person. Blocking alone leaves their
+      work in the library; deleting alone leaves the next sync free to fetch
+      it all back again.
+  -->
+  <p class="setting-note">Nothing of theirs will be fetched again — not from their
+    index, not through anybody else's bookmarks. Works with another author on them are
+    left alone. You can unblock them in settings, but the works are not coming back.</p>
+  <div class="filter-foot">
+    <button data-close="block-dialog">Cancel</button>
+    <button id="block-go" class="primary danger">Delete and block</button>
   </div>
 </dialog>
 
