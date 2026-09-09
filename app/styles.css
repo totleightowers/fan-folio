@@ -301,6 +301,7 @@ button.ghost {
 /* The one control on a work that cannot be undone by pressing it again. Not
    red for its own sake — red so it does not read as another Fetch again. */
 .archive-danger { color: var(--no); }
+.linkish.danger { color: var(--no); }
 .archive-danger .ic { color: var(--no); }
 button.primary.danger { background: var(--no); }
 

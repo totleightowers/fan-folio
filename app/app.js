@@ -9,6 +9,7 @@
 
 import { History, openingOffset } from './core/nav.js';
 import { reachedTheEnd, chromeHidden } from './core/reading.js';
+import { isHidden, worksByPattern } from './core/store/blocked.js';
 import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
@@ -19,7 +20,7 @@ import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, allowAgain } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen } from './api.js';
 
@@ -1480,9 +1481,55 @@ function buildRemoved() {
   }
 }
 
+/** Authors whose work is not fetched and not shown, and the way back. */
+function buildBlocked() {
+  const box = $('#blocked-list');
+  if (!box) return;
+  box.textContent = '';
+  const names = [...blockedNames()].sort((a, b) => a.localeCompare(b));
+
+  if (!names.length) {
+    const none = document.createElement('p');
+    none.className = 'setting-note';
+    none.textContent = 'Nobody blocked.';
+    box.append(none);
+    return;
+  }
+
+  for (const name of names) {
+    const line = document.createElement('div');
+    line.className = 'removed-row';
+    const who = document.createElement('span');
+    who.className = 'removed-what';
+    who.textContent = name;
+    const back = document.createElement('button');
+    back.className = 'linkish';
+    back.textContent = 'Unblock';
+    back.onclick = async () => {
+      back.disabled = true;
+      try {
+        await unblockAuthor(name);
+        forgetBlocked();
+        /* What is theirs is shown again. Nothing is fetched by this — a work
+           deleted when they were blocked stays deleted, and its tombstone is
+           what says so. */
+        toast(`${name} is no longer blocked`);
+        buildBlocked();
+        await refresh({ works: true, force: true });
+      } catch (e) {
+        back.disabled = false;
+        toast(e.message);
+      }
+    };
+    line.append(who, back);
+    box.append(line);
+  }
+}
+
 async function buildSettings() {
   /* Whatever a bookmark job is doing, the controls that start one say so. */
   paintSyncButtons();
+  buildBlocked();
   buildRemoved();
   const facts = $('#library-facts');
   facts.textContent = '';
@@ -2764,7 +2811,86 @@ function paintAuthorBar() {
       toast(said);
     };
   }
+
+  /* The other direction: somebody you do not want to read at all. */
+  const rid = $('#author-block');
+  rid.disabled = false;
+  rid.textContent = `Delete their works and block ${name}`;
+  rid.onclick = () => askToBlock(name);
 }
+
+/**
+ * Everything solely by one person.
+ *
+ * Solely, because a work with somebody else's name on it is not only theirs
+ * to remove — the same rule that decides what blocking hides. Read as rows
+ * and filtered by the shared test rather than matched in SQL, so the answer
+ * does not depend on how the JSON happened to be spaced when it was written.
+ */
+function worksSolelyBy(name) {
+  if (!nativeStatus().hasDatabase) return [];
+  const only = new Set([String(name)]);
+  try {
+    const out = JSON.parse(window.ArchiveNative.query(
+      "SELECT work_id, title, authors, words FROM works WHERE authors LIKE ? ESCAPE '\\'",
+      JSON.stringify([worksByPattern(name)])));
+    return (out.rows ?? []).filter((r) => isHidden(r.authors, only));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Getting rid of somebody, asked about once and plainly.
+ *
+ * The two halves are one act because they answer one want: not this person.
+ * Blocking alone leaves their work in the library; deleting alone leaves the
+ * next sync free to fetch it all back. Said with a count and a length,
+ * because "47 works" is a number somebody can weigh and a name is not.
+ */
+let blockTarget = null;
+
+function askToBlock(name) {
+  blockTarget = { name, works: worksSolelyBy(name) };
+  const n = blockTarget.works.length;
+  const words = blockTarget.works.reduce((sum, w) => sum + (Number(w.words) || 0), 0);
+  $('#block-who').textContent = name;
+  $('#block-what').textContent = n
+    ? `${fmt(n)} work${n === 1 ? '' : 's'} solely theirs`
+      + (words ? `, ${fmt(words)} words` : '') + ', will be deleted.'
+    : 'Nothing of theirs is downloaded, so nothing will be deleted.';
+  openSheet($('#block-dialog'));
+}
+
+$('#block-go').onclick = async () => {
+  const target = blockTarget;
+  if (!target) return;
+  const button = $('#block-go');
+  button.classList.add('is-busy');
+  try {
+    if (target.works.length) await deleteWorks(target.works.map((w) => w.work_id));
+    await blockAuthor(target.name);
+    forgetBlocked();
+    closeSheet($('#block-dialog'));
+    blockTarget = null;
+    toast(target.works.length
+      ? `${fmt(target.works.length)} deleted. ${target.name} is blocked.`
+      : `${target.name} is blocked.`);
+    tick('commit');
+    /* The library was filtered to a person who is no longer shown, so it
+       would be an empty screen with their name on it. */
+    view.author = [];
+    currentAuthor = null;
+    save(VIEW_KEY, view);
+    paintActiveFilters();
+    await refresh({ works: true, force: true });
+    loadMore(true);
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    button.classList.remove('is-busy');
+  }
+};
 
 async function catchUpOn(name, parts = ['works', 'bookmarks']) {
   /* Orphaning keeps the work and loses the author on purpose: the pseud page
@@ -2864,6 +2990,13 @@ async function catchUpOn(name, parts = ['works', 'bookmarks']) {
 async function walkAuthor(name, { listing = 'works', jobId = null,
                                   fromPage = 1, knownPages = null,
                                   stopIfTopIs = null } = {}) {
+  /* Blocking means never fetching them again, and a walk is the largest way
+     of fetching somebody there is. Refused here rather than only at the
+     button, because a job restored after a restart comes back through this. */
+  if (blockedNames().has(String(name))) {
+    jobError = `${name} is blocked, so nothing of theirs was read`;
+    return { complete: false, reached: 0, pages: null, top: null };
+  }
   const url = listing === 'works' ? authorWorksUrl : authorBookmarksUrl;
 
   const keep = (works) => {
@@ -3403,6 +3536,34 @@ async function runNewBookmarks(id) {
  * should cost the pages of their index and not one request more.
  */
 /**
+ * Everyone currently blocked.
+ *
+ * A handful of names, read whole and kept until it changes, because it is
+ * asked on every page of every walk — once per listing rather than once per
+ * work, and never on the archive's side of anything.
+ */
+let blockedCache = null;
+
+function blockedNames() {
+  if (blockedCache) return blockedCache;
+  const names = new Set();
+  if (nativeStatus().hasDatabase) {
+    try {
+      const out = JSON.parse(window.ArchiveNative.query(
+        'SELECT name FROM blocked', JSON.stringify([])));
+      for (const r of out.rows ?? []) names.add(String(r.name));
+    } catch {
+      /* No such table on a library from before this existed: nobody is
+         blocked, so nothing is refused and nothing is hidden. */
+    }
+  }
+  blockedCache = names;
+  return names;
+}
+
+const forgetBlocked = () => { blockedCache = null; };
+
+/**
  * Which of these were deleted on purpose.
  *
  * The rows of a deleted work are easy to remove; keeping it gone is the hard
@@ -3449,8 +3610,14 @@ function needsFetching(works) {
      listing the app reads. */
   const gone = deletedAmong(ids);
 
+  /* Somebody blocked can still be reached through another person's bookmarks,
+     or through a collaboration's byline. Refusing at the author page alone
+     would leave the one route in that nobody thinks about. */
+  const unwanted = blockedNames();
+
   return works.filter((w) => {
     if (gone.has(String(w.workId))) return false;
+    if (isHidden(w.authors, unwanted)) return false;
     const held = known.get(String(w.workId));
     if (!held) return true;                       // never seen
     if (!held.has_text) return true;              // described, not held

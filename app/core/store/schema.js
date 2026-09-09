@@ -56,7 +56,15 @@ CREATE TABLE IF NOT EXISTS works (
   has_text       INTEGER DEFAULT 0,
   kudos          INTEGER,
   bookmark_count INTEGER,
-  hits           INTEGER
+  hits           INTEGER,
+  -- Every author of this work is blocked.
+  --
+  -- Derived rather than asked at query time, because authors is a JSON array
+  -- inside a text column and "all of them are blocked" needs to parse it —
+  -- and Android's SQLite may have no JSON1. This library already runs FTS4
+  -- rather than FTS5 for exactly that reason. So it is worked out where the
+  -- JSON parses and written down here, and the library query asks one column.
+  hidden         INTEGER DEFAULT 0
 );
 
 -- Tags are a many-to-many that gets queried by type constantly ("everything
@@ -169,6 +177,15 @@ CREATE TABLE IF NOT EXISTS deleted (
   work_id TEXT PRIMARY KEY,
   title   TEXT,
   at      TEXT
+);
+
+-- Authors whose work is not wanted.
+--
+-- Two promises: nothing of theirs is fetched again, and what is already here
+-- stops being shown. The second is works.hidden, recomputed when this changes.
+CREATE TABLE IF NOT EXISTS blocked (
+  name TEXT PRIMARY KEY,
+  at   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);

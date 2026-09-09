@@ -413,6 +413,11 @@ public class MainActivity extends Activity {
         {"kudos_given", "INTEGER DEFAULT 0"},
         {"kudos", "INTEGER"}, {"bookmark_count", "INTEGER"}, {"hits", "INTEGER"},
         {"has_text", "INTEGER DEFAULT 0"},
+        /* Every author of this work is blocked. Worked out where the authors
+           JSON can be parsed and written down, because "all of them are
+           blocked" over a JSON array needs JSON1 and this app cannot count on
+           an Android having it — the same reason the index is FTS4. */
+        {"hidden", "INTEGER DEFAULT 0"},
     };
 
     /*
@@ -477,6 +482,10 @@ public class MainActivity extends Activity {
         try {
             db.execSQL("CREATE TABLE IF NOT EXISTS deleted ("
                      + "work_id TEXT PRIMARY KEY, title TEXT, at TEXT)");
+        } catch (Exception ignored) { }
+        /* Authors whose work is not wanted. */
+        try {
+            db.execSQL("CREATE TABLE IF NOT EXISTS blocked (name TEXT PRIMARY KEY, at TEXT)");
         } catch (Exception ignored) { }
         repairCompleteness(db);
     }
@@ -1569,44 +1578,9 @@ public class MainActivity extends Activity {
             mustBeOurPage();
             if (db == null) return errorJson("no library open");
             try {
-                String title = null;
-                android.database.Cursor c = null;
-                try {
-                    c = db.rawQuery("SELECT title FROM works WHERE work_id = ?",
-                                    new String[]{ workId });
-                    if (c.moveToFirst()) title = c.getString(0);
-                } finally {
-                    if (c != null) c.close();
-                }
-
                 db.beginTransaction();
                 try {
-                    android.database.Cursor rows = null;
-                    try {
-                        rows = db.rawQuery("SELECT id FROM chapters WHERE work_id = ?",
-                                           new String[]{ workId });
-                        while (rows.moveToNext()) {
-                            db.delete("chapter_fts", "rowid = ?",
-                                      new String[]{ String.valueOf(rows.getLong(0)) });
-                        }
-                    } finally {
-                        if (rows != null) rows.close();
-                    }
-
-                    for (String table : WORK_OWNS) {
-                        try {
-                            db.delete(table, "work_id = ?", new String[]{ workId });
-                        } catch (Exception ignored) {
-                            /* A table an older library does not have. The rest
-                               still go: a work half removed is better than a
-                               work not removed and reported as gone. */
-                        }
-                    }
-
-                    db.execSQL(
-                        "INSERT OR REPLACE INTO deleted (work_id, title, at) "
-                      + "VALUES (?,?,datetime('now'))",
-                        new Object[]{ workId, title });
+                    removeWork(workId);
                     db.setTransactionSuccessful();
                 } finally {
                     db.endTransaction();
@@ -1615,6 +1589,80 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return errorJson(String.valueOf(e.getMessage()));
             }
+        }
+
+        /**
+         * A whole author's worth, in one transaction rather than hundreds.
+         *
+         * Getting rid of somebody prolific is five hundred works, and five
+         * hundred separate transactions is five hundred chances to be
+         * interrupted halfway with the library in a state nobody asked for.
+         */
+        @JavascriptInterface
+        public String deleteWorks(String jsonIds) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                org.json.JSONArray ids = new org.json.JSONArray(jsonIds);
+                int gone = 0;
+                db.beginTransaction();
+                try {
+                    for (int i = 0; i < ids.length(); i++) {
+                        String id = ids.optString(i, "");
+                        if (id.isEmpty()) continue;
+                        removeWork(id);
+                        gone++;
+                    }
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+                return "{\"ok\":true,\"deleted\":" + gone + "}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /** One work and everything it owns. The caller owns the transaction. */
+        private void removeWork(String workId) {
+            String title = null;
+            android.database.Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT title FROM works WHERE work_id = ?",
+                                new String[]{ workId });
+                if (c.moveToFirst()) title = c.getString(0);
+            } catch (Exception ignored) {
+            } finally {
+                if (c != null) c.close();
+            }
+
+            android.database.Cursor rows = null;
+            try {
+                rows = db.rawQuery("SELECT id FROM chapters WHERE work_id = ?",
+                                   new String[]{ workId });
+                while (rows.moveToNext()) {
+                    db.delete("chapter_fts", "rowid = ?",
+                              new String[]{ String.valueOf(rows.getLong(0)) });
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (rows != null) rows.close();
+            }
+
+            for (String table : WORK_OWNS) {
+                try {
+                    db.delete(table, "work_id = ?", new String[]{ workId });
+                } catch (Exception ignored) {
+                    /* A table an older library does not have. The rest still
+                       go: a work half removed is better than a work not
+                       removed and reported as gone. */
+                }
+            }
+
+            db.execSQL(
+                "INSERT OR REPLACE INTO deleted (work_id, title, at) "
+              + "VALUES (?,?,datetime('now'))",
+                new Object[]{ workId, title });
         }
 
         /**
@@ -1629,6 +1677,128 @@ public class MainActivity extends Activity {
             if (db == null) return errorJson("no library open");
             try {
                 db.delete("deleted", "work_id = ?", new String[]{ workId });
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /**
+         * Everyone currently blocked.
+         *
+         * Small by nature — a handful of names — so it is read whole rather
+         * than asked about one work at a time.
+         */
+        private java.util.Set<String> blockedNames() {
+            java.util.Set<String> names = new java.util.HashSet<>();
+            if (db == null) return names;
+            android.database.Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT name FROM blocked", null);
+                while (c.moveToNext()) names.add(c.getString(0));
+            } catch (Exception ignored) {
+                /* No such table on a library from before this existed: nobody
+                   is blocked, so nothing is hidden. */
+            } finally {
+                if (c != null) c.close();
+            }
+            return names;
+        }
+
+        /**
+         * Is this work solely the work of blocked people?
+         *
+         * Mirrors isHidden in app/core/store/blocked.js, which the dev server
+         * uses and a test holds this to. Every author blocked, not any: a work
+         * has more than one author more often than people expect, and blocking
+         * somebody should not cost a reader a work they like that the blocked
+         * person happened to write half of.
+         *
+         * A work whose authors cannot be read is never hidden. Hiding on the
+         * strength of a field that failed to parse is how a library loses
+         * things quietly, which is the failure this app can least afford.
+         */
+        private boolean hiddenBy(String authorsJson, java.util.Set<String> blocked) {
+            if (blocked.isEmpty()) return false;
+            try {
+                org.json.JSONArray names = new org.json.JSONArray(
+                        authorsJson == null ? "[]" : authorsJson);
+                if (names.length() == 0) return false;
+                for (int i = 0; i < names.length(); i++) {
+                    if (!blocked.contains(names.optString(i))) return false;
+                }
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
+        /** Work out `hidden` again for the works one name could affect. */
+        private void restateHidden(String name, java.util.Set<String> blocked) {
+            String quoted = org.json.JSONObject.quote(name)
+                    .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+            android.database.Cursor c = null;
+            java.util.List<String[]> rows = new java.util.ArrayList<>();
+            try {
+                c = db.rawQuery(
+                        "SELECT work_id, authors FROM works WHERE authors LIKE ? ESCAPE '\\'",
+                        new String[]{ "%" + quoted + "%" });
+                while (c.moveToNext()) rows.add(new String[]{ c.getString(0), c.getString(1) });
+            } catch (Exception ignored) {
+                return;
+            } finally {
+                if (c != null) c.close();
+            }
+            for (String[] row : rows) {
+                android.content.ContentValues v = new android.content.ContentValues();
+                v.put("hidden", hiddenBy(row[1], blocked) ? 1 : 0);
+                try {
+                    db.update("works", v, "work_id = ?", new String[]{ row[0] });
+                } catch (Exception ignored) { }
+            }
+        }
+
+        /**
+         * Never fetch them again, and stop showing what is solely theirs.
+         *
+         * Only the works one name could possibly affect are restated, matched
+         * the way the author filter matches — the name quoted as it appears
+         * inside the JSON array, so blocking "Anna" does not touch "Annabel".
+         */
+        @JavascriptInterface
+        public String blockAuthor(String name) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                db.beginTransaction();
+                try {
+                    db.execSQL("INSERT OR REPLACE INTO blocked (name, at) "
+                             + "VALUES (?, datetime('now'))", new Object[]{ name });
+                    restateHidden(name, blockedNames());
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /** Undo it. What is theirs is shown again; nothing is fetched by this. */
+        @JavascriptInterface
+        public String unblockAuthor(String name) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                db.beginTransaction();
+                try {
+                    db.delete("blocked", "name = ?", new String[]{ name });
+                    restateHidden(name, blockedNames());
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
                 return "{\"ok\":true}";
             } catch (Exception e) {
                 return errorJson(String.valueOf(e.getMessage()));

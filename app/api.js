@@ -9,7 +9,7 @@
 
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED } from './core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED, shown } from './core/query.js';
 import { parseWorkPage, parseListing } from './core/ao3/parse.js';
 import { workPage, linkTarget, chapterUrl, seriesPage, ORIGIN } from './core/ao3/urls.js';
 import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
@@ -82,19 +82,23 @@ const LOCAL = {
              r.chapter AS at_chapter, r.chapters_read, r.marked_later,
              (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
       FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-      WHERE ${where} ORDER BY ${order} LIMIT ${lim(limit, 12)}`),
+      WHERE ${shown(where)} ORDER BY ${order} LIMIT ${lim(limit, 12)}`),
       total: sql(`SELECT count(*) AS n FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-                  WHERE ${where}`)[0].n,
+                  WHERE ${shown(where)}`)[0].n,
     });
 
-    const totals = sql('SELECT count(*) AS works, COALESCE(sum(words),0) AS words FROM works')[0];
+    const totals = sql('SELECT count(*) AS works, COALESCE(sum(words),0) AS words FROM works w '
+      + 'WHERE COALESCE(w.hidden, 0) = 0')[0];
     const read = sql(`
       SELECT COALESCE(sum(CASE WHEN ${FINISHED} THEN w.words ELSE 0 END),0) AS words,
              count(CASE WHEN ${FINISHED} THEN 1 END) AS finished
-      FROM works w JOIN reading r ON r.work_id = w.work_id`)[0];
+      FROM works w JOIN reading r ON r.work_id = w.work_id
+      WHERE COALESCE(w.hidden, 0) = 0`)[0];
 
     const top = (kind, limit) => sql(
-      `SELECT name, count(*) AS n FROM tags WHERE kind = ? GROUP BY name ORDER BY n DESC LIMIT ${lim(limit, 12)}`,
+      `SELECT t.name, count(*) AS n FROM tags t JOIN works w ON w.work_id = t.work_id
+       WHERE t.kind = ? AND COALESCE(w.hidden, 0) = 0
+       GROUP BY t.name ORDER BY n DESC LIMIT ${lim(limit, 12)}`,
       [kind]);
 
     return {
@@ -124,15 +128,16 @@ const LOCAL = {
       browse: {
         fandom: top('fandom', 14), relationship: top('relationship', 14),
         character: top('character', 12), freeform: top('freeform', 14),
-        rating: sql(`SELECT rating AS name, count(*) AS n FROM works
-                     WHERE rating IS NOT NULL AND rating <> '' GROUP BY rating ORDER BY n DESC`),
+        rating: sql(`SELECT rating AS name, count(*) AS n FROM works w
+                     WHERE rating IS NOT NULL AND rating <> '' AND COALESCE(w.hidden, 0) = 0
+                     GROUP BY rating ORDER BY n DESC`),
       },
     };
   },
 
   surprise: () => ({
     work_id: sql(`SELECT w.work_id FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-                  WHERE ${STATES.unread} ORDER BY RANDOM() LIMIT 1`)[0]?.work_id ?? null,
+                  WHERE ${shown(STATES.unread)} ORDER BY RANDOM() LIMIT 1`)[0]?.work_id ?? null,
   }),
 
   /**
@@ -731,6 +736,19 @@ export async function deleteWork(workId) {
   return out;
 }
 
+/** A whole author's worth, in one transaction rather than hundreds. */
+export async function deleteWorks(workIds) {
+  const ids = workIds.map(String);
+  if (!ids.length) return { deleted: 0 };
+  if (isNative) {
+    const out = JSON.parse(native.deleteWorks(JSON.stringify(ids)));
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  for (const id of ids) await deleteWork(id);
+  return { deleted: ids.length };
+}
+
 /** Let it be fetched again. The work is gone; this drops the refusal. */
 export async function allowAgain(workId) {
   if (isNative) {
@@ -739,6 +757,37 @@ export async function allowAgain(workId) {
     return out;
   }
   const res = await fetch(`/api/allow?workId=${encodeURIComponent(workId)}`, { method: 'POST' });
+  const out = await res.json();
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
+/**
+ * Never fetch them again, and stop showing what is solely theirs.
+ *
+ * A work with another author on it stays: blocking somebody should not cost
+ * you a work you like that they happened to write half of.
+ */
+export async function blockAuthor(name) {
+  if (isNative) {
+    const out = JSON.parse(native.blockAuthor(String(name)));
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  const res = await fetch(`/api/block?name=${encodeURIComponent(name)}`, { method: 'POST' });
+  const out = await res.json();
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
+/** Undo it. What is theirs is shown again; nothing is fetched by this. */
+export async function unblockAuthor(name) {
+  if (isNative) {
+    const out = JSON.parse(native.unblockAuthor(String(name)));
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  const res = await fetch(`/api/unblock?name=${encodeURIComponent(name)}`, { method: 'POST' });
   const out = await res.json();
   if (out.error) throw new Error(out.error);
   return out;

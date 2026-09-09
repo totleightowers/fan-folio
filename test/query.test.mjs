@@ -168,6 +168,32 @@ test('a work whose text is not here yet is not a work you have finished', () => 
     'and opening it puts it on the shelf rather than straight into finished');
 });
 
+test('a work only a blocked author wrote is not in the library at all', () => {
+  const db = library();
+  db.prepare('UPDATE works SET hidden = 1 WHERE work_id = ?').run('2');
+
+  /* Not "absent from the shelf you were looking at" — absent from every
+     question the library asks, or blocking is a game of whack-a-mole across
+     however many screens list works. */
+  for (const state of ['all', 'reading', 'unread', 'finished', 'later', 'held', 'known']) {
+    assert.ok(!run(db, { state }).includes('2'), `state=${state} still offers it`);
+  }
+  assert.ok(!run(db, { include: ['Angst'] }).includes('2'), 'nor a tag it happens to carry');
+  assert.ok(!run(db, { author: ['bee'] }).includes('2'), 'nor their own name');
+  assert.ok(!run(db, { ids: ['1', '2', '3'] }).includes('2'),
+    'nor a search that already had its id in hand');
+});
+
+test('the count agrees with the list about what is hidden', () => {
+  const db = library();
+  const before = buildWorksQuery({});
+  const was = db.prepare(before.countSql).all(...before.args)[0].n;
+  db.prepare('UPDATE works SET hidden = 1 WHERE work_id = ?').run('2');
+  const after = buildWorksQuery({});
+  assert.equal(db.prepare(after.countSql).all(...after.args)[0].n, was - 1,
+    'a count that includes what the list does not is a library that looks broken');
+});
+
 test('every work is in exactly one reading state', () => {
   const db = library();
   const all = run(db, {});
