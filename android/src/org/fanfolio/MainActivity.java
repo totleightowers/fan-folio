@@ -430,6 +430,21 @@ public class MainActivity extends Activity {
      * asks for offset as well; a library made before that column existed
      * answered "no such column: r.offset", which is the library screen gone.
      */
+    /**
+     * Everything a work owns, in the order it has to be let go of.
+     *
+     * Mirrors WORK_OWNS in app/core/store/delete.js, which the dev server
+     * uses and a test holds this to. A work is not one row: it is a row, its
+     * tags, its chapters, two search indexes, the pictures fetched for it,
+     * the copies kept of chapters an author revised, the skin it was
+     * published with, and where the reader had got to in it. Leaving any of
+     * those behind is a library that grows every time somebody tidies it.
+     */
+    private static final String[] WORK_OWNS = {
+        "chapters", "work_fts", "tags", "images",
+        "chapter_versions", "skin_versions", "reading", "works",
+    };
+
     private static final String[][] READING_COLUMNS = {
         {"chapter", "INTEGER"},
         {"offset", "REAL"},
@@ -457,6 +472,11 @@ public class MainActivity extends Activity {
         migrateTable(db, "reading", READING_COLUMNS);
         try {
             db.execSQL("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+        } catch (Exception ignored) { }
+        /* Works removed on purpose. Without it every listing puts them back. */
+        try {
+            db.execSQL("CREATE TABLE IF NOT EXISTS deleted ("
+                     + "work_id TEXT PRIMARY KEY, title TEXT, at TEXT)");
         } catch (Exception ignored) { }
         repairCompleteness(db);
     }
@@ -1377,6 +1397,9 @@ public class MainActivity extends Activity {
                         org.json.JSONObject b = works.getJSONObject(i);
                         String id = b.optString("workId", "");
                         if (id.isEmpty()) continue;
+                        /* A listing describes it; that is not a reason to put
+                           back something taken out on purpose. */
+                        if (wasDeleted(id)) continue;
 
                         android.content.ContentValues v = new android.content.ContentValues();
                         v.put("work_id", id);
@@ -1507,6 +1530,111 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * Has this work been deleted on purpose?
+         *
+         * Asked wherever a work could come back in unasked. The tombstone is
+         * the whole of what makes a deletion stick: the rows are easy to
+         * remove and every listing the app reads would put them straight
+         * back — a bookmark sync, an author walk, the backlog of things
+         * described but not held.
+         */
+        private boolean wasDeleted(String workId) {
+            if (db == null) return false;
+            android.database.Cursor c = null;
+            try {
+                c = db.rawQuery("SELECT 1 FROM deleted WHERE work_id = ?", new String[]{ workId });
+                return c.moveToFirst();
+            } catch (Exception e) {
+                /* No such table on a library from before this existed: nothing
+                   has been deleted, so nothing is refused. */
+                return false;
+            } finally {
+                if (c != null) c.close();
+            }
+        }
+
+        /**
+         * Remove a work, and everything it owns, and remember that it went.
+         *
+         * The index goes first and by hand: chapter_fts is external-content
+         * FTS4 keyed on the chapter's rowid, so deleting the chapters first
+         * leaves index rows pointing at chapters that are not there — and a
+         * search then finds a work it cannot open. The refetch path has
+         * always done this dance; this does it too, and then the rest in one
+         * transaction, so a half-deleted work is not a state this can end in.
+         */
+        @JavascriptInterface
+        public String deleteWork(String workId) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                String title = null;
+                android.database.Cursor c = null;
+                try {
+                    c = db.rawQuery("SELECT title FROM works WHERE work_id = ?",
+                                    new String[]{ workId });
+                    if (c.moveToFirst()) title = c.getString(0);
+                } finally {
+                    if (c != null) c.close();
+                }
+
+                db.beginTransaction();
+                try {
+                    android.database.Cursor rows = null;
+                    try {
+                        rows = db.rawQuery("SELECT id FROM chapters WHERE work_id = ?",
+                                           new String[]{ workId });
+                        while (rows.moveToNext()) {
+                            db.delete("chapter_fts", "rowid = ?",
+                                      new String[]{ String.valueOf(rows.getLong(0)) });
+                        }
+                    } finally {
+                        if (rows != null) rows.close();
+                    }
+
+                    for (String table : WORK_OWNS) {
+                        try {
+                            db.delete(table, "work_id = ?", new String[]{ workId });
+                        } catch (Exception ignored) {
+                            /* A table an older library does not have. The rest
+                               still go: a work half removed is better than a
+                               work not removed and reported as gone. */
+                        }
+                    }
+
+                    db.execSQL(
+                        "INSERT OR REPLACE INTO deleted (work_id, title, at) "
+                      + "VALUES (?,?,datetime('now'))",
+                        new Object[]{ workId, title });
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /**
+         * Let a deleted work be fetched again.
+         *
+         * The work itself is gone; this only drops the refusal, so the next
+         * walk that names it, or a link opened by hand, may bring it back.
+         */
+        @JavascriptInterface
+        public String allowAgain(String workId) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                db.delete("deleted", "work_id = ?", new String[]{ workId });
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
         @JavascriptInterface
         public String saveWork(String json) {
             mustBeOurPage();
@@ -1514,6 +1642,12 @@ public class MainActivity extends Activity {
             try {
                 org.json.JSONObject w = new org.json.JSONObject(json);
                 String id = w.getString("workId");
+                /* The last gate. Every automatic path is supposed to have
+                   dropped this already; if one has not, a work somebody
+                   deleted does not come back through it. Adding by link
+                   clears the tombstone first, which is what makes asking
+                   plainly outrank a refusal made last month. */
+                if (wasDeleted(id)) return errorJson("that work was deleted");
                 db.beginTransaction();
                 try {
                     writeWork(w, id);

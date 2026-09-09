@@ -290,6 +290,20 @@ button.ghost {
   padding: .6rem 1.2rem; cursor: pointer;
 }
 
+/* One removed work per row: what it was, and the way to allow it back. */
+.removed-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: .8rem;
+  padding: .55rem 0; border-bottom: 1px solid var(--rule);
+}
+.removed-row:last-child { border-bottom: 0; }
+.removed-what { min-width: 0; overflow-wrap: anywhere; }
+
+/* The one control on a work that cannot be undone by pressing it again. Not
+   red for its own sake — red so it does not read as another Fetch again. */
+.archive-danger { color: var(--no); }
+.archive-danger .ic { color: var(--no); }
+button.primary.danger { background: var(--no); }
+
 /* -------------------------------------------------------------- toolbar */
 
 #toolbar {

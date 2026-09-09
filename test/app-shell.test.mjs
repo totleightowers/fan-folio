@@ -1257,8 +1257,14 @@ test('a library already full of works called unfinished is put right', () => {
     'what the archive already said is on disk; nothing needs fetching again');
   assert.match(body, /COALESCE\(complete, 0\) = 0/,
     'and a work already marked finished is left alone');
-  assert.match(java, /migrateTable\(db, "reading"[\s\S]{0,300}repairCompleteness\(db\)/,
-    'it runs where every other repair does, on opening the library');
+  /* It runs where every other repair does: inside migrate(), on opening the
+     library. Asserted as being in that method rather than as sitting a
+     certain number of characters after its neighbour, which only said that
+     nothing had been added between the two of them. */
+  const migrate = java.slice(java.indexOf('private void migrate(SQLiteDatabase db)'));
+  const inside = migrate.slice(0, migrate.indexOf('\n    }\n'));
+  assert.match(inside, /migrateTable\(db, "reading"/);
+  assert.match(inside, /repairCompleteness\(db\)/);
 });
 
 test('a peek from a search still counts as having opened the work', () => {
@@ -1288,6 +1294,49 @@ test('opening a work is what puts it on the continue shelf', () => {
     'nothing recorded an open before; only a scroll did');
   assert.ok(!/saveProgress\(workId, number, 0\)/.test(body),
     'and it is written at the offset it opens to, so it cannot cost somebody their place');
+});
+
+/*
+ * Taking the rows out is the easy half. Every listing this app reads
+ * describes the work again — an author's index, your bookmarks, somebody
+ * else's — so without a tombstone consulted at each of those doors, a work
+ * deleted on Monday is back by Tuesday and nothing says why.
+ */
+test('nothing brings back a work that was deleted on purpose', () => {
+  const fn = js.slice(js.indexOf('function needsFetching(works)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /const gone = deletedAmong\(ids\)/);
+  assert.match(body, /if \(gone\.has\(String\(w\.workId\)\)\) return false/,
+    'a deleted work has no row, so "never seen" is true of it and every walk would fetch it');
+
+  const sync = js.slice(js.indexOf('async function runNewBookmarks('));
+  assert.match(sync.slice(0, sync.indexOf('\n}\n')), /deletedAmong\(workIds\)/,
+    'something bookmarked on the archive and deleted here is named on every sync for ever');
+
+  const java = java_();
+  const save = java.slice(java.indexOf('public String saveWork('));
+  assert.match(save.slice(0, save.indexOf('\n        }\n')), /if \(wasDeleted\(id\)\) return/,
+    'the last gate: nothing comes back through the one method that writes a work');
+  const stubs = java.slice(java.indexOf('public String saveStubs('));
+  assert.match(stubs.slice(0, stubs.indexOf('\n        }\n')), /if \(wasDeleted\(id\)\) continue/,
+    'a listing describing it is not a reason to put it back');
+
+  /* And the one door it does not close. */
+  const add = js.slice(js.indexOf('async function submitAddWork('));
+  assert.match(add.slice(0, add.indexOf('\n}\n')), /allowAgain\(String\(named\.workId\)\)/,
+    'asking plainly for a work outranks a refusal made last month');
+  const runTask = js.slice(js.indexOf('const jobs = createQueue({'));
+  assert.ok(!/allowAgain/.test(runTask.slice(0, runTask.indexOf('\n});'))),
+    'and the queue, which calls the same fetch, must not clear it');
+});
+
+test('an older library gets somewhere to record what was deleted', () => {
+  const java = java_();
+  const migrate = java.slice(java.indexOf('private void migrate(SQLiteDatabase db)'));
+  assert.match(migrate.slice(0, migrate.indexOf('\n    }\n')),
+    /CREATE TABLE IF NOT EXISTS deleted/,
+    'or the first deletion on an upgraded library fails and the work comes straight back');
+  assert.match(SCHEMA, /CREATE TABLE IF NOT EXISTS deleted/);
 });
 
 test('the shell migrates every reading column the query asks for', () => {
@@ -2532,9 +2581,14 @@ test('upkeep is not a peer of leaving kudos', () => {
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /row\.append\(kudos, bookmark, comment\)/,
     'things done because of the work');
-  assert.match(body, /upkeep\.append\(onArchive, refetch\)/,
+  assert.match(body, /upkeep\.append\(onArchive, refetch, remove\)/,
     'and things done because of the app');
   assert.match(css, /\.archive-upkeep \{/, 'drawn a step back');
+
+  /* And the one that cannot be undone by pressing it again is marked as
+     such, rather than sitting in the row looking like Fetch again. */
+  assert.match(body, /remove\.className = 'archive-act archive-danger'/);
+  assert.match(css, /\.archive-danger/, 'and drawn as what it is');
 });
 
 test('the reader does not offer to add a work', () => {
