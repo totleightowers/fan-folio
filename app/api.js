@@ -736,6 +736,28 @@ export async function deleteWork(workId) {
   return out;
 }
 
+/**
+ * Whose bookmark list these works are in.
+ *
+ * Recorded in the same pass that saves the stubs from a bookmark walk, so it
+ * costs no requests and changes nothing about what downloads or when. The
+ * fact was always on the page being read; it was simply thrown away.
+ */
+export async function noteBookmarkedBy(person, workIds) {
+  const ids = [...new Set(workIds.map(String))];
+  if (!ids.length) return { ok: true };
+  if (isNative) {
+    const out = JSON.parse(native.noteBookmarkedBy(String(person), JSON.stringify(ids)));
+    if (out.error) throw new Error(out.error);
+    return out;
+  }
+  const res = await fetch(`/api/bookmarked-by?person=${encodeURIComponent(person)}`,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(ids) });
+  const out = await res.json();
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
 /** A whole author's worth, in one transaction rather than hundreds. */
 export async function deleteWorks(workIds) {
   const ids = workIds.map(String);

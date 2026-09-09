@@ -487,6 +487,15 @@ public class MainActivity extends Activity {
         try {
             db.execSQL("CREATE TABLE IF NOT EXISTS blocked (name TEXT PRIMARY KEY, at TEXT)");
         } catch (Exception ignored) { }
+        /* Whose bookmark list a work is in. in_bookmarks only ever meant
+           yours, and a walk of somebody else's list threw the answer away. */
+        try {
+            db.execSQL("CREATE TABLE IF NOT EXISTS bookmarked_by ("
+                     + "person TEXT NOT NULL, work_id TEXT NOT NULL, at TEXT, "
+                     + "PRIMARY KEY (person, work_id))");
+            db.execSQL("CREATE INDEX IF NOT EXISTS bookmarked_by_work "
+                     + "ON bookmarked_by(work_id)");
+        } catch (Exception ignored) { }
         repairCompleteness(db);
     }
 
@@ -1795,6 +1804,39 @@ public class MainActivity extends Activity {
                 try {
                     db.delete("blocked", "name = ?", new String[]{ name });
                     restateHidden(name, blockedNames());
+                    db.setTransactionSuccessful();
+                } finally {
+                    db.endTransaction();
+                }
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /**
+         * Whose bookmark list these works are in.
+         *
+         * Written in the same pass that saves the stubs from a bookmark walk,
+         * so it costs no requests and changes nothing about what downloads or
+         * when. The fact was always on the page being read; it was simply
+         * being thrown away.
+         */
+        @JavascriptInterface
+        public String noteBookmarkedBy(String person, String jsonIds) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                org.json.JSONArray ids = new org.json.JSONArray(jsonIds);
+                db.beginTransaction();
+                try {
+                    for (int i = 0; i < ids.length(); i++) {
+                        String id = ids.optString(i, "");
+                        if (id.isEmpty()) continue;
+                        db.execSQL("INSERT OR IGNORE INTO bookmarked_by (person, work_id, at) "
+                                 + "VALUES (?,?,datetime('now'))",
+                                   new Object[]{ person, id });
+                    }
                     db.setTransactionSuccessful();
                 } finally {
                     db.endTransaction();

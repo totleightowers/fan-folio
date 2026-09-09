@@ -1357,6 +1357,43 @@ test('a blocked author is refused at every door, not just their own page', () =>
     'and a work whose authors cannot be read is never hidden');
 });
 
+/*
+ * works.in_bookmarks is a boolean meaning *yours*. A walk of somebody else's
+ * bookmark index saved a stub for every work it saw and threw away the one
+ * fact that made the page worth reading: whose list it was.
+ */
+test('a bookmark walk records whose list it was reading', () => {
+  const fn = js.slice(js.indexOf('async function walkAuthor(name,'));
+  const keep = fn.slice(fn.indexOf('const keep = (works)'));
+  const body = keep.slice(0, keep.indexOf('\n  };'));
+  assert.match(body, /if \(listing === 'bookmarks'\)/, 'only a bookmark walk knows a list');
+  assert.match(body, /noteBookmarkedBy\(name, works\.map/);
+  assert.ok(body.indexOf('saveStubs') < body.indexOf('noteBookmarkedBy'),
+    'in the same pass that saves the descriptions, so it costs no requests');
+  assert.match(body, /\.catch\(\(\) =>/, 'a record of taste is not worth failing a walk over');
+});
+
+test('a person is two questions, and the library can ask both', () => {
+  const fn = js.slice(js.indexOf('function showAuthorAs(name, which)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /filterBy\('bookmarkedBy', name\)/);
+  assert.match(body, /filterBy\('author', name\)/);
+
+  /* Mutually exclusive filters rather than a filter and a mode, so sorting,
+     narrowing by tag and searching within all work the same on either. */
+  const clearing = js.slice(js.indexOf('function filterBy(kind, value)'));
+  assert.match(clearing.slice(0, clearing.indexOf('\n}\n')), /bookmarkedBy: '',/,
+    'switching back to their works must not ask for both at once');
+
+  const bar = js.slice(js.indexOf('function paintAuthorBar('));
+  const body_ = bar.slice(0, bar.indexOf('\n}\n'));
+  assert.match(body_, /view\.author \?\? \[\][\s\S]{0,200}view\.bookmarkedBy \|\| null/,
+    'the bar stays up whichever of the two you are looking at');
+  assert.match(body_, /Nothing recorded yet/,
+    'and an author walked before this existed says so, rather than looking '
+    + 'like somebody who bookmarks nothing');
+});
+
 test('the front page hides what the library hides', () => {
   /* Home builds its shelves by hand rather than through buildWorksQuery, so
      the hiding is said in two places — which is exactly the arrangement that
@@ -2532,10 +2569,11 @@ test('the whole bookmark list can be read, so removals are noticed', () => {
  * prolific person that is hours of archive, begun by tapping a name.
  */
 test('opening an author shows the author', () => {
-  const fn = js.slice(js.indexOf('function openAuthor(name) {'));
+  const fn = js.slice(js.indexOf('function showAuthorAs(name, which)'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /filterBy\('author', name\)/, 'the library narrows to them');
-  assert.ok(!/catchUpOn\(name\)/.test(body),
+  const opening = js.slice(js.indexOf('function openAuthor(name) {'));
+  assert.ok(!/catchUpOn\(name\)/.test(opening.slice(0, opening.indexOf('\n}\n'))),
     'and nothing is asked of the archive by looking at somebody');
 
   const bar = js.slice(js.indexOf('function paintAuthorBar('));

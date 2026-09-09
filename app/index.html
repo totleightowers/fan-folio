@@ -308,6 +308,16 @@
           start that work by itself, which is a lot of archive for a tap.
       -->
       <div id="author-bar" hidden>
+        <!--
+            Two things a person is: what they wrote, and what they liked.
+            The library could only ever ask the first, because a walk of
+            somebody's bookmark list kept the works and threw away whose list
+            it was.
+        -->
+        <div class="author-tabs">
+          <button id="author-view-works" class="browse-tab on">Their works</button>
+          <button id="author-view-bookmarks" class="browse-tab">Their bookmarks</button>
+        </div>
         <p id="author-known" class="setting-note"></p>
         <button id="author-sync" class="ghost">Fetch their works and bookmarks</button>
         <!--

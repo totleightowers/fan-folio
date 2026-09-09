@@ -185,6 +185,19 @@ export function buildWorksQuery(filters = {}) {
     args.push(...authors.map((name) => `%${likeLiteral(JSON.stringify(String(name)))}%`));
   }
 
+  /*
+   * Works in one person's bookmark list.
+   *
+   * Not the same question as "by this author", and until now the library
+   * could only ask that one — a bookmark walk read somebody's whole list and
+   * kept only the works, discarding whose list it was.
+   */
+  if (filters.bookmarkedBy) {
+    where.push('EXISTS (SELECT 1 FROM bookmarked_by b '
+      + 'WHERE b.work_id = w.work_id AND b.person = ?)');
+    args.push(String(filters.bookmarkedBy));
+  }
+
   const ratings = list(filters.rating);
   if (ratings.length) {
     where.push(`w.rating IN (${ratings.map(() => '?').join(',')})`);

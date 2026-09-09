@@ -179,6 +179,24 @@ CREATE TABLE IF NOT EXISTS deleted (
   at      TEXT
 );
 
+-- Whose bookmark list a work is in.
+--
+-- works.in_bookmarks is a boolean meaning *yours*. When a walk reads
+-- somebody else's bookmark index it saves a stub for every work it sees and
+-- then throws away the one fact that made the page worth reading: whose list
+-- it was. So "ann's bookmarks" could not be asked of the library at all, even
+-- for people whose bookmarks had already been walked.
+--
+-- Recorded in the same pass that saves the stubs, so it costs no requests and
+-- changes nothing about what downloads or when.
+CREATE TABLE IF NOT EXISTS bookmarked_by (
+  person  TEXT NOT NULL,
+  work_id TEXT NOT NULL,
+  at      TEXT,
+  PRIMARY KEY (person, work_id)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS bookmarked_by_work ON bookmarked_by(work_id);
+
 -- Authors whose work is not wanted.
 --
 -- Two promises: nothing of theirs is fetched again, and what is already here

@@ -194,6 +194,37 @@ test('the count agrees with the list about what is hidden', () => {
     'a count that includes what the list does not is a library that looks broken');
 });
 
+test('a person\u2019s bookmarks are a different question from their works', () => {
+  const db = library();
+  const noted = db.prepare('INSERT INTO bookmarked_by (person, work_id, at) VALUES (?,?,?)');
+  /* ann wrote work 1 and bookmarked works 2 and 3. Those are three different
+     facts and the library could only ever ask about the first. */
+  noted.run('ann', '2', '2026-01-01');
+  noted.run('ann', '3', '2026-01-01');
+
+  assert.deepEqual(run(db, { bookmarkedBy: 'ann' }), ['2', '3']);
+  assert.deepEqual(run(db, { author: ['ann'] }), ['1'], 'what they wrote is unchanged');
+  assert.deepEqual(run(db, { bookmarkedBy: 'nobody' }), []);
+});
+
+test('a bookmark list is filtered like any other list', () => {
+  const db = library();
+  const noted = db.prepare('INSERT INTO bookmarked_by (person, work_id, at) VALUES (?,?,?)');
+  noted.run('ann', '2', '2026-01-01');
+  noted.run('ann', '3', '2026-01-01');
+  assert.deepEqual(run(db, { bookmarkedBy: 'ann', rating: ['Explicit'] }), ['3']);
+  assert.deepEqual(run(db, { bookmarkedBy: 'ann', include: ['Fluff'] }), ['3']);
+});
+
+test('a blocked author is hidden from somebody else\u2019s bookmarks too', () => {
+  const db = library();
+  db.prepare('INSERT INTO bookmarked_by (person, work_id, at) VALUES (?,?,?)')
+    .run('ann', '2', '2026-01-01');
+  db.prepare('UPDATE works SET hidden = 1 WHERE work_id = ?').run('2');
+  assert.deepEqual(run(db, { bookmarkedBy: 'ann' }), [],
+    'every question the library asks, not the ones that were remembered');
+});
+
 test('every work is in exactly one reading state', () => {
   const db = library();
   const all = run(db, {});
