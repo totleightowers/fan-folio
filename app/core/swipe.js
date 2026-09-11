@@ -14,6 +14,19 @@
 import { axisOf, travel, commits, inSystemEdge } from './gesture.js';
 
 export function createSwipe(el, {
+  /**
+   * Where the finger is listened for, when that is not the thing that moves.
+   *
+   * A page turn was only heard if the gesture began inside the element it
+   * turns, and a screen is not only that element: the tab bar sits over the
+   * foot of the work page, a button's widened tap area covers more than the
+   * button, and the page itself is largely rows that might have claimed the
+   * movement. Miss any of those and the gesture simply never arrives, which
+   * from the outside is indistinguishable from a gesture that does nothing.
+   */
+  surface = el,
+  /** Whether this gesture owns the screen at all right now. */
+  active = () => true,
   onLeft,
   onRight,
   canLeft = () => true,
@@ -46,6 +59,7 @@ export function createSwipe(el, {
   };
 
   function down(e) {
+    if (!active()) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     // the screen edges belong to the system, not to us
     if (inSystemEdge(e.clientX, viewportWidth())) return;
@@ -134,10 +148,10 @@ export function createSwipe(el, {
     setTimeout(done, duration.settle + 10);
   }
 
-  el.addEventListener('pointerdown', down, { passive: true });
-  el.addEventListener('pointermove', move, { passive: true });
-  el.addEventListener('pointerup', up, { passive: true });
-  el.addEventListener('pointercancel', cancel, { passive: true });
+  surface.addEventListener('pointerdown', down, { passive: true });
+  surface.addEventListener('pointermove', move, { passive: true });
+  surface.addEventListener('pointerup', up, { passive: true });
+  surface.addEventListener('pointercancel', cancel, { passive: true });
 
   // handed back so a test can drive them directly, without a DOM
   return { down, move, up, cancel };

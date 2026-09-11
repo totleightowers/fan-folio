@@ -111,3 +111,45 @@ test('a cancelled gesture settles back rather than turning', async () => {
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(el.has('swiping'), false);
 });
+
+
+/* ------------------------------------------------- where the finger is heard */
+
+/*
+ * A page turn used to be heard only inside the element it turns, and a screen
+ * is not only that element: the tab bar sits over the foot of the work page,
+ * a button's widened tap area covers more than the button, and the page is
+ * largely rows that may have claimed the movement. Miss any of those and the
+ * gesture never arrives — which from the outside is a gesture that does
+ * nothing, and the reason to reach for the button instead.
+ */
+test('the finger is listened for on the surface, not only on what moves', () => {
+  const moves = surface();
+  const heard = [];
+  const listener = { addEventListener: (type) => heard.push(type) };
+  createSwipe(moves, { surface: listener, onLeft() {}, onRight() {} });
+
+  assert.deepEqual(heard, ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'],
+    'every part of the gesture comes from the wider surface');
+});
+
+test('a swipe belonging to another screen is not this one to answer', async () => {
+  const turned = [];
+  let live = false;
+  const swipe = createSwipe(surface(), {
+    active: () => live,
+    onLeft: () => turned.push('left'),
+    onRight: () => turned.push('right'),
+    viewportWidth: () => 360,
+  });
+
+  /* Both gestures listen to the whole document now, so each has to say which
+     screen is its own — or turning a page in the reader would also open a
+     work behind it. */
+  await drag(swipe, { from: 300, to: 60 });
+  assert.deepEqual(turned, [], 'not while another screen is showing');
+
+  live = true;
+  await drag(swipe, { from: 300, to: 60 });
+  assert.deepEqual(turned, ['left'], 'and answered when it is this one');
+});

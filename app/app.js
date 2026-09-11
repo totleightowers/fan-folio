@@ -737,6 +737,7 @@ function filterParams(extra = {}) {
 
 const activeCount = () =>
   view.include.length + view.exclude.length + view.rating.length + (view.author?.length ?? 0)
+  + (view.bookmarkedBy ? 1 : 0)
   + (view.complete ? 1 : 0) + (view.language ? 1 : 0)
   + (view.wordsMin || view.wordsMax ? 1 : 0)
   + (view.chaptersMin || view.chaptersMax ? 1 : 0)
@@ -1242,6 +1243,16 @@ function paintActiveFilters() {
   for (const r of view.rating) pill(r, 'in', () => { view.rating = view.rating.filter((x) => x !== r); });
   for (const a of view.author ?? []) {
     pill(`by ${a}`, 'in', () => { view.author = view.author.filter((x) => x !== a); });
+  }
+  /* The other half of looking at a person. Without a pill of its own, going
+     from their works to their bookmarks removed one from the row and dropped
+     the count by one — the same screen, narrowed just as much, saying it was
+     narrowed less, and the page moving under the reader as the row reflowed. */
+  if (view.bookmarkedBy) {
+    pill(`in ${view.bookmarkedBy}'s bookmarks`, 'in', () => {
+      view.bookmarkedBy = '';
+      currentAuthor = null;
+    });
   }
   if (view.otp) pill('only this pairing', 'in', () => { view.otp = ''; });
   if (view.crossover) {
@@ -5082,8 +5093,24 @@ const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)
  * passed in, and there are tests that drive a fake finger across a fake
  * surface and assert that the page turned.
  */
-function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight = null } = {}) {
+/**
+ * A page turn is heard anywhere on the screen it belongs to.
+ *
+ * It used to be heard only inside the element that moves, and a screen is not
+ * only that element. The tab bar sits over the foot of the work page; a
+ * button's widened tap area covers more than the button; the page is largely
+ * rows that may have claimed the movement already. Any of those and the
+ * gesture never arrived — which from the outside is a gesture that does
+ * nothing, and the reason to reach for the button instead.
+ *
+ * So the whole document listens, and each swipe says which screen is its own.
+ * A sheet on top owns everything while it is open.
+ */
+function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight = null,
+                         screen = null } = {}) {
   return createSwipe(el, {
+    surface: document,
+    active: () => showing() === (screen ?? el.id) && !$('dialog[open]'),
     onLeft: onLeft ?? (() => openChapter(current.workId, current.chapter + 1)),
     onRight: onRight ?? (() => openChapter(current.workId, current.chapter - 1)),
     canLeft: canLeft ?? (() => !viewingArchive && current.chapter < current.count),
@@ -5110,6 +5137,7 @@ function wireSwipe(el, { onLeft = null, onRight = null, canLeft = null, canRight
  * a work there genuinely is nothing.
  */
 wireSwipe($('#reader'), {
+  screen: 'reader',
   canRight: () => !viewingArchive && Boolean(current.workId),
   onRight: () => (current.chapter > 1
     ? openChapter(current.workId, current.chapter - 1)
@@ -5123,6 +5151,7 @@ wireSwipe($('#reader'), {
  * detail page, so the motion means the same thing throughout: onward.
  */
 wireSwipe($('#detail'), {
+  screen: 'detail',
   canLeft: () => Boolean(currentWork),
   onLeft: () => {
     if (!currentWork) return;
