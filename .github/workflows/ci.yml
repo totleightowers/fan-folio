@@ -27,6 +27,29 @@ jobs:
       - name: Core logic tests
         run: npm test
 
+  dart:
+    name: Core logic, in Dart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        with:
+          sdk: stable
+
+      # package:sqlite3 asks for the development symlink, which a runner does
+      # not have either; the tests find the real library themselves.
+      - name: Resolve
+        working-directory: dart/folio_core
+        run: dart pub get
+
+      - name: The port answers what the original answers
+        working-directory: dart/folio_core
+        run: dart test
+
+      - name: It parses and has no obvious fault
+        working-directory: dart/folio_core
+        run: dart analyze --fatal-infos
+
   lint:
     name: Static analysis
     runs-on: ubuntu-latest
