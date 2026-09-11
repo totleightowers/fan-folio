@@ -378,10 +378,61 @@ test('every button in the markup is painted by something', () => {
     'these render as the system\u2019s own buttons');
 });
 
-test('every tappable surface has a pressed state', () => {
-  // the block appended under "interaction layer" is where presses are defined
-  const layer = css.slice(css.indexOf('interaction layer'));
+/*
+ * The app had a background and a pane, so a field, a card, a sheet and a
+ * segmented track were all the same piece of paper at different sizes; and
+ * everything was either the text colour or "muted", so a byline, a word
+ * count and a timestamp were the same grey. Depth and weight are what the eye
+ * sorts a screen by before it reads a word of it.
+ */
+test('the app has a vocabulary rather than a background and a pane', () => {
+  const root = css.slice(css.indexOf(':root {'), css.indexOf('* { box-sizing'));
+  for (const token of ['--paper', '--surface', '--sunken', '--line', '--line-soft',
+                       '--ink', '--ink-mid', '--ink-mute', '--ink-faint',
+                       '--r-field', '--r-card', '--r-panel', '--r-pill', '--title']) {
+    assert.ok(root.includes(`${token}:`), `${token} is part of the vocabulary`);
+  }
 
+  /* The names the stylesheet was written against still mean what they meant,
+     so every rule using them goes on working and a theme restates one list. */
+  for (const alias of ['--bg: var(--paper)', '--fg: var(--ink)', '--muted: var(--ink-mute)',
+                       '--rule: var(--line)', '--pane: var(--surface)']) {
+    assert.ok(root.includes(alias), `${alias} keeps the old name meaning the new thing`);
+  }
+
+  /* A theme says the vocabulary once rather than setting five old names, which
+     is why adding a colour used to mean editing four blocks and missing one. */
+  for (const theme of ["data-theme='sepia'", "data-theme='dark'", "data-theme='black'"]) {
+    const at = css.indexOf(theme);
+    const block = css.slice(at, css.indexOf('}', at));
+    for (const token of ['--paper', '--surface', '--sunken', '--ink', '--ink-mute']) {
+      assert.ok(block.includes(token), `${theme} restates ${token}`);
+    }
+  }
+});
+
+test('a radius is chosen from a scale, not guessed at', () => {
+  /* Ten different radii were in use for things of the same kind. What is left
+     in pixels is hairlines and progress bars, where a token would be a lie. */
+  const guesses = [...css.matchAll(/border-radius: (\d+)px/g)].map((m) => Number(m[1]));
+  assert.deepEqual(guesses.filter((px) => px > 5), [],
+    'anything card-sized or larger comes from the scale');
+});
+
+test('white on the accent is a choice the dark themes get to make', () => {
+  assert.ok(!/background: var\(--accent\);[^}]*color: #fff/.test(css),
+    'a peach accent in the dark with white on it is unreadable');
+  const dark = css.slice(css.indexOf("data-theme='dark'"));
+  assert.match(dark.slice(0, dark.indexOf('}')), /--on-accent:/);
+});
+
+test('every tappable surface has a pressed state', () => {
+  /*
+   * This used to ask whether the selector appeared anywhere after the
+   * "interaction layer" comment — which is the whole rest of the file, so
+   * every component defined below that point satisfied it by being defined.
+   * A guard that cannot fail is not a guard. It asks for the rule now.
+   */
   const selectorsOf = (rule) => rule.split(',').map((s) => s.trim());
   const tappable = new Set();
   for (const m of css.matchAll(/([^{}]+)\{([^}]*cursor:\s*pointer[^}]*)\}/g)) {
@@ -394,9 +445,20 @@ test('every tappable surface has a pressed state', () => {
 
   // form controls draw their own pressed state; a range thumb is not a button
   const drawsItsOwn = new Set(['#theme', '.swatch', '.slider']);
-  const missing = [...tappable]
-    .filter((sel) => !drawsItsOwn.has(sel))
-    .filter((sel) => !layer.includes(sel));
+  /*
+   * Two ways of having one, and both count. A rule of its own in the
+   * stylesheet, or a place in the pointer layer's list — which adds
+   * .is-pressed, and the one generic rule paints that whatever it lands on.
+   * What does not count is merely being mentioned somewhere below a comment.
+   */
+  const layerList = js.slice(js.indexOf('const TAPPABLE'), js.indexOf("].join(',')"));
+  const pressed = (sel) => {
+    const name = sel.replace(/[.#]/, '');
+    const mark = sel.startsWith('#') ? `#${name}` : `\\.${name}`;
+    return new RegExp(`${mark}(?:[^,{]*)?(?::active|\\.is-pressed)`).test(css)
+      || layerList.includes(sel);
+  };
+  const missing = [...tappable].filter((sel) => !drawsItsOwn.has(sel) && !pressed(sel));
 
   assert.deepEqual(missing, [],
     `styled as tappable but never acknowledges a press: ${missing.join(', ')}`);
