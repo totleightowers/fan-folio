@@ -1373,6 +1373,36 @@ test('a bookmark walk records whose list it was reading', () => {
   assert.match(body, /\.catch\(\(\) =>/, 'a record of taste is not worth failing a walk over');
 });
 
+test('swiping to start reading is heard anywhere on the work page', () => {
+  const fn = js.slice(js.indexOf('function wireSwipe(el, {'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /surface: document/,
+    'the tab bar now covers the foot of the work page, and it used to eat the gesture');
+  assert.match(body, /active: \(\) => showing\(\) === \(screen \?\? el\.id\)/,
+    'so each swipe says which screen is its own');
+  assert.match(body, /!\$\('dialog\[open\]'\)/, 'and a sheet on top owns everything');
+
+  for (const wired of ["wireSwipe($('#reader'), {", "wireSwipe($('#detail'), {"]) {
+    const at = js.slice(js.indexOf(wired));
+    assert.match(at.slice(0, 200), /screen: '(reader|detail)'/, `${wired} names its screen`);
+  }
+});
+
+test('both halves of a person are filtered the same way', () => {
+  const fn = js.slice(js.indexOf('function paintActiveFilters()'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  /* Without a pill of its own, going from their works to their bookmarks
+     removed one from the row and dropped the count by one: the same screen,
+     narrowed just as much, saying it was narrowed less — and the page moving
+     under the reader as the row reflowed. */
+  assert.match(body, /if \(view\.bookmarkedBy\) \{\s*\n\s*pill\(/);
+  assert.match(body, /by \$\{a\}/, 'the author half keeps its pill');
+
+  const count = js.slice(js.indexOf('const activeCount = () =>'));
+  assert.match(count.slice(0, 400), /view\.bookmarkedBy \? 1 : 0/,
+    'and the badge counts what the row shows');
+});
+
 test('a person is two questions, and the library can ask both', () => {
   const fn = js.slice(js.indexOf('function showAuthorAs(name, which)'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
