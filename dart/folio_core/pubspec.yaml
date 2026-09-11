@@ -1,0 +1,15 @@
+name: folio_core
+description: >-
+  The logic of Fan Folio, with no Flutter in it: the schema, the library
+  query, the archive's shapes, the pacer and the queue. Pure Dart on purpose —
+  Flutter publishes no Linux arm64 SDK, so this is the half that can be tested
+  on the machine it is written on.
+publish_to: none
+version: 2.0.0
+
+environment:
+  sdk: ^3.5.0
+
+dev_dependencies:
+  test: ^1.25.0
+  sqlite3: ^2.4.0

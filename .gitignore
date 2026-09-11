@@ -18,3 +18,7 @@ keystore*
 
 # a session cookie is a credential
 cookies.txt
+
+# Dart build state; pubspec.lock is kept, since a reproducible resolve is
+# worth having for something that has to agree with a shipped database.
+.dart_tool/
