@@ -12,20 +12,28 @@ Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
   testWidgets('a chapter is laid out as text, paragraph by paragraph', (tester) async {
-    await tester.pumpWidget(wrap(ChapterView(
-      document: core.parseChapter('<p>The first.</p><p>The second.</p>'),
-      settings: const ReadingSettings(),
-    )));
+    await tester.pumpWidget(
+      wrap(
+        ChapterView(
+          document: core.parseChapter('<p>The first.</p><p>The second.</p>'),
+          settings: const ReadingSettings(),
+        ),
+      ),
+    );
 
     expect(find.textContaining('The first.', findRichText: true), findsOneWidget);
     expect(find.textContaining('The second.', findRichText: true), findsOneWidget);
   });
 
   testWidgets('emphasis arrives as italics, not as asterisks', (tester) async {
-    await tester.pumpWidget(wrap(ChapterView(
-      document: core.parseChapter('<p>She was <em>certain</em>.</p>'),
-      settings: const ReadingSettings(),
-    )));
+    await tester.pumpWidget(
+      wrap(
+        ChapterView(
+          document: core.parseChapter('<p>She was <em>certain</em>.</p>'),
+          settings: const ReadingSettings(),
+        ),
+      ),
+    );
 
     final rich = tester.widget<RichText>(find.byType(RichText).first);
     final spans = <InlineSpan>[];
@@ -41,18 +49,26 @@ void main() {
   });
 
   testWidgets('a scene break is drawn, because it is the pacing', (tester) async {
-    await tester.pumpWidget(wrap(ChapterView(
-      document: core.parseChapter('<p>Before.</p><hr><p>After.</p>'),
-      settings: const ReadingSettings(),
-    )));
+    await tester.pumpWidget(
+      wrap(
+        ChapterView(
+          document: core.parseChapter('<p>Before.</p><hr><p>After.</p>'),
+          settings: const ReadingSettings(),
+        ),
+      ),
+    );
     expect(find.byType(Divider), findsOneWidget);
   });
 
   testWidgets('a table says so rather than being flattened or dropped', (tester) async {
-    await tester.pumpWidget(wrap(ChapterView(
-      document: core.parseChapter('<table><tr><td>a</td></tr></table>'),
-      settings: const ReadingSettings(),
-    )));
+    await tester.pumpWidget(
+      wrap(
+        ChapterView(
+          document: core.parseChapter('<table><tr><td>a</td></tr></table>'),
+          settings: const ReadingSettings(),
+        ),
+      ),
+    );
     expect(find.textContaining('table', findRichText: true), findsOneWidget);
   });
 }
