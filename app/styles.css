@@ -2214,7 +2214,7 @@ button:disabled, .opt:disabled {
  * says the question has been asked, where a missing row says nothing.
  */
 .you-counts {
-  margin: 0 0 var(--gap);
+  margin: 0 .3rem 1.2rem;
   border: 1px solid var(--line-soft);
   border-radius: var(--r-card);
   background: var(--surface);
@@ -2256,3 +2256,37 @@ button:disabled, .opt:disabled {
 
 #activity-here[data-state="held"] { background: var(--ink-mute); }
 #activity-here[data-state="failed"] { background: var(--warn, var(--accent)); }
+
+/*
+ * A person, as a place.
+ *
+ * They used to be the library with a bar on top, which meant opening somebody
+ * threw away whatever you had narrowed to and going back did not find it.
+ */
+.author-name {
+  margin: .6rem .3rem .4rem;
+  font-family: var(--serif, Literata, Georgia, serif);
+  font-size: 1.45rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#author .author-tabs { margin: 0 .3rem .8rem; }
+
+.author-sync {
+  margin: 0 .3rem .9rem;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+
+.author-sync .setting-note { margin: 0 0 .6rem; }
+.author-sync .primary { width: 100%; }
+
+.author-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: .6rem;
+}
