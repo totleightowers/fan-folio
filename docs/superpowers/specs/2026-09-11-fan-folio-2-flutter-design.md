@@ -46,7 +46,30 @@ the Flutter half cannot be built or tested on the machine this is written on,
 while pure Dart can. Putting the risky logic where it can be tested is the
 difference between porting it and guessing at it.
 
-## The reader
+## The reader: native by default, WebView where there is a skin
+
+Two surfaces, chosen per work by `works.skin_css`.
+
+The reason for one reader was faithfulness: an AO3 work is an HTML document
+with the author's CSS attached, and a chat fic must look like a chat. The
+reason for the other is that native text is what a reading app is made of —
+real pagination, no WebView scroll jank, type that behaves. Archive Reader
+does the second and it is what made this rewrite worth starting.
+
+Most works have no skin at all. So: a work with a skin opens in a WebView and
+renders exactly as its author wrote it; every other work is laid out as native
+text. `skin_css` is already stored and already tells us which is which.
+
+The cost, stated plainly: **a work can change character depending on whether
+it happens to carry a skin.** That is mitigated rather than solved — the
+native renderer matches the WebView's default AO3 typography closely enough
+that the two agree except where a skin is actually doing something — and a
+control in the reader switches one work to the other surface, so a mangled
+render or an unreadable skin is one tap from the other answer.
+
+The document model is pure Dart and therefore testable here: chapter HTML in,
+a tree of spans and blocks out. Only the painting of it is Flutter. That puts
+the part most likely to be wrong on the side of the line that has tests.
 
 `webview_flutter` is the same Android WebView, so a work skin renders exactly
 as it does now — which is the whole reason it stays.
@@ -87,12 +110,14 @@ Stages 1 to 3 are provable on this machine. Nothing is installable until 7.
 
 1. **Store** — schema, migrations, the query builder, delete, blocked.
    Tested against real SQLite, on the fixtures the JavaScript tests use.
-2. **Archive** — URLs, `linkTarget`, listing and work-page parsing, forms.
-   Tested on the saved fixtures in `test/fixtures`.
+2. **Archive** — URLs, `linkTarget`, listing and work-page parsing, forms,
+   and the chapter document model. Tested on the saved fixtures in
+   `test/fixtures`; all of it is HTML handling and belongs in one frame.
 3. **Sync** — the pacer, the job queue, the walks, bookmark reconciliation.
    Porting the behavioural tests, which is where the found bugs live.
 4. **Shell** — navigation, library, work page.
-5. **Reader** — the chapter WebView and the reading settings.
+5. **Reader** — the native document, the WebView for skinned works, the
+   switch between them, and the reading settings driving both.
 6. **Activity** — the queue screen, the notification, the background isolate.
 7. **Release** — `flutter test` and `flutter build apk` in CI, tagged `v2.x`.
 

@@ -23,6 +23,24 @@ test('the Dart schema is the schema, not a copy of it', () => {
     'run `node tools/emit-dart-schema.mjs` — the schema changed and Dart was not told');
 });
 
+/**
+ * The Dart port is held to what this implementation actually answers.
+ *
+ * Two ports passing two suites written by the same hand proves the hand was
+ * consistent. The fixture records what 1.x says about a body of links and
+ * bylines; if the rules here change and the fixture is not regenerated, the
+ * two versions have quietly begun disagreeing about where a byline points.
+ */
+test('the conformance fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/urls.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-conformance.mjs` — the rules moved and Dart was not told');
+});
+
 test('the emitted statements carry no comment that could cut one in half', () => {
   const dart = readFileSync(
     new URL('../dart/folio_core/lib/src/store/schema.g.dart', import.meta.url), 'utf8');

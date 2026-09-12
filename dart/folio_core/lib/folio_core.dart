@@ -4,5 +4,6 @@
 /// tested on the machine it is written on. Nothing in here may import Flutter.
 library;
 
+export 'src/ao3/urls.dart';
 export 'src/store/query.dart';
 export 'src/store/schema.g.dart';
