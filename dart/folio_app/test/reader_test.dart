@@ -107,7 +107,14 @@ void main() {
       ),
     );
 
-    final text = tester.widget<RichText>(find.byType(RichText).first);
+    final text = tester.widget<RichText>(
+      find
+          .descendant(
+            of: find.byType(ChapterView),
+            matching: find.byType(RichText),
+          )
+          .first,
+    );
     final style = (text.text as TextSpan).children!.first.style!;
     expect(style.fontSize, 26);
     expect(style.height, 2.1);

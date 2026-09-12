@@ -63,7 +63,6 @@ class _ReadingSheetState extends State<ReadingSheet> {
                 const SizedBox(height: 8),
                 _Faces(
                   chosen: _prefs.face,
-                  ground: ground,
                   onChosen: (face) => _set(_prefs.copyWith(face: face)),
                 ),
                 const SizedBox(height: 16),
