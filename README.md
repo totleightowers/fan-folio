@@ -72,8 +72,10 @@ The stylesheets under `app/vendor/` come from
 licence. That attribution is a condition of using them and stays regardless of
 how the rest of this is described.
 
-The typefaces under `app/fonts/` — [Literata](https://github.com/googlefonts/literata)
-and [Atkinson Hyperlegible](https://www.brailleinstitute.org/freefont/) — are
-used under the SIL Open Font License 1.1. Its text sits beside them in that
-directory, which is the condition of shipping them, and applies to those files
-rather than to this app.
+The typefaces under `app/fonts/` and `dart/folio_app/fonts/` —
+[Literata](https://github.com/googlefonts/literata) and
+[Atkinson Hyperlegible](https://www.brailleinstitute.org/freefont/) — are used
+under the SIL Open Font License 1.1. Its text sits beside them in both
+directories, which is the condition of shipping them, and applies to those
+files rather than to this app. The two copies are the same faces in the formats
+their apps need: woff2 for the 1.x WebView, TrueType for the Flutter bundle.

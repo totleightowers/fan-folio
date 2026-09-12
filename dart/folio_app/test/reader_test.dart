@@ -87,4 +87,82 @@ void main() {
     );
     expect(find.textContaining('table', findRichText: true), findsOneWidget);
   });
+
+  testWidgets('what the reader chose is what the page is set in', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        ChapterView(
+          document: core.parseChapter('<p>A paragraph of it.</p>'),
+          settings: ReadingSettings.from(
+            const core.ReadingPrefs(
+              size: 26,
+              lineHeight: 2.1,
+              face: core.ReadingFace.atkinson,
+              justified: true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final text = tester.widget<RichText>(
+      find
+          .descendant(
+            of: find.byType(ChapterView),
+            matching: find.byType(RichText),
+          )
+          .first,
+    );
+    // the span tree is nested — Text.rich wraps ours, and ours wraps the runs
+    // — so this asks the first span that actually carries words
+    final style = _styleOfFirstWords(text.text)!;
+    expect(style.fontSize, 26);
+    expect(style.height, 2.1);
+    expect(style.fontFamily, 'Atkinson Hyperlegible');
+    expect(text.textAlign, TextAlign.justify);
+  });
+
+  test('a face is a name the app can keep', () {
+    /* Two of these ship with the app and two are names Android resolves. A
+       family that is neither is a setting that silently does nothing. */
+    const shipped = {'Literata', 'Atkinson Hyperlegible'};
+    const generic = {'serif', 'monospace'};
+    for (final face in core.ReadingFace.values) {
+      final family = familyFor(face);
+      expect(
+        family == null || shipped.contains(family) || generic.contains(family),
+        isTrue,
+        reason: '$face asks for $family, which nothing promises',
+      );
+    }
+    expect(
+      familyFor(core.ReadingFace.system),
+      isNull,
+      reason: 'whatever the device reads in, which is the point of it',
+    );
+  });
+
+  test('the slider hands over a number and Flutter wants one of nine', () {
+    expect(weightFor(400), FontWeight.w400);
+    expect(weightFor(700), FontWeight.w700);
+    expect(weightFor(300), FontWeight.w300);
+    // and nothing off the end of the list, whatever a future slider allows
+    expect(weightFor(0), FontWeight.w100);
+    expect(weightFor(5000), FontWeight.w900);
+  });
+}
+
+/// The style on the first span in the tree that has words in it.
+TextStyle? _styleOfFirstWords(InlineSpan span) {
+  TextStyle? found;
+  span.visitChildren((child) {
+    if (child is TextSpan && (child.text?.isNotEmpty ?? false)) {
+      found = child.style;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }

@@ -48,3 +48,17 @@ flutter:
     - family: Literata
       fonts:
         - asset: fonts/Literata.ttf
+    # Drawn by the Braille Institute for low vision readers: the letters that
+    # usually collapse into each other — I l 1, O 0, b d — are drawn to be
+    # told apart. Four cut files rather than one, so italics in a fic are the
+    # designer's italics and not a slant the engine applied to the roman.
+    - family: Atkinson Hyperlegible
+      fonts:
+        - asset: fonts/AtkinsonHyperlegible-Regular.ttf
+        - asset: fonts/AtkinsonHyperlegible-Italic.ttf
+          style: italic
+        - asset: fonts/AtkinsonHyperlegible-Bold.ttf
+          weight: 700
+        - asset: fonts/AtkinsonHyperlegible-BoldItalic.ttf
+          style: italic
+          weight: 700
