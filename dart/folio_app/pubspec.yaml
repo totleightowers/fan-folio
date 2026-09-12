@@ -25,6 +25,11 @@ dependencies:
   # message to themselves. A library is far too big to read into memory to
   # save it, and this streams the file rather than copying it through the app.
   share_plus: ^13.0.0
+  # A download is an hour of one request every half minute, and Android stops
+  # a backgrounded app from making them. This holds a foreground service open
+  # while there is work, which is the only way the walk survives somebody
+  # answering a message. The work itself stays in the app's own isolate.
+  flutter_foreground_task: ^11.0.0
 
 dev_dependencies:
   flutter_test:
