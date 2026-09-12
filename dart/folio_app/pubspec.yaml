@@ -1,0 +1,35 @@
+name: folio_app
+description: Fan Folio 2 — your saved fiction, offline and searchable.
+publish_to: none
+version: 2.0.0
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  folio_core:
+    path: ../folio_core
+  # The library is one SQLite file, the same file 1.x wrote.
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  # Works carrying an author's skin are read here rather than as native text,
+  # because the skin is the work: a chat fic, a letter in another hand.
+  webview_flutter: ^4.10.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  # The face the library is read in, and the face its titles are set in. It
+  # ships with the app so it is there with no connection and never quietly
+  # falls back to something else on the way. SIL Open Font License; the text
+  # of it sits beside the file, which is the condition of shipping it.
+  fonts:
+    - family: Literata
+      fonts:
+        - asset: fonts/Literata.ttf

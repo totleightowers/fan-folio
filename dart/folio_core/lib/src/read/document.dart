@@ -19,7 +19,10 @@ import 'package:html/parser.dart' as html;
 enum Mark { emphasis, strong, underline, strike, code, superscript, subscript, small }
 
 /// How a block sits in its measure.
-enum Align { start, center, end, justify }
+///
+/// Not `BlockAlign`: Flutter has a widget of that name, and a reader written
+/// against both would have to say which it meant on every line.
+enum BlockAlign { start, center, end, justify }
 
 /// A run of text with the marks that apply to it, and a link if it is one.
 class Run {
@@ -60,16 +63,16 @@ sealed class Block {
 }
 
 class Paragraph extends Block {
-  const Paragraph(this.runs, {this.align = Align.start});
+  const Paragraph(this.runs, {this.align = BlockAlign.start});
   final List<Run> runs;
-  final Align align;
+  final BlockAlign align;
 }
 
 class Heading extends Block {
-  const Heading(this.level, this.runs, {this.align = Align.start});
+  const Heading(this.level, this.runs, {this.align = BlockAlign.start});
   final int level;
   final List<Run> runs;
-  final Align align;
+  final BlockAlign align;
 }
 
 /// Quoted matter, which fic uses for letters, texts and remembered speech.
@@ -158,12 +161,12 @@ const Set<String> _blockTags = {
 ChapterDocument parseChapter(String? chapterHtml) {
   final fragment = html.parseFragment(chapterHtml ?? '');
   final blocks = <Block>[];
-  _collect(fragment.nodes, blocks, const Run(''), Align.start);
+  _collect(fragment.nodes, blocks, const Run(''), BlockAlign.start);
   return ChapterDocument(_tidy(blocks));
 }
 
 /// Gather blocks out of a list of nodes, carrying inherited marks downwards.
-void _collect(List<dom.Node> nodes, List<Block> out, Run carried, Align align) {
+void _collect(List<dom.Node> nodes, List<Block> out, Run carried, BlockAlign align) {
   var loose = <Run>[];
 
   void flush() {
@@ -209,9 +212,9 @@ void _collect(List<dom.Node> nodes, List<Block> out, Run carried, Align align) {
 }
 
 /// One block-level element.
-void _block(dom.Element node, List<Block> out, Run carried, Align inherited) {
+void _block(dom.Element node, List<Block> out, Run carried, BlockAlign inherited) {
   final tag = node.localName ?? '';
-  final align = _alignOf(node) ?? (tag == 'center' ? Align.center : inherited);
+  final align = _alignOf(node) ?? (tag == 'center' ? BlockAlign.center : inherited);
 
   switch (tag) {
     case 'hr':
@@ -286,16 +289,16 @@ List<Run> _inline(dom.Element node, Run carried) {
   return runs;
 }
 
-Align? _alignOf(dom.Element node) {
+BlockAlign? _alignOf(dom.Element node) {
   final attr = node.attributes['align']?.toLowerCase().trim();
   final style = node.attributes['style']?.toLowerCase() ?? '';
   final styled = RegExp(r'text-align\s*:\s*([a-z]+)').firstMatch(style)?.group(1);
   final name = styled ?? attr;
   return switch (name) {
-    'center' || 'centre' => Align.center,
-    'right' || 'end' => Align.end,
-    'justify' => Align.justify,
-    'left' || 'start' => Align.start,
+    'center' || 'centre' => BlockAlign.center,
+    'right' || 'end' => BlockAlign.end,
+    'justify' => BlockAlign.justify,
+    'left' || 'start' => BlockAlign.start,
     _ => null,
   };
 }

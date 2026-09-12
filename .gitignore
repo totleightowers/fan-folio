@@ -22,3 +22,8 @@ cookies.txt
 # Dart build state; pubspec.lock is kept, since a reproducible resolve is
 # worth having for something that has to agree with a shipped database.
 .dart_tool/
+
+# Flutter's generated platform scaffold: written by `flutter create`, not by
+# anybody here, and a kept copy drifts from what the installed Flutter wants.
+dart/folio_app/android/
+dart/folio_app/build/
