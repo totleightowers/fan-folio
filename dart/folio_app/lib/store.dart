@@ -59,7 +59,7 @@ class LibraryStore implements core.WorkStore {
          only record of what it used to be. */
       await _archiveChapters(txn, work);
 
-      await txn.insert('works', {
+      final row = {
         'work_id': work.workId,
         'title': work.title,
         'authors': jsonEncode(work.authors),
@@ -76,17 +76,23 @@ class LibraryStore implements core.WorkStore {
         // current the copy is, and Recently added cannot see the work at all.
         'downloaded_at': today,
         'has_text': 1,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      };
+      await txn.insert(
+        'works',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
       await txn.delete('tags', where: 'work_id = ?', whereArgs: [work.workId]);
       final every = <String>[];
       for (final entry in work.tags.entries) {
         for (final name in entry.value) {
-          await txn.insert('tags', {
-            'work_id': work.workId,
-            'kind': entry.key,
-            'name': name,
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          final tag = {'work_id': work.workId, 'kind': entry.key, 'name': name};
+          await txn.insert(
+            'tags',
+            tag,
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
           every.add(name);
         }
       }
@@ -112,20 +118,27 @@ class LibraryStore implements core.WorkStore {
       );
 
       for (final chapter in work.chapters) {
-        final rowid = await txn.insert('chapters', {
+        final row = {
           'work_id': work.workId,
           'number': chapter.number,
           'title': chapter.title,
           'html': chapter.html,
           'text': chapter.text,
           'words': chapter.words,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        };
+        final rowid = await txn.insert(
+          'chapters',
+          row,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
 
         // external-content FTS4 takes rowid, not docid, on a direct insert
-        await txn.insert(core.indexFirst, {
-          'rowid': rowid,
-          'text': chapter.text,
-        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        final indexed = {'rowid': rowid, 'text': chapter.text};
+        await txn.insert(
+          core.indexFirst,
+          indexed,
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
       }
 
       await txn.delete(
@@ -133,13 +146,18 @@ class LibraryStore implements core.WorkStore {
         where: 'work_id = ?',
         whereArgs: [work.workId],
       );
-      await txn.insert('work_fts', {
+      final meta = {
         'work_id': work.workId,
         'title': work.title ?? '',
         'authors': work.authors.join(', '),
         'summary': work.summary ?? '',
         'tags': every.join(', '),
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      };
+      await txn.insert(
+        'work_fts',
+        meta,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     });
   }
 
