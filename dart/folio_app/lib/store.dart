@@ -273,11 +273,16 @@ Future<int> saveStubs(
         'category': blurb.categories,
       }.entries) {
         for (final name in entry.value) {
-          await txn.insert('tags', {
+          final tag = {
             'work_id': blurb.workId,
             'kind': entry.key,
             'name': name,
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          };
+          await txn.insert(
+            'tags',
+            tag,
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
         }
       }
     }

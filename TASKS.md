@@ -8,17 +8,25 @@ below is dropped because the conversation went somewhere else; it waits until
 what is above it is done, and then it is picked up again without being asked
 twice.
 
-## Asked for, in the order asked
+## In the order Julia put them
 
-1. **Person screen: Works and Bookmarks, both populated**, with a prominent
-   sync across both. "Everything they wrote" and "everything they liked" as
-   two go-and-look tabs are redundant.
-2. **Another pass at the reader UI.** Still not right after the swipe and
+1. **Check backup and restore.** Not "believe it works" — a round trip that
+   is actually exercised, because it is the one thing in here that, if it is
+   wrong, loses everything else.
+2. **Fix download.** The archive answers 503. Most likely us: 2.x sends a
+   made-up Chrome user-agent from a Dart HTTP client and drops Cloudflare's
+   own cookies, where 1.x sent the device's real WebView agent and kept every
+   cookie it had.
+3. **Fix the author page.** One Works tab and one Bookmarks tab, both
+   populated from what the library knows, each with a prominent sync that
+   walks the archive and merges. The two go-and-look tabs are redundant.
+   Populating them means storing what a listing describes rather than only
+   what has been downloaded — twenty works for one request.
+4. **Fix reader navigation and layout.** Still not right after the swipe and
    scroll fixes.
-3. **Feature parity with 1.x is not met.** My claim that the list was closed
-   was premature; the standing goal is parity, with a release per feature.
-4. **Match 1.x on the wire**, which is where the 503 most likely comes from.
-5. ~~Keep a task list.~~ This.
+
+Standing, underneath all of it: parity with 1.x is not met, and my saying the
+list was closed was premature. A release per feature, PR and release linked.
 
 ## Now
 
