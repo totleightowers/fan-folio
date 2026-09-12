@@ -97,6 +97,35 @@ List<Shelf> shelves() => [
       ),
     ];
 
+/// One work nobody has opened, chosen at random.
+///
+/// The point of it is that it is not a list. A library big enough to be worth
+/// having is big enough that choosing from it is its own small task, and the
+/// answer to "I want to read something" is often a work rather than a screen.
+/// Never opened, because offering something half-read as a surprise is just
+/// the Continue reading shelf with a worse name.
+String get surpriseSql => '''
+SELECT w.work_id FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+WHERE ${shown(states['unread']!)} ORDER BY RANDOM() LIMIT 1''';
+
+/// The ways in that are not a list.
+///
+/// Fic is found by fandom and pairing far more often than by title, so those
+/// are the front door. Each of these is a facet with a filter behind it:
+/// choosing one lands in the library already narrowed, rather than on a
+/// category page that is a second kind of list.
+///
+/// The counts are the busiest handful rather than all of them — a library
+/// holds more pairings than anybody will scroll past, and the filter panel is
+/// where the rest are searched for.
+const List<(String kind, String title, int howMany)> browseKinds = [
+  ('fandom', 'Fandoms', 14),
+  ('relationship', 'Pairings', 14),
+  ('character', 'Characters', 12),
+  ('freeform', 'Tags', 14),
+  ('rating', 'Rating', 0),
+];
+
 /// What the library amounts to, which is what makes Home read as somebody's
 /// own archive rather than a generic discovery screen.
 const String statsSql = '''

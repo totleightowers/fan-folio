@@ -241,6 +241,8 @@ class _ShellState extends State<Shell> {
               onOpen: _open,
               onHold: _actOn,
               onSeeAll: _seeAll,
+              onNarrow: _seeAll,
+              onOpenById: _openById,
             )
           : LibraryList(
               key: ValueKey(_libraryEpoch),
