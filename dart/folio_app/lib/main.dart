@@ -11,6 +11,7 @@ import 'library.dart';
 import 'filter_sheet.dart';
 import 'reader_screen.dart';
 import 'search_screen.dart';
+import 'settings_screen.dart';
 import 'theme.dart';
 import 'work_actions.dart';
 import 'work_card.dart';
@@ -104,6 +105,28 @@ class _ShellState extends State<Shell> {
     final downloads = _downloads;
     if (downloads == null) return;
     await showAddByLink(context, downloads);
+  }
+
+  /// The things that are about the library rather than about a work.
+  ///
+  /// They were in an overflow menu, which is where things go when nobody has
+  /// decided where they belong — and backing up has no business being three
+  /// taps behind a caret when it is the one action that protects the rest.
+  Future<void> _openSettings(Library library) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          library: library,
+          onImported: _adopt,
+          onBlocked: () => _openBlocked(library),
+          onActivity: _openActivity,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    // a library brought in, or an author unblocked, is a different shelf
+    await _home.currentState?.reload();
+    setState(() => _libraryEpoch++);
   }
 
   void _openActivity() {
@@ -257,17 +280,10 @@ class _ShellState extends State<Shell> {
               ),
             ),
           ),
-          PopupMenuButton<void>(
-            itemBuilder: (context) => [
-              PopupMenuItem<void>(
-                onTap: _openActivity,
-                child: const Text('Activity'),
-              ),
-              PopupMenuItem<void>(
-                onTap: () => _openBlocked(library),
-                child: const Text('Blocked authors'),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => _openSettings(library),
           ),
         ],
       ),

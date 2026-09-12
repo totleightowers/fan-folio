@@ -414,6 +414,33 @@ class Library {
         }
       });
 
+  /// Copy the whole library out to a file somebody picked.
+  ///
+  /// The database runs in WAL mode, so it is really several files: copying
+  /// archive.db alone silently drops whatever the write-ahead log still holds,
+  /// which is the most recent reading of all. Checkpointing first folds the
+  /// log back into the file being copied — a backup that is missing the last
+  /// hour is worse than no backup, because it is trusted.
+  Future<int> backupTo(String destination) async {
+    try {
+      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
+    } catch (_) {
+      // an un-checkpointable library still copies; it may just lag a little
+    }
+    final copy = await File(path).copy(destination);
+    return copy.lengthSync();
+  }
+
+  /// What a backup of this library should be called.
+  ///
+  /// Dated, because the reason to keep one is to have the one from before
+  /// whatever went wrong, and three files called archive.db in a downloads
+  /// folder are one file as far as anybody can tell.
+  static String backupName([DateTime? at]) {
+    final day = (at ?? DateTime.now()).toIso8601String().substring(0, 10);
+    return 'fan-folio-$day.db';
+  }
+
   Future<void> close() => db.close();
 }
 
