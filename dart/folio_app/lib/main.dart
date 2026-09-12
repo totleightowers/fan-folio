@@ -11,6 +11,7 @@ import 'library.dart';
 import 'filter_sheet.dart';
 import 'reader_screen.dart';
 import 'search_screen.dart';
+import 'settings_screen.dart';
 import 'theme.dart';
 import 'work_actions.dart';
 import 'work_card.dart';
@@ -104,6 +105,28 @@ class _ShellState extends State<Shell> {
     final downloads = _downloads;
     if (downloads == null) return;
     await showAddByLink(context, downloads);
+  }
+
+  /// The things that are about the library rather than about a work.
+  ///
+  /// They were in an overflow menu, which is where things go when nobody has
+  /// decided where they belong — and backing up has no business being three
+  /// taps behind a caret when it is the one action that protects the rest.
+  Future<void> _openSettings(Library library) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          library: library,
+          onImported: _adopt,
+          onBlocked: () => _openBlocked(library),
+          onActivity: _openActivity,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    // a library brought in, or an author unblocked, is a different shelf
+    await _home.currentState?.reload();
+    setState(() => _libraryEpoch++);
   }
 
   void _openActivity() {
@@ -257,17 +280,10 @@ class _ShellState extends State<Shell> {
               ),
             ),
           ),
-          PopupMenuButton<void>(
-            itemBuilder: (context) => [
-              PopupMenuItem<void>(
-                onTap: _openActivity,
-                child: const Text('Activity'),
-              ),
-              PopupMenuItem<void>(
-                onTap: () => _openBlocked(library),
-                child: const Text('Blocked authors'),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => _openSettings(library),
           ),
         ],
       ),
@@ -496,13 +512,14 @@ class _NoLibraryState extends State<_NoLibrary> {
       // deliberately not filtered by extension: a backup arrives named all
       // sorts of things, and a picker that hides the file somebody is looking
       // straight at is worse than one that shows too much
-      final picked = await FilePicker.platform.pickFiles(withData: false);
-      final path = picked?.files.single.path;
-      if (path == null) {
+      final picked = await FilePicker.pickFile();
+      if (picked == null) {
         setState(() => _working = false);
         return;
       }
-      final library = await Library.importFrom(path);
+      // streamed in: a file from the system picker often has no path at all,
+      // and a library worth keeping is too big to read into memory
+      final library = await Library.importFromStream(picked.readAsByteStream());
       if (!mounted) return;
       widget.onImported(library);
     } catch (e) {

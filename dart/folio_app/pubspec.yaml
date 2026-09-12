@@ -20,7 +20,11 @@ dependencies:
   webview_flutter: ^4.10.0
   # Bringing a library in from a 1.x backup. The alpha has its own private
   # storage and cannot see the 1.x app's, so the file has to be handed over.
-  file_picker: ^8.1.2
+  file_picker: ^12.3.0
+  # Handing the backup to wherever the reader keeps things — Drive, Files, a
+  # message to themselves. A library is far too big to read into memory to
+  # save it, and this streams the file rather than copying it through the app.
+  share_plus: ^13.0.0
 
 dev_dependencies:
   flutter_test:
