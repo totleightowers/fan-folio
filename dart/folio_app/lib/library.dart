@@ -459,6 +459,66 @@ class Library {
     return 'fan-folio-$day.db';
   }
 
+  /// Which works are your bookmarks now — all of them, as one answer.
+  ///
+  /// Removal cannot be seen a page at a time, because it is the absence of
+  /// something: a work that has stopped being bookmarked simply does not
+  /// appear, and nothing on any page says so. So the whole list replaces the
+  /// whole list, in one transaction, because a half-applied reconciliation is
+  /// worse than none.
+  ///
+  /// Only membership changes. The works themselves are left alone — you
+  /// unbookmarked it, you did not ask to lose it.
+  Future<({int kept, int dropped})> reconcileBookmarks(
+    List<String> workIds,
+  ) async {
+    var dropped = 0;
+    await db.transaction((txn) async {
+      await txn.execute(
+        'CREATE TEMP TABLE IF NOT EXISTS bookmarks_now (work_id TEXT PRIMARY KEY)',
+      );
+      await txn.delete('bookmarks_now');
+      for (final workId in workIds) {
+        await txn.rawInsert(
+          'INSERT OR IGNORE INTO bookmarks_now (work_id) VALUES (?)',
+          [workId],
+        );
+      }
+      final counted = await txn.rawQuery(
+        'SELECT count(*) AS n FROM works WHERE in_bookmarks = 1 '
+        'AND work_id NOT IN (SELECT work_id FROM bookmarks_now)',
+      );
+      dropped = counted.first['n'] as int? ?? 0;
+
+      await txn.rawUpdate(
+        'UPDATE works SET in_bookmarks = 0 WHERE in_bookmarks = 1 '
+        'AND work_id NOT IN (SELECT work_id FROM bookmarks_now)',
+      );
+      await txn.rawUpdate(
+        'UPDATE works SET in_bookmarks = 1 '
+        'WHERE work_id IN (SELECT work_id FROM bookmarks_now)',
+      );
+    });
+    return (kept: workIds.length, dropped: dropped);
+  }
+
+  /// When the bookmarks were last walked, so the reader can see it is current.
+  Future<DateTime?> lastBookmarkSync() async {
+    try {
+      final rows = await db.rawQuery(
+        "SELECT value FROM meta WHERE key = 'sync.bookmarks'",
+      );
+      return rows.isEmpty ? null : DateTime.tryParse('${rows.first['value']}');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> noteBookmarkSync(DateTime at) async {
+    final row = {'key': 'sync.bookmarks', 'value': at.toIso8601String()};
+    await db.insert('meta', row, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   Future<void> close() => db.close();
 }
 
