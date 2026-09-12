@@ -43,6 +43,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # sqflite on a machine with no phone attached, so backing a library up and
+  # bringing it back can actually be exercised rather than believed.
+  sqflite_common_ffi: ^2.3.3
   flutter_lints: ^5.0.0
 
 flutter:
