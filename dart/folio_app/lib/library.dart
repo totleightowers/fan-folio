@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:folio_core/folio_core.dart';
 import 'package:folio_core/folio_core.dart' as core;
@@ -263,6 +264,28 @@ class Library {
     return rows
         .map((r) => ChapterRow(r['number'] as int, r['title'] as String?))
         .toList();
+  }
+
+  /// The pictures this work has, by the address the markup points at.
+  ///
+  /// Read once for a whole work rather than per chapter: a reader turning to
+  /// chapter nine should not wait on a second query for an image the app has
+  /// already been holding since chapter one.
+  Future<Map<String, ({String mime, Uint8List bytes})>> picturesFor(
+    String workId,
+  ) async {
+    final rows = await db.rawQuery(
+      "SELECT url, mime, bytes FROM images "
+      "WHERE work_id = ? AND status = 'stored' AND bytes IS NOT NULL",
+      [workId],
+    );
+    return {
+      for (final row in rows)
+        '${row['url']}': (
+          mime: (row['mime'] as String?) ?? 'image/*',
+          bytes: row['bytes']! as Uint8List,
+        ),
+    };
   }
 
   Future<String?> chapterHtml(String workId, int number) async {

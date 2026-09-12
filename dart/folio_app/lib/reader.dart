@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 // Align, Picture and Paragraph all have namesakes in Flutter. Prefixed
@@ -18,6 +20,7 @@ class ChapterView extends StatelessWidget {
     required this.settings,
     this.controller,
     this.onLinkTapped,
+    this.pictures = const {},
     super.key,
   });
 
@@ -28,6 +31,14 @@ class ChapterView extends StatelessWidget {
   /// the chapter being looked at.
   final ScrollController? controller;
   final void Function(String href)? onLinkTapped;
+
+  /// The pictures this work carries, by the address its markup points at.
+  ///
+  /// A chapter that reaches the network for its images is a chapter that
+  /// shows grey boxes in a tunnel, which is the one thing an offline reader
+  /// is for — and it is a chapter that tells a stranger's server when and
+  /// where somebody read it.
+  final Map<String, ({String mime, Uint8List bytes})> pictures;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +57,7 @@ class ChapterView extends StatelessWidget {
         settings: settings,
         ground: ground,
         onLinkTapped: onLinkTapped,
+        pictures: pictures,
       ),
     );
   }
@@ -126,12 +138,14 @@ class _BlockView extends StatelessWidget {
     required this.settings,
     required this.ground,
     this.onLinkTapped,
+    this.pictures = const {},
   });
 
   final core.Block block;
   final ReadingSettings settings;
   final Ground ground;
   final void Function(String href)? onLinkTapped;
+  final Map<String, ({String mime, Uint8List bytes})> pictures;
 
   @override
   Widget build(BuildContext context) {
@@ -181,6 +195,7 @@ class _BlockView extends StatelessWidget {
                   settings: settings,
                   ground: ground,
                   onLinkTapped: onLinkTapped,
+                  pictures: pictures,
                 ),
             ],
           ),
@@ -213,6 +228,7 @@ class _BlockView extends StatelessWidget {
                               settings: settings,
                               ground: ground,
                               onLinkTapped: onLinkTapped,
+                              pictures: pictures,
                             ),
                         ],
                       ),
@@ -236,20 +252,31 @@ class _BlockView extends StatelessWidget {
         );
 
       case core.Picture(:final src, :final alt):
+        /* Held first, network second. A picture kept with the work is one
+           that survives a tunnel and tells nobody it was looked at; going to
+           the network is the fallback for one that was never fetched, or a
+           hotlink that had already rotted when it was tried. */
+        final held = pictures[src];
+        final missing = Text(
+          alt ?? 'a picture that is not here',
+          style: settings.body.copyWith(
+            color: ground.inkFaint,
+            fontStyle: FontStyle.italic,
+          ),
+        );
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Semantics(
             label: alt,
-            child: Image.network(
-              src,
-              errorBuilder: (context, error, stack) => Text(
-                alt ?? 'a picture that is not here',
-                style: settings.body.copyWith(
-                  color: ground.inkFaint,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
+            child: held != null
+                ? Image.memory(
+                    held.bytes,
+                    errorBuilder: (context, error, stack) => missing,
+                  )
+                : Image.network(
+                    src,
+                    errorBuilder: (context, error, stack) => missing,
+                  ),
           ),
         );
 

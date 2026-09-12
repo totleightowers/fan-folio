@@ -1,6 +1,9 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:folio_core/folio_core.dart' show ReadingFace, ReadingPrefs;
+import 'package:folio_core/folio_core.dart'
+    show ReadingFace, ReadingPrefs, dataUri;
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'theme.dart';
@@ -12,6 +15,25 @@ import 'theme.dart';
 /// letter in a different hand. There is no way to be faithful to that without
 /// a cascade, so those chapters are rendered by the same engine the archive
 /// renders them with.
+/// Stored pictures, put into the markup where their addresses were.
+///
+/// A data URI rather than a file or a local server: this page is built as a
+/// string and handed to the engine, and a picture served from anywhere else
+/// is a second thing to keep in step with the first. It also means the
+/// chapter reaches the network for nothing at all, which is both faster in a
+/// tunnel and quieter about when somebody read it.
+String withPictures(
+  String html,
+  Map<String, ({String mime, Uint8List bytes})> held,
+) {
+  if (held.isEmpty) return html;
+  var out = html;
+  held.forEach((url, picture) {
+    out = out.replaceAll(url, dataUri(picture.mime, picture.bytes));
+  });
+  return out;
+}
+
 class SkinnedChapterView extends StatefulWidget {
   const SkinnedChapterView({
     required this.chapterHtml,
@@ -21,6 +43,9 @@ class SkinnedChapterView extends StatefulWidget {
   });
 
   final String chapterHtml;
+
+  /// The pictures this work carries, by the address its markup points at.
+  final Map<String, ({String mime, Uint8List bytes})> pictures;
   final String? skinCss;
   final ReadingChrome settings;
 
@@ -181,7 +206,7 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
 </style>
 <article id="workskin">
 <style>${widget.skinCss ?? ''}</style>
-${widget.chapterHtml}
+${withPictures(widget.chapterHtml, widget.pictures)}
 </article>
 ''';
   }

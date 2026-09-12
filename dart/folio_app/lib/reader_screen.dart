@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart' as core;
@@ -58,6 +59,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   core.ReadingPrefs _prefs = const core.ReadingPrefs();
   bool _unsaved = false;
 
+  /// Read once for the whole work. A reader turning to chapter nine should
+  /// not wait on a query for a picture the app has held since chapter one.
+  Map<String, ({String mime, Uint8List bytes})> _pictures = const {};
+
   /// How far through the chapter on screen is, for the line at the foot.
   double _through = 0;
 
@@ -74,6 +79,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // otherwise leave no trace at all.
     unawaited(widget.library.opened(widget.work.workId));
     unawaited(_loadPrefs());
+    unawaited(_loadPictures());
   }
 
   @override
@@ -85,6 +91,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _savePrefs();
     _pages.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPictures() async {
+    final held = await widget.library.picturesFor(widget.work.workId);
+    if (!mounted || held.isEmpty) return;
+    setState(() => _pictures = held);
   }
 
   Future<void> _loadPrefs() async {
@@ -298,6 +310,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ground: ground,
             dark: dark,
             startOffset: i + 1 == widget.startAt ? widget.startOffset : 0,
+            pictures: _pictures,
             onScrolled: (at) => _scrolled(i + 1, at),
           ),
         ),
@@ -325,6 +338,7 @@ class _ChapterPage extends StatefulWidget {
     required this.ground,
     required this.dark,
     required this.startOffset,
+    required this.pictures,
     required this.onScrolled,
     super.key,
   });
@@ -336,6 +350,7 @@ class _ChapterPage extends StatefulWidget {
   final Ground ground;
   final bool dark;
   final double startOffset;
+  final Map<String, ({String mime, Uint8List bytes})> pictures;
   final void Function(ScrollMetrics) onScrolled;
 
   @override
@@ -394,6 +409,7 @@ class _ChapterPageState extends State<_ChapterPage> {
         return SkinnedChapterView(
           chapterHtml: html,
           skinCss: widget.work.skinCss,
+          pictures: widget.pictures,
           settings: ReadingChrome.from(
             widget.prefs,
             ground: widget.ground,
@@ -412,6 +428,7 @@ class _ChapterPageState extends State<_ChapterPage> {
           document: core.parseChapter(html),
           settings: ReadingSettings.from(widget.prefs),
           controller: _scroll,
+          pictures: widget.pictures,
         ),
       );
     },

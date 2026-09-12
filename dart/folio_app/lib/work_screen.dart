@@ -49,11 +49,21 @@ class _WorkScreenState extends State<WorkScreen> {
   Map<String, List<String>> _tags = const {};
   Place? _place;
   bool _loading = true;
+  bool _queued = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // a work being fetched arrives while this screen is open; the queue says
+    // when something changed, and this is the screen that should notice
+    widget.downloads?.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    widget.downloads?.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -77,6 +87,31 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   bool get _started => (_place?.chapter ?? 1) > 1 || (_place?.offset ?? 0) > 0;
+
+  /// Ask for the text of a work the library only knows about.
+  ///
+  /// Queued rather than awaited: it arrives a request later, at a reader's
+  /// pace, and standing on this screen watching a spinner for half a minute
+  /// is not better than being told where to look.
+  Future<void> _fetch() async {
+    final downloads = widget.downloads;
+    final work = _work;
+    if (downloads == null || work == null) return;
+    setState(() => _queued = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await downloads.addWorks(work.title, [work.workId]);
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Queued. It will appear here when it lands.'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _queued = false);
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
 
   void _read(int chapter) {
     final work = _work;
@@ -203,8 +238,19 @@ class _WorkScreenState extends State<WorkScreen> {
           ),
         ],
       ),
+      /* A work the library only knows about is not a dead end. It was
+         described by a listing, which costs one request for twenty works —
+         so most of what a library knows about is text it has never had, and
+         until now there was no way to ask for it from the one screen that
+         talks about it. */
       floatingActionButton: _chapters.isEmpty
-          ? null
+          ? (widget.downloads == null
+                ? null
+                : FloatingActionButton.extended(
+                    onPressed: _queued ? null : _fetch,
+                    icon: Icon(_queued ? Icons.schedule : Icons.download),
+                    label: Text(_queued ? 'On its way' : 'Fetch it'),
+                  ))
           : FloatingActionButton.extended(
               onPressed: () => _read(_resume),
               icon: Icon(_started ? Icons.play_arrow : Icons.menu_book),
