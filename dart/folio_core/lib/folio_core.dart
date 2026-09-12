@@ -4,6 +4,8 @@
 /// tested on the machine it is written on. Nothing in here may import Flutter.
 library;
 
+export 'src/ao3/parse.dart';
+export 'src/ao3/text.dart';
 export 'src/ao3/urls.dart';
 export 'src/read/document.dart';
 export 'src/search/rank.dart';

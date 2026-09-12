@@ -76,6 +76,23 @@ test('the search fixture still says what 1.x says', () => {
     'run `node tools/emit-search-conformance.mjs` — the ranking moved and Dart was not told');
 });
 
+/**
+ * A parser is the one place where being subtly wrong is invisible.
+ *
+ * A work with the wrong tags, a chapter count off by one, an author dropped
+ * from a byline — none of it announces itself. It sits in the library looking
+ * like data, and is found months later by somebody wondering where a fic went.
+ */
+test('the parse fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/parse.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-parse-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-parse-conformance.mjs` — the parser moved and Dart was not told');
+});
+
 test('the emitted statements carry no comment that could cut one in half', () => {
   const dart = readFileSync(
     new URL('../dart/folio_core/lib/src/store/schema.g.dart', import.meta.url), 'utf8');
