@@ -21,7 +21,12 @@ dependencies:
   # which means reading the session cookie back out afterwards — this is the
   # webview that exposes the platform's cookie store, where an HttpOnly
   # session cookie actually lives.
-  flutter_inappwebview: ^6.1.5
+  #
+  # The beta rather than 6.1.5 deliberately: the stable line's Android module
+  # still asks Gradle for `proguard-android.txt`, which the Android plugin
+  # Flutter now ships refuses outright, and the whole build stops on it. The
+  # beta is the version where that is fixed.
+  flutter_inappwebview: ^6.2.0-beta.3
   # Bringing a library in from a 1.x backup. The alpha has its own private
   # storage and cannot see the 1.x app's, so the file has to be handed over.
   file_picker: ^12.3.0
