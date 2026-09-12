@@ -593,6 +593,8 @@ class _Foot extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onPick,
+    required this.onWork,
+    required this.onActs,
   });
 
   final Ground ground;
