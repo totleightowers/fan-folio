@@ -4,7 +4,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'downloads.dart';
 import 'library.dart';
+import 'signin_screen.dart';
 import 'theme.dart';
 
 /// The things that are about the library rather than about a work.
@@ -16,6 +18,7 @@ import 'theme.dart';
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     required this.library,
+    required this.downloads,
     required this.onImported,
     required this.onBlocked,
     required this.onActivity,
@@ -23,6 +26,7 @@ class SettingsScreen extends StatefulWidget {
   });
 
   final Library library;
+  final Downloads? downloads;
   final void Function(Library) onImported;
   final VoidCallback onBlocked;
   final VoidCallback onActivity;
@@ -134,6 +138,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          _Heading('The archive', ground: ground),
+          if (widget.downloads != null)
+            ListenableBuilder(
+              listenable: widget.downloads!,
+              builder: (context, _) {
+                final who = widget.downloads!.signedInAs;
+                return ListTile(
+                  leading: Icon(
+                    who == null ? Icons.login : Icons.person,
+                    color: ground.inkMid,
+                  ),
+                  title: Text(who == null ? 'Sign in' : 'Signed in as $who'),
+                  subtitle: Text(
+                    who == null
+                        ? 'For works locked to registered users, and for your '
+                              'own bookmarks.'
+                        : 'Sign out here to forget the session. The archive '
+                              'still holds it until you log out on the site.',
+                    style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+                  ),
+                  trailing: who == null
+                      ? null
+                      : TextButton(
+                          onPressed: widget.downloads!.signOut,
+                          child: const Text('Sign out'),
+                        ),
+                  onTap: who != null
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<String>(
+                            builder: (_) =>
+                                SignInScreen(downloads: widget.downloads!),
+                          ),
+                        ),
+                );
+              },
+            ),
+
+          Divider(height: 24, color: ground.lineSoft),
           _Heading('The library', ground: ground),
           ListTile(
             leading: Icon(Icons.save_alt, color: ground.inkMid),

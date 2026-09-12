@@ -11,6 +11,7 @@ import 'library.dart';
 import 'filter_sheet.dart';
 import 'reader_screen.dart';
 import 'search_screen.dart';
+import 'session.dart';
 import 'settings_screen.dart';
 import 'theme.dart';
 import 'work_actions.dart';
@@ -68,10 +69,13 @@ class _ShellState extends State<Shell> {
   Future<void> _load() async {
     try {
       final library = await Library.openExisting();
+      final session = await Session.load();
       if (!mounted) return;
       setState(() {
         _library = library;
-        _downloads = library == null ? null : Downloads(library: library);
+        _downloads = library == null
+            ? null
+            : Downloads(library: library, session: session);
         _loading = false;
       });
     } catch (e) {
@@ -84,11 +88,17 @@ class _ShellState extends State<Shell> {
     }
   }
 
-  void _adopt(Library library) => setState(() {
-    _library = library;
-    _downloads = Downloads(library: library);
-    _loading = false;
-  });
+  void _adopt(Library library) {
+    // whoever was signed in still is: the session is kept beside the library
+    // rather than inside it, so importing one does not sign anybody out
+    final session = _downloads?.session ?? Session.none;
+    _downloads?.dispose();
+    setState(() {
+      _library = library;
+      _downloads = Downloads(library: library, session: session);
+      _loading = false;
+    });
+  }
 
   @override
   void dispose() {
@@ -117,6 +127,7 @@ class _ShellState extends State<Shell> {
       MaterialPageRoute<void>(
         builder: (_) => SettingsScreen(
           library: library,
+          downloads: _downloads,
           onImported: _adopt,
           onBlocked: () => _openBlocked(library),
           onActivity: _openActivity,
