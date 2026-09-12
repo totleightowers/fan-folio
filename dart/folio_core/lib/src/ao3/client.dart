@@ -11,6 +11,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' show parseHttpDate;
@@ -54,6 +55,14 @@ String cookieHeader(Map<String, String> jar) => [
         if (keepCookie(entry.key) && entry.key.isNotEmpty)
           '${entry.key}=${entry.value}',
     ].join('; ');
+
+/// Something that is not a page: bytes, and what kind of bytes.
+class Bytes {
+  const Bytes({required this.bytes, this.mime});
+
+  final Uint8List bytes;
+  final String? mime;
+}
 
 /// What the archive said, and what it said it with.
 class Page {
@@ -164,6 +173,41 @@ class ArchiveClient {
 
   /// Ask for a page, in its turn.
   Future<Page> get(Uri url) => pacer.run(() => _get(url));
+
+  /// Ask for something that is not a page, in its turn.
+  ///
+  /// A picture, most likely. Kept apart from [get] because the body is bytes
+  /// rather than text, and because the headers a browser sends for an image
+  /// are not the ones it sends for a document — partial headers are their own
+  /// signature, and a client claiming to be Chrome while asking for a picture
+  /// the way it asks for a page is not what Chrome looks like.
+  Future<Bytes> getBytes(Uri url, {String? accept}) =>
+      pacer.run(() => _getBytes(url, accept));
+
+  Future<Bytes> _getBytes(Uri url, String? accept) async {
+    http.Response response;
+    try {
+      response = await _http.get(url, headers: {
+        ...headers(),
+        if (accept != null) 'Accept': accept,
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+      });
+    } catch (e) {
+      throw ArchiveError('The app could not reach it: $e');
+    }
+
+    if (!response.ok) {
+      throw ArchiveError(
+        'It answered ${response.statusCode}',
+        status: response.statusCode,
+      );
+    }
+    return Bytes(
+      bytes: response.bodyBytes,
+      mime: response.headers['content-type'],
+    );
+  }
 
   /// Submit a form, in its turn.
   ///
