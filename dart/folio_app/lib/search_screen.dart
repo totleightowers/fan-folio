@@ -224,7 +224,9 @@ class _Passages extends StatelessWidget {
       );
       at = m.end;
     }
-    if (at < snippet.length) spans.add(TextSpan(text: snippet.substring(at)));
+    if (at < snippet.length) {
+      spans.add(TextSpan(text: snippet.substring(at)));
+    }
     return TextSpan(children: spans);
   }
 }
