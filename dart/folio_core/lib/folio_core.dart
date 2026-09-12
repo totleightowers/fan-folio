@@ -11,6 +11,8 @@ export 'src/read/progress.dart';
 export 'src/read/reached.dart';
 export 'src/read/spine.dart';
 export 'src/store/facets.dart';
+export 'src/sync/pacer.dart';
+export 'src/sync/queue.dart';
 export 'src/store/migrate.dart';
 export 'src/store/query.dart';
 export 'src/store/shelves.dart';
