@@ -42,6 +42,25 @@ test('the conformance fixture still says what 1.x says', () => {
 });
 
 /**
+ * What the app decides about a failure, and the order it decides it in.
+ *
+ * isTransient is a stack of regular expressions whose order is the whole
+ * answer: a 429 has to be read as "slow down" before the blanket 4xx rule
+ * reads it as "no". Getting that wrong during a long download writes off every
+ * work in flight the moment the archive starts throttling, and reports them to
+ * the reader as unavailable — which is neither true nor actionable.
+ */
+test('the sync fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/sync.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-sync-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-sync-conformance.mjs` — a retry rule moved and Dart was not told');
+});
+
+/**
  * A delete is a list and an order, and three implementations now run it.
  *
  * The shell in Java, the dev server in JavaScript and the Flutter app in Dart
