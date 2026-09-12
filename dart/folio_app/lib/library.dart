@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:folio_core/folio_core.dart';
+import 'package:folio_core/folio_core.dart' as core;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -42,6 +43,26 @@ class WorkRow {
   final String? skinCss;
 
   String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
+
+  /// The line under a card: what it is, how long, and whether it is here.
+  String get facts => [
+    if (fandom != null) fandom!,
+    if (words != null) '${_thousands(words!)} words',
+    if (chapterCount != null && chapterCount! > 1) '$chapterCount chapters',
+    if (!hasText) 'not downloaded',
+  ].join(' · ');
+}
+
+/// Thousands separated, because a number nobody can read at a glance is not
+/// doing the job a number is there to do.
+String _thousands(int n) {
+  final digits = '$n';
+  final out = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+    out.write(digits[i]);
+  }
+  return out.toString();
 }
 
 /// Authors are a JSON array in a text column. A work with several is ordinary.
@@ -203,6 +224,29 @@ class Library {
   /// 1.x gives the same blobs. SQLite returns matches in rowid order, so the
   /// candidate pool has to be wider than the answer or the best match for a
   /// common word is never considered at all.
+  /// One shelf, and how much of it is not on it.
+  Future<(List<WorkRow>, int)> shelf(core.Shelf shelf, {int limit = 12}) async {
+    final rows = await db.rawQuery(shelf.sql(limit: limit));
+    final counted = await db.rawQuery(shelf.countSql);
+    return (
+      rows.map(WorkRow.fromMap).toList(),
+      (counted.first['n'] as int?) ?? 0,
+    );
+  }
+
+  /// What the library amounts to.
+  Future<Stats> stats() async {
+    final totals = (await db.rawQuery(core.statsSql)).first;
+    final read = (await db.rawQuery(core.readStatsSql)).first;
+    return Stats(
+      works: totals['works'] as int? ?? 0,
+      words: (totals['words'] as num?)?.toInt() ?? 0,
+      later: totals['later'] as int? ?? 0,
+      finished: read['finished'] as int? ?? 0,
+      wordsRead: (read['wordsRead'] as num?)?.toInt() ?? 0,
+    );
+  }
+
   Future<List<Hit>> searchText(String query, {int limit = 40}) async {
     if (query.trim().isEmpty) return const [];
     final rows = await db.rawQuery(
@@ -271,6 +315,24 @@ class ChapterRow {
   const ChapterRow(this.number, this.title);
   final int number;
   final String? title;
+}
+
+/// What the library amounts to: the line that makes Home read as somebody's
+/// own archive rather than a generic discovery screen.
+class Stats {
+  const Stats({
+    required this.works,
+    required this.words,
+    required this.later,
+    required this.finished,
+    required this.wordsRead,
+  });
+
+  final int works;
+  final int words;
+  final int later;
+  final int finished;
+  final int wordsRead;
 }
 
 /// One passage found, and where it is.

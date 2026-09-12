@@ -122,3 +122,12 @@ ThemeData themeFor(Ground g, Brightness brightness) {
     ),
   );
 }
+
+/// The ground this screen is standing on.
+///
+/// Every screen was asking the same question of Theme.of(context) and writing
+/// the same ternary, which is three lines of the same decision in every file.
+Ground groundOf(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? Ground.dark
+    : Ground.light;
