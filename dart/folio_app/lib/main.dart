@@ -119,6 +119,12 @@ class _ShellState extends State<Shell> {
         _keepWorking = _downloads == null ? null : KeepWorking(_downloads!);
         _loading = false;
       });
+      /* Present as the browser this device has, and carry the cookies it is
+         holding now. Both are what 1.x did, and both were lost in the port:
+         a made-up agent and a snapshot from sign-in is a request that matches
+         nothing the archive knows about us. */
+      await _downloads?.useThisDevicesAgent();
+      await _downloads?.refreshCookies();
     } catch (e) {
       if (!mounted) return;
       // say what actually went wrong; a blank screen teaches nobody anything

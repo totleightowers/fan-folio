@@ -76,22 +76,43 @@ void main() {
   });
 
   group('cookies', () {
-    test('the ones bound to another client are not replayed', () {
-      /* Cloudflare's bot-management cookies are issued to whoever asked.
-         Replaying one minted for a WebView while claiming to be something
-         else is the contradiction Cloudflare exists to notice. */
-      expect(keepCookie('__cf_bm'), isFalse);
-      expect(keepCookie('_cfuvid'), isFalse);
-      expect(keepCookie('flash_is_set'), isFalse);
+    test('the clearance we were granted is sent back', () {
+      /* These used to be dropped, carried over from tooling where they had
+         been minted by a python login and replayed from node. On the phone
+         they were issued to this device's own webview, to the browser this
+         client presents itself as — and throwing them away makes every
+         request look like a fresh unverified client. */
+      expect(keepCookie('__cf_bm'), isTrue);
+      expect(keepCookie('cf_clearance'), isTrue);
+      expect(keepCookie('_cfuvid'), isTrue);
       expect(keepCookie('_otwarchive_session'), isTrue);
+
+      // a spent one-shot flag, and the only one worth leaving behind
+      expect(keepCookie('flash_is_set'), isFalse);
 
       expect(
         cookieHeader({
           '_otwarchive_session': 'abc',
-          '__cf_bm': 'nope',
+          '__cf_bm': 'granted',
+          'flash_is_set': 'true',
           'user_credentials': '1',
         }),
-        '_otwarchive_session=abc; user_credentials=1',
+        '_otwarchive_session=abc; __cf_bm=granted; user_credentials=1',
+      );
+    });
+
+    test('and the agent is the browser this device actually has', () async {
+      /* 1.x asked Android for it. A string written down months ago naming a
+         phone model and a Chrome version that have nothing to do with
+         whoever is holding the device is a worse signal than the truth. */
+      final client = ArchiveClient(pacer: instant())
+        ..useAgent('Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit');
+      expect(client.headers()['User-Agent'], contains('Pixel 9'));
+
+      expect(
+        ArchiveClient(pacer: instant()).headers()['User-Agent'],
+        browserAgent,
+        reason: 'until the device has answered, something has to be said',
       );
     });
 
