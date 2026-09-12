@@ -12,10 +12,20 @@ import 'theme.dart';
 /// colour wherever it appears — so a row of cards becomes scannable rather
 /// than merely listed.
 class WorkCard extends StatelessWidget {
-  const WorkCard({required this.work, required this.onTap, super.key});
+  const WorkCard({
+    required this.work,
+    required this.onTap,
+    this.onLongPress,
+    super.key,
+  });
 
   final WorkRow work;
   final VoidCallback onTap;
+
+  /// Holding a work is how you get at what you can do to it. A shelf of cards
+  /// has no room for a menu button on each, and a long press is what a phone
+  /// has always meant by "this one, and something other than opening it".
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +39,7 @@ class WorkCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.card),
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(Radii.card),
           child: Ink(
             decoration: BoxDecoration(
@@ -107,10 +118,16 @@ class WorkCard extends StatelessWidget {
 
 /// A work in a list, where there is width for the summary to breathe.
 class WorkRowTile extends StatelessWidget {
-  const WorkRowTile({required this.work, required this.onTap, super.key});
+  const WorkRowTile({
+    required this.work,
+    required this.onTap,
+    this.onLongPress,
+    super.key,
+  });
 
   final WorkRow work;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -119,6 +136,7 @@ class WorkRowTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 13, 16, 14),
         child: Row(
@@ -193,6 +211,7 @@ class Shelf extends StatelessWidget {
     required this.works,
     required this.total,
     required this.onOpen,
+    this.onHold,
     this.onSeeAll,
     super.key,
   });
@@ -201,6 +220,7 @@ class Shelf extends StatelessWidget {
   final List<WorkRow> works;
   final int total;
   final void Function(WorkRow) onOpen;
+  final void Function(WorkRow)? onHold;
   final VoidCallback? onSeeAll;
 
   @override
@@ -255,8 +275,11 @@ class Shelf extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: works.length,
             separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (context, i) =>
-                WorkCard(work: works[i], onTap: () => onOpen(works[i])),
+            itemBuilder: (context, i) => WorkCard(
+              work: works[i],
+              onTap: () => onOpen(works[i]),
+              onLongPress: onHold == null ? null : () => onHold!(works[i]),
+            ),
           ),
         ),
       ],

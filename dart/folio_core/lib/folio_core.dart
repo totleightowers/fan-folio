@@ -19,4 +19,5 @@ export 'src/sync/queue.dart';
 export 'src/store/migrate.dart';
 export 'src/store/query.dart';
 export 'src/store/shelves.dart';
+export 'src/store/tidy.dart';
 export 'src/store/schema.g.dart';

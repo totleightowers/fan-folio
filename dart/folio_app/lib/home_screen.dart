@@ -16,12 +16,14 @@ class HomeScreen extends StatefulWidget {
     required this.library,
     required this.onOpen,
     required this.onSeeAll,
+    this.onHold,
     super.key,
   });
 
   final Library library;
   final void Function(WorkRow) onOpen;
   final void Function(Map<String, Object?> view, String title) onSeeAll;
+  final void Function(WorkRow)? onHold;
 
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -84,6 +86,7 @@ class HomeScreenState extends State<HomeScreen> {
           works: works,
           total: total,
           onOpen: widget.onOpen,
+          onHold: widget.onHold,
           onSeeAll: () => widget.onSeeAll(shelf.view, shelf.title),
         );
       },

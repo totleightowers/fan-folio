@@ -315,6 +315,78 @@ class Library {
     await batch.commit(noResult: true);
   }
 
+  /// Letting go of a work.
+  ///
+  /// A work is not one row, and the order matters: the chapter index is
+  /// external-content FTS4 keyed on `chapters.rowid`, so it goes first and by
+  /// hand. The list and the order live in folio_core, where a fixture written
+  /// by 1.x holds all three implementations to the same answer.
+  Future<void> deleteWork(String workId) async {
+    final found = await db.rawQuery(
+      'SELECT title FROM works WHERE work_id = ?',
+      [workId],
+    );
+    final title = found.isEmpty ? null : found.first['title'];
+
+    await db.transaction((txn) async {
+      final chapters = await txn.rawQuery(
+        'SELECT id FROM chapters WHERE work_id = ?',
+        [workId],
+      );
+      for (final row in chapters) {
+        await txn.rawDelete('DELETE FROM ${core.indexFirst} WHERE rowid = ?', [
+          row['id'],
+        ]);
+      }
+      for (final sql in core.deleteStatements()) {
+        await txn.rawDelete(sql, [workId]);
+      }
+      // the tombstone is written in the same transaction as the removal: a
+      // work gone from the library and absent from here is one the next
+      // listing quietly restores, which is worse than not deleting it
+      await txn.rawInsert(core.tombstone, [workId, title]);
+    });
+  }
+
+  Future<List<String>> blockedNames() async {
+    final rows = await db.rawQuery('SELECT name FROM blocked ORDER BY name');
+    return rows.map((row) => '${row['name']}').toList();
+  }
+
+  /// Never fetch them again, and stop showing what is solely theirs.
+  ///
+  /// Only the works this one name could affect are restated, matched the way
+  /// the author filter matches — the name quoted as it appears inside the JSON
+  /// array, so blocking "Anna" does not touch "Annabel". A work is hidden only
+  /// when every author of it is blocked: one name on a work with two is a work
+  /// you keep.
+  Future<void> setBlocked(String name, {required bool blocked}) =>
+      db.transaction((txn) async {
+        if (blocked) {
+          await txn.rawInsert(
+            'INSERT OR REPLACE INTO blocked (name, at) '
+            "VALUES (?, datetime('now'))",
+            [name],
+          );
+        } else {
+          await txn.rawDelete('DELETE FROM blocked WHERE name = ?', [name]);
+        }
+
+        final names = (await txn.rawQuery('SELECT name FROM blocked'))
+            .map((row) => '${row['name']}')
+            .toSet();
+        final affected = await txn.rawQuery(
+          "SELECT work_id, authors FROM works WHERE authors LIKE ? ESCAPE '\\'",
+          [core.worksByPattern(name)],
+        );
+        for (final row in affected) {
+          await txn.rawUpdate('UPDATE works SET hidden = ? WHERE work_id = ?', [
+            core.isHidden(row['authors'], names) ? 1 : 0,
+            row['work_id'],
+          ]);
+        }
+      });
+
   Future<void> close() => db.close();
 }
 
