@@ -76,7 +76,12 @@ class Library {
   static Future<Library?> openExisting([String? at]) async {
     final path = at ?? await defaultPath();
     if (!File(path).existsSync()) return null;
-    final db = await openDatabase(path, readOnly: false);
+    final db = await openDatabase(path);
+    /* Whatever wrote this file, and whenever. A library is kept for years,
+       backed up, carried between phones and opened by a version written long
+       afterwards, so what is missing is added before anything is asked of
+       it — a single absent column is not a missing shelf, it is the screen. */
+    await prepare(_Runner(db));
     return Library._(db, path);
   }
 
@@ -84,10 +89,38 @@ class Library {
   static Future<Library> create([String? at]) async {
     final path = at ?? await defaultPath();
     final db = await openDatabase(path);
-    for (final statement in schemaStatements) {
-      await db.execute(statement);
-    }
+    await prepare(_Runner(db));
     return Library._(db, path);
+  }
+
+  /// Take in a library from a 1.x backup.
+  ///
+  /// Copied rather than opened where it lies: a file handed over by the system
+  /// picker may be a temporary the picker will delete, and the library is the
+  /// one thing in this app that must not go missing. The copy becomes this
+  /// app's own library and is brought up to date on the way in.
+  static Future<Library> importFrom(String sourcePath, [String? at]) async {
+    final destination = at ?? await defaultPath();
+    await Directory(p.dirname(destination)).create(recursive: true);
+
+    final existing = File(destination);
+    if (existing.existsSync()) {
+      /* Kept, not overwritten. Somebody importing over a library they have
+         already read in is replacing it on purpose, and being wrong about
+         that should cost them a rename rather than the library. */
+      await existing.rename('$destination.replaced-${DateTime.now().millisecondsSinceEpoch}');
+    }
+    // the write-ahead log and its index belong to the file they were written
+    // beside; carried over they describe a database that is no longer there
+    for (final suffix in ['-wal', '-shm']) {
+      final stale = File('$destination$suffix');
+      if (stale.existsSync()) await stale.delete();
+    }
+
+    await File(sourcePath).copy(destination);
+    final db = await openDatabase(destination);
+    await prepare(_Runner(db));
+    return Library._(db, destination);
   }
 
   Future<List<WorkRow>> works([Map<String, Object?> filters = const {}]) async {
@@ -131,6 +164,20 @@ class Library {
   }
 
   Future<void> close() => db.close();
+}
+
+/// sqflite, wearing the interface folio_core asks for, so the migration can
+/// be written and tested without a phone anywhere near it.
+class _Runner implements SqlRunner {
+  const _Runner(this.db);
+  final Database db;
+
+  @override
+  Future<List<Map<String, Object?>>> query(String sql, [List<Object?> args = const []]) =>
+      db.rawQuery(sql, args);
+
+  @override
+  Future<void> execute(String sql) => db.execute(sql);
 }
 
 class ChapterRow {
