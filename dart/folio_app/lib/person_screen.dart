@@ -66,6 +66,39 @@ class _PersonScreenState extends State<PersonScreen> {
     });
   }
 
+  /// Both halves of a person, in one go.
+  ///
+  /// Their works and their bookmarks are two walks and one decision, and
+  /// somebody who wants everything of somebody's should not have to remember
+  /// to press two buttons on two tabs.
+  Future<void> _syncBoth() async {
+    final downloads = widget.downloads;
+    if (downloads == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Reading ${widget.byline}\u2019s pages. Activity has it.',
+        ),
+      ),
+    );
+    try {
+      final works = await downloads.syncPerson(widget.byline, bookmarks: false);
+      final liked = await downloads.syncPerson(widget.byline, bookmarks: true);
+      await _load();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${works + liked} newly listed. Whatever needs fetching is '
+            'queued.',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ground = groundOf(context);
@@ -79,6 +112,8 @@ class _PersonScreenState extends State<PersonScreen> {
             style: TextStyle(fontFamily: titleFace, color: ground.ink),
           ),
           actions: [
+            if (widget.downloads != null)
+              TextButton(onPressed: _syncBoth, child: const Text('Sync both')),
             PopupMenuButton<String>(
               itemBuilder: (context) => [
                 PopupMenuItem(
@@ -332,8 +367,8 @@ class _SyncBar extends StatelessWidget {
                 where ??
                     trouble ??
                     (lastWalk == null
-                        ? 'Read their pages and list what is there. Nothing '
-                              'is downloaded by it.'
+                        ? 'Read their pages, and fetch what is missing or has '
+                              'changed since.'
                         : 'Last read $lastWalk'),
                 style: TextStyle(
                   fontSize: 12.5,

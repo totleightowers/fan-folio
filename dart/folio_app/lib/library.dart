@@ -632,6 +632,12 @@ class Library {
     await db.insert('meta', row, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// Works the reader deleted, which are not to come back on their own.
+  Future<Set<String>> refusedIds() async {
+    final rows = await db.rawQuery('SELECT work_id FROM deleted');
+    return {for (final row in rows) '${row['work_id']}'};
+  }
+
   /// Which works are your bookmarks now — all of them, as one answer.
   ///
   /// Removal cannot be seen a page at a time, because it is the absence of

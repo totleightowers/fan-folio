@@ -262,6 +262,25 @@ export function imageUrls(html) {
 }
 
 /**
+ * Drop the archive's own signposts.
+ *
+ * AO3 puts `<h3 class="landmark">Chapter Text</h3>` inside the prose block,
+ * where its own stylesheet hides it — it is there for a screen reader working
+ * its way down the page. It is not prose, and this view of a chapter is the
+ * one the search index and the word count are built from, so every chapter in
+ * the library has been indexed with "Chapter Text" in it and counted two words
+ * longer than it is.
+ *
+ * The block view keeps them: that one is rendered under AO3's own stylesheet,
+ * and reproducing the page is its whole job.
+ */
+export function stripLandmarks(html) {
+  return String(html ?? '').replace(
+    /<(h[1-6]|div|p|span)\b[^>]*\bclass="[^"]*\blandmark\b[^"]*"[^>]*>[\s\S]*?<\/\1>/gi,
+    '');
+}
+
+/**
  * The work's own metadata block, as the work page carries it.
  *
  * The same facts the EPUB preface gives, but from the source and current: a
@@ -367,8 +386,9 @@ export function parseWorkPage(html, { workId = null } = {}) {
        * author's note does not surface as if it were in the story.
        */
       block: inner,
-      html: innerHtmlOf(inner, /<div class="userstuff module"[^>]*>/i)
-        ?? innerHtmlOf(inner, /<div class="userstuff[^"]*"[^>]*>/i) ?? '',
+      html: stripLandmarks(
+        innerHtmlOf(inner, /<div class="userstuff module"[^>]*>/i)
+          ?? innerHtmlOf(inner, /<div class="userstuff[^"]*"[^>]*>/i) ?? ''),
     });
   }
 

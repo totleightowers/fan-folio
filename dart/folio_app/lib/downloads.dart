@@ -284,6 +284,7 @@ class Downloads extends ChangeNotifier {
   Future<int> syncPerson(
     String byline, {
     required bool bookmarks,
+    bool andFetch = true,
     void Function(int page, int? pages, int found)? onProgress,
   }) async {
     final store = LibraryStore(library.db);
@@ -307,9 +308,62 @@ class Downloads extends ChangeNotifier {
 
     if (bookmarks) await library.noteBookmarkedBy(byline, seen);
     await library.noteWalk('${bookmarks ? 'bookmarks' : 'works'}:$byline');
+    if (andFetch) await _queueWhatIsStale(byline, seen);
     // how many the library did not already know about, which is the number
     // worth saying: "62 listed" on a second walk says nothing happened
     return added;
+  }
+
+  /// Queue what is actually worth a request.
+  ///
+  /// The planner decides, and it is the difference between a sync and a
+  /// re-download. A work already held whose copy was taken after the archive
+  /// last changed it costs nothing; one the archive has revised since is
+  /// worth asking for again; one that is only a description has never been
+  /// had at all. Most of a listing resolves to "do nothing", and doing
+  /// nothing is what makes syncing sixty works take a minute rather than half
+  /// an hour.
+  ///
+  /// What a refetch replaces is kept: the chapters it overwrites are archived
+  /// first, so an author who rewrites a scene does not take the old one with
+  /// them.
+  Future<void> _queueWhatIsStale(String label, List<String> workIds) async {
+    if (workIds.isEmpty) return;
+    final marks = List.filled(workIds.length, '?').join(',');
+    final rows = await library.db.rawQuery(
+      'SELECT work_id, downloaded_at, updated, published, has_text, '
+      'updated_at, skin_css FROM works WHERE work_id IN ($marks)',
+      workIds,
+    );
+
+    final held = <String, core.HeldWork>{};
+    final listed = <String, num?>{};
+    for (final row in rows) {
+      final id = '${row['work_id']}';
+      listed[id] = row['updated_at'] as int?;
+      if ((row['has_text'] as int? ?? 0) == 1) {
+        held[id] = core.HeldWork(
+          downloadedAt: row['downloaded_at'] as String?,
+          updated: row['updated'] as String?,
+          published: row['published'] as String?,
+        );
+      }
+    }
+    for (final id in workIds) {
+      listed.putIfAbsent(id, () => null);
+    }
+
+    final plan = core.planSync(listed, held, wantSkins: false);
+    final wanted = [
+      ...plan[core.PlanAction.fetch],
+      ...plan[core.PlanAction.refetch],
+    ];
+    final gone = await LibraryStore(library.db).refused(wanted);
+    final queue = [
+      for (final id in wanted)
+        if (!gone.contains(id)) id,
+    ];
+    if (queue.isNotEmpty) await addWorks(label, queue);
   }
 
   /// How much of an author's catalogue there is, before any of it is fetched.

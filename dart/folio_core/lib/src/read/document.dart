@@ -252,6 +252,12 @@ void _block(
   final align =
       _alignOf(node) ?? (tag == 'center' ? BlockAlign.center : inherited);
 
+  /* The archive's own signposts, which are for a screen reader working its
+     way down a page and not for somebody reading a chapter. "Chapter Text"
+     above the first paragraph of every chapter is the app narrating its own
+     markup, and the chapter's number is already in the bar at the top. */
+  if (node.classes.contains('landmark')) return;
+
   switch (tag) {
     case 'hr':
       out.add(const Rule());

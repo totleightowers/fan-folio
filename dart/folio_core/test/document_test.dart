@@ -131,4 +131,34 @@ void main() {
           reason: 'a column of whitespace is not a skin');
     });
   });
+  test("the archive's own signposts are not read out", () {
+    /* A landmark heading is for a screen reader working down a page. "Chapter
+       Text" above the first paragraph of every chapter is the app narrating
+       its own markup, and the chapter number is already in the bar. */
+    final document = parseChapter(
+      '<h3 class="landmark heading" id="work">Chapter Text</h3>'
+      '<p>The first real sentence.</p>',
+    );
+
+    expect(document.blocks, hasLength(1));
+    expect(
+      (document.blocks.single as Paragraph).runs.first.text,
+      'The first real sentence.',
+    );
+  });
+
+  test('but a heading the author wrote is theirs', () {
+    final document = parseChapter('<h2>Part One</h2><p>Words.</p>');
+    expect(document.blocks.whereType<Heading>(), hasLength(1));
+  });
+
+  test('and a landmark wrapping something takes it with it', () {
+    /* The archive puts a "Chapter 13" link inside one. It is navigation for
+       the page it came from, not part of the chapter. */
+    final document = parseChapter(
+      '<div class="landmark"><h3><a href="#c13">Chapter 13</a></h3></div>'
+      '<p>Kept.</p>',
+    );
+    expect(document.blocks, hasLength(1));
+  });
 }
