@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:folio_core/folio_core.dart' as core;
@@ -59,9 +58,9 @@ class Downloads extends ChangeNotifier {
         'SELECT skin_css FROM works WHERE work_id = ?',
         [workId],
       );
-      await _pictures.fetchFor(workId, [
-        for (final row in chapters) '${row['html'] ?? ''}',
-      ], skinCss: work.isEmpty ? null : work.first['skin_css'] as String?);
+      final html = [for (final row in chapters) '${row['html'] ?? ''}'];
+      final skin = work.isEmpty ? null : work.first['skin_css'] as String?;
+      await _pictures.fetchFor(workId, html, skinCss: skin);
     } catch (_) {
       /* A picture that will not come is not a work that failed. The text is
          already written down by here, and a chapter with a broken image in
@@ -364,9 +363,12 @@ class Downloads extends ChangeNotifier {
 
   /// Everything this work points at that is not here yet.
   ///
-  /// A library brought in from 1.x has the text of its works and none of
-  /// their pictures, and nothing was ever going to go back for them — the
-  /// fetcher only runs when a work is downloaded, and these never were.
+  /// 1.x fetched a work's pictures too, and they travel in a backup like
+  /// everything else — so for most imported works this finds nothing, which
+  /// is the right answer. What it is for is the gaps: a work whose images
+  /// were never got, one that has been revised since, and an author's skin,
+  /// whose own assets 1.x never collected because it looked only for img
+  /// tags and a stylesheet says url(...).
   Future<int> fetchPicturesFor(String workId) async {
     final chapters = await library.db.rawQuery(
       'SELECT html FROM chapters WHERE work_id = ?',
@@ -376,9 +378,9 @@ class Downloads extends ChangeNotifier {
       'SELECT skin_css FROM works WHERE work_id = ?',
       [workId],
     );
-    return _pictures.fetchFor(workId, [
-      for (final row in chapters) '${row['html'] ?? ''}',
-    ], skinCss: work.isEmpty ? null : work.first['skin_css'] as String?);
+    final html = [for (final row in chapters) '${row['html'] ?? ''}'];
+    final skin = work.isEmpty ? null : work.first['skin_css'] as String?;
+    return _pictures.fetchFor(workId, html, skinCss: skin);
   }
 
   bool pause(int id) => _queue.pause(id);

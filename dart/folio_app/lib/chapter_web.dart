@@ -154,8 +154,6 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   /// no way to know whether the chapter is empty or the engine gave up.
   bool _plainly = false;
 
-  InAppWebViewController? _controller;
-
   /// Did anything actually come out?
   ///
   /// A webview that renders nothing raises no error: it simply occupies the
@@ -184,12 +182,6 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   void initState() {
     super.initState();
     _prepare();
-  }
-
-  @override
-  void dispose() {
-    _controller = null;
-    super.dispose();
   }
 
   @override
@@ -299,7 +291,6 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
         supportZoom: false,
         disableHorizontalScroll: true,
       ),
-      onWebViewCreated: (controller) => _controller = controller,
       onReceivedError: (_, __, error) => _wentWrong(error.description),
       onReceivedHttpError: (_, __, response) =>
           _wentWrong('the page answered ${response.statusCode}'),

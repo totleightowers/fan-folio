@@ -108,11 +108,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   /// One picture, asked for from the page it is on, and kept.
   ///
-  /// A library brought in from 1.x has the text of its works and none of
-  /// their pictures — the fetcher only runs when a work is downloaded, and
-  /// those never were. Rather than going back for all of them unasked, the
-  /// one somebody actually wanted is fetched when they say so, and from then
-  /// on it is theirs.
+  /// Most pictures are already here: 1.x fetched them and they travel in a
+  /// backup. This is for the ones that are not — a work revised since, an
+  /// image that failed the day it was tried. Rather than going back for all
+  /// of them unasked, the one somebody actually wanted is fetched when they
+  /// say so, and from then on it is theirs.
   Future<Uint8List?> _fetchPicture(String src) async {
     final downloads = widget.downloads;
     if (downloads == null) return null;

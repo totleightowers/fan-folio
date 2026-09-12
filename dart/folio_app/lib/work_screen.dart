@@ -130,10 +130,11 @@ class _WorkScreenState extends State<WorkScreen> {
 
   /// Go back for the pictures a work never had.
   ///
-  /// A library brought in from 1.x has the text of its works and none of
-  /// their pictures: the fetcher only runs when a work is downloaded, and
-  /// those never were. Offered rather than done quietly, because a work with
-  /// forty inline images is forty requests at a reader's pace.
+  /// 1.x fetched them too, so for most imported works this finds nothing —
+  /// which is the right answer. It is for the gaps: an image that failed the
+  /// day it was tried, a work revised since, and an author's skin, whose own
+  /// assets 1.x never collected. Offered rather than done quietly, because a
+  /// work with forty inline images is forty requests at a reader's pace.
   Future<void> _fetchPictures() async {
     final downloads = widget.downloads;
     final work = _work;
