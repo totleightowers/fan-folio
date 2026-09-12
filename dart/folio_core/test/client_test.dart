@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:folio_core/folio_core.dart';
 import 'package:http/http.dart' as http;
@@ -217,6 +218,42 @@ void main() {
       expect(isTransient(errorFor(500, '').message), isTrue);
       expect(isTransient(errorFor(403, '').message), isFalse);
       expect(isTransient(errorFor(429, '').message), isTrue);
+    });
+  });
+
+  group('a body is text, and the header does not always say which', () {
+    Future<String> bodyOf(http.Response Function() answer) async {
+      final client = ArchiveClient(
+        pacer: instant(),
+        http_: MockClient((_) async => answer()),
+      );
+      final page = await client.get(Uri.https('archiveofourown.org', '/x'));
+      return page.body;
+    }
+
+    test('UTF-8 when the header says so', () async {
+      expect(
+        await bodyOf(
+          () => http.Response.bytes(
+            utf8.encode('“Écoute,” she said — 「ね」'),
+            200,
+            headers: {'content-type': 'text/html; charset=utf-8'},
+          ),
+        ),
+        '“Écoute,” she said — 「ね」',
+      );
+    });
+
+    test('and UTF-8 when it says nothing at all', () async {
+      /* HTTP says a text body with no charset is Latin-1, and package:http
+         obeys. The archive is UTF-8 and says so — but a proxy or a cached
+         error page need not, and Latin-1 turns every accented name and every
+         curly quote in a chapter into mojibake that is then stored and
+         indexed that way. */
+      expect(
+        await bodyOf(() => http.Response.bytes(utf8.encode('Éowyn'), 200)),
+        'Éowyn',
+      );
     });
   });
 

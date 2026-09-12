@@ -10,6 +10,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' show parseHttpDate;
@@ -175,6 +176,7 @@ class ArchiveClient {
 
     _remember(response);
     _referer = url;
+    final body = decodeBody(response);
 
     if (response.statusCode == 429 || response.statusCode == 503) {
       /* Being told to slow down is the one answer everything else has to
@@ -185,11 +187,11 @@ class ArchiveClient {
           .slowDown(retryAfter(response.headers) ?? const Duration(minutes: 5));
     }
 
-    if (!response.ok) throw errorFor(response.statusCode, response.body);
+    if (!response.ok) throw errorFor(response.statusCode, body);
 
     /* The archive answers an expired session with a login page and a 200, so
        a status alone is not proof the request did what it was asked to. */
-    if (isLoginPage(response.body)) {
+    if (isLoginPage(body)) {
       throw const ArchiveError(
         'The archive returned the login page — the session has expired, '
         'sign in again',
@@ -197,7 +199,7 @@ class ArchiveClient {
       );
     }
 
-    return Page(status: response.statusCode, body: response.body, url: url);
+    return Page(status: response.statusCode, body: body, url: url);
   }
 
   /// Keep whatever the archive set, so a session survives the next request.
@@ -217,6 +219,27 @@ class ArchiveClient {
 
 extension on http.Response {
   bool get ok => statusCode >= 200 && statusCode < 300;
+}
+
+/// The page, as text.
+///
+/// HTTP says a text/* body with no charset is Latin-1, and package:http obeys
+/// that. The archive is UTF-8 and says so, but a proxy or a cached error page
+/// need not — and Latin-1 turns every accented name and every curly quote in a
+/// chapter into mojibake that is then stored and indexed that way. So: what
+/// the header says if it says anything, and UTF-8 otherwise.
+String decodeBody(http.Response response) {
+  final type = response.headers['content-type'] ?? '';
+  final charset = RegExp(
+    r'charset\s*=\s*"?([\w-]+)',
+    caseSensitive: false,
+  ).firstMatch(type)?.group(1);
+
+  final named = charset == null ? null : Encoding.getByName(charset);
+  if (named != null && named != latin1) {
+    return named.decode(response.bodyBytes);
+  }
+  return utf8.decode(response.bodyBytes, allowMalformed: true);
 }
 
 /// Dart folds several Set-Cookie headers into one comma-joined string, and a
