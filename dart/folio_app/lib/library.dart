@@ -275,7 +275,7 @@ class Library {
     String workId,
   ) async {
     final rows = await db.rawQuery(
-      "SELECT url, mime, bytes FROM images "
+      'SELECT url, mime, bytes FROM images '
       "WHERE work_id = ? AND status = 'stored' AND bytes IS NOT NULL",
       [workId],
     );

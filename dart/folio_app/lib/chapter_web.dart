@@ -39,6 +39,7 @@ class SkinnedChapterView extends StatefulWidget {
     required this.chapterHtml,
     required this.skinCss,
     required this.settings,
+    this.pictures = const {},
     super.key,
   });
 
