@@ -10,6 +10,12 @@ version: 2.0.0
 environment:
   sdk: ^3.5.0
 
+dependencies:
+  # The html5 parsing algorithm, in pure Dart. Fic markup is written by hand
+  # over twenty years and is not well-formed; a parser that recovers the way
+  # browsers recover is the difference between a chapter and a mess.
+  html: ^0.15.4
+
 dev_dependencies:
   test: ^1.25.0
   sqlite3: ^2.4.0
