@@ -247,6 +247,15 @@ class Library {
     );
   }
 
+  /// One facet's counts, against the filters already in force.
+  Future<List<Count>> facet(core.FacetQuery q) async {
+    final rows = await db.rawQuery(q.sql, q.args);
+    return rows
+        .map((r) => Count('${r['name']}', r['n'] as int? ?? 0))
+        .where((c) => c.name.isNotEmpty && c.name != 'null')
+        .toList();
+  }
+
   Future<List<Hit>> searchText(String query, {int limit = 40}) async {
     if (query.trim().isEmpty) return const [];
     final rows = await db.rawQuery(
@@ -333,6 +342,13 @@ class Stats {
   final int later;
   final int finished;
   final int wordsRead;
+}
+
+/// A value somebody could narrow by, and how much of the library it leaves.
+class Count {
+  const Count(this.name, this.n);
+  final String name;
+  final int n;
 }
 
 /// One passage found, and where it is.

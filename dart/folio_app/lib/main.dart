@@ -4,6 +4,7 @@ import 'package:folio_core/folio_core.dart';
 
 import 'home_screen.dart';
 import 'library.dart';
+import 'filter_sheet.dart';
 import 'reader_screen.dart';
 import 'search_screen.dart';
 import 'theme.dart';
@@ -107,6 +108,35 @@ class _ShellState extends State<Shell> {
     if (work != null) await _open(work, chapter: chapter);
   }
 
+  /// How many filters are in force, which is what the badge counts.
+  int get _narrowCount {
+    var n = 0;
+    for (final key in ['include', 'exclude', 'rating', 'author']) {
+      n += (_view[key] as List?)?.length ?? 0;
+    }
+    for (final key in ['complete', 'language', 'wordsMax', 'bookmarkedBy']) {
+      if (_view[key] != null) n++;
+    }
+    if ((_view['state'] ?? 'all') != 'all') n++;
+    return n;
+  }
+
+  bool get _narrowed => _narrowCount > 0;
+
+  Future<void> _openFilters(Library library) async {
+    final chosen = await showModalBottomSheet<Map<String, Object?>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => FilterSheet(library: library, view: _view),
+    );
+    if (chosen == null || !mounted) return;
+    setState(() {
+      _view = chosen;
+      _viewTitle = 'Library';
+    });
+  }
+
   /// A shelf's See all lands on the same question the shelf asked.
   void _seeAll(Map<String, Object?> view, String title) => setState(() {
     _view = view;
@@ -137,6 +167,16 @@ class _ShellState extends State<Shell> {
       appBar: AppBar(
         title: Text(_tab == 0 ? 'Fan Folio' : _viewTitle),
         actions: [
+          if (_tab == 1)
+            IconButton(
+              icon: Badge(
+                isLabelVisible: _narrowed,
+                label: Text('$_narrowCount'),
+                child: const Icon(Icons.filter_list),
+              ),
+              tooltip: 'Filters',
+              onPressed: () => _openFilters(library),
+            ),
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Search',
