@@ -238,8 +238,13 @@ class Library {
 
   /// Every tag on a work, by kind, in the order the archive lists them.
   Future<Map<String, List<String>>> tagsFor(String workId) async {
+    /* Not ORDER BY rowid: the tags table is WITHOUT ROWID, so asking for one
+       is an error rather than an ordering, and it took the whole screen down
+       with it. The archive's own order is not recoverable from here anyway —
+       the primary key is what the rows are stored by, so that is the order
+       they come back in, and within a kind that is alphabetical. */
     final rows = await db.rawQuery(
-      'SELECT kind, name FROM tags WHERE work_id = ? ORDER BY rowid',
+      'SELECT kind, name FROM tags WHERE work_id = ?',
       [workId],
     );
     final out = <String, List<String>>{};

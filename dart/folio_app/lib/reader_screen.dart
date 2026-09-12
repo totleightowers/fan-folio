@@ -415,24 +415,52 @@ class _ChapterPageState extends State<_ChapterPage> {
             ground: widget.ground,
             dark: widget.dark,
           ),
+          plainly: (why) => _plain(html, why),
         );
       }
 
       WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
-      return NotificationListener<ScrollNotification>(
-        onNotification: (note) {
-          if (note.depth == 0) widget.onScrolled(note.metrics);
-          return false;
-        },
-        child: ChapterView(
-          document: core.parseChapter(html),
-          settings: ReadingSettings.from(widget.prefs),
-          controller: _scroll,
-          pictures: widget.pictures,
-        ),
-      );
+      return _plain(html, null);
     },
   );
+
+  /// The chapter as plain text, whatever the work wanted.
+  Widget _plain(String html, String? why) {
+    final document = core.parseChapter(html);
+
+    /* A chapter that parses to nothing is not an empty screen. It is markup
+       this app could not read, or text that never arrived, and either way
+       saying so beats a blank page between two bars. */
+    if (document.blocks.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            why == null
+                ? 'There are no words in this chapter yet. It may not have '
+                      'been fetched, or it may be in a shape this reader '
+                      'cannot make sense of.'
+                : 'This chapter would not render: $why',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: widget.ground.inkMute, height: 1.5),
+          ),
+        ),
+      );
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (note) {
+        if (note.depth == 0) widget.onScrolled(note.metrics);
+        return false;
+      },
+      child: ChapterView(
+        document: document,
+        settings: ReadingSettings.from(widget.prefs),
+        controller: _scroll,
+        pictures: widget.pictures,
+      ),
+    );
+  }
 }
 
 /// Where you are, and the two ways out of it.

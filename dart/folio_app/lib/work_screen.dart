@@ -51,6 +51,12 @@ class _WorkScreenState extends State<WorkScreen> {
   bool _loading = true;
   bool _queued = false;
 
+  /// What went wrong, rather than a spinner that never stops.
+  ///
+  /// One query throwing used to leave this screen loading for ever, which
+  /// from the outside is a work that does not open and gives no reason.
+  String? _trouble;
+
   @override
   void initState() {
     super.initState();
@@ -67,18 +73,27 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Future<void> _load() async {
-    final work = await widget.library.work(widget.workId);
-    final chapters = await widget.library.chapters(widget.workId);
-    final tags = await widget.library.tagsFor(widget.workId);
-    final place = await widget.library.placeIn(widget.workId);
-    if (!mounted) return;
-    setState(() {
-      _work = work;
-      _chapters = chapters;
-      _tags = tags;
-      _place = place;
-      _loading = false;
-    });
+    try {
+      final work = await widget.library.work(widget.workId);
+      final chapters = await widget.library.chapters(widget.workId);
+      final tags = await widget.library.tagsFor(widget.workId);
+      final place = await widget.library.placeIn(widget.workId);
+      if (!mounted) return;
+      setState(() {
+        _work = work;
+        _chapters = chapters;
+        _tags = tags;
+        _place = place;
+        _trouble = null;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _trouble = '$e';
+        _loading = false;
+      });
+    }
   }
 
   int get _resume {
@@ -130,7 +145,16 @@ class _WorkScreenState extends State<WorkScreen> {
     if (work == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('That work is not here any more.')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              _trouble ?? 'That work is not here any more.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: ground.inkMute, height: 1.5),
+            ),
+          ),
+        ),
       );
     }
 
