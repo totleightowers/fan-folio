@@ -282,6 +282,140 @@ void main() {
       expect(retryAfter({'retry-after': 'sometime'}), isNull);
     });
   });
+
+  group('signing in', () {
+    const loginPage = r'''
+<html><head><title>Log In | Archive of Our Own</title></head><body>
+<form id="new_user" action="/users/login" method="post">
+  <input type="hidden" name="authenticity_token" value="tok+en/1=" />
+  <input type="text" name="user[login]" value="" />
+  <input type="password" name="user[password]" />
+  <input type="checkbox" name="user[remember_me]" value="1" checked />
+</form></body></html>''';
+
+    const dashboard = '<html><body>'
+        '<a href="/users/somebody" class="dashboard">My Dashboard</a>'
+        '</body></html>';
+
+    http.Response page(String body, int status, [Map<String, String>? extra]) =>
+        http.Response.bytes(
+          utf8.encode(body),
+          status,
+          headers: {'content-type': 'text/html; charset=utf-8', ...?extra},
+        );
+
+    test('reads the archive own form rather than names we guessed', () async {
+      String? sent;
+      final client = ArchiveClient(
+        pacer: instant(),
+        http_: MockClient((request) async {
+          if (request.method == 'GET' && request.url.path == '/users/login') {
+            return page(loginPage, 200);
+          }
+          if (request.method == 'POST') {
+            sent = request.body;
+            /* The archive answers a sign-in with a redirect, and the cookie
+               that matters is on this hop rather than on the last one. */
+            return page('', 302, {
+              'location': '/',
+              'set-cookie': '_otwarchive_session=live; path=/',
+            });
+          }
+          return page(dashboard, 200);
+        }),
+      );
+
+      expect(await client.signIn('somebody', 'hunter2'), 'somebody');
+      expect(sent, contains('authenticity_token=tok%2Ben%2F1%3D'),
+          reason: 'a token submitted wrong is simply the wrong token');
+      expect(sent, contains('user%5Blogin%5D=somebody'));
+      expect(sent, contains('user%5Bremember_me%5D=1'),
+          reason: 'a session that dies with the app is not worth having');
+      expect(client.cookies['_otwarchive_session'], 'live',
+          reason: 'the cookie was set on the hop the client redirected from');
+    });
+
+    test('a refusal is a re-rendered form with a 200 on it', () async {
+      /* The archive does not answer 4xx for a bad password. A client reading
+         the status alone concludes it signed in. */
+      final client = ArchiveClient(
+        pacer: instant(),
+        http_: MockClient((request) async {
+          if (request.method == 'GET') return page(loginPage, 200);
+          return page(
+            '$loginPage<p>The user name or password you entered does not '
+            'match our records.</p>',
+            200,
+          );
+        }),
+      );
+
+      await expectLater(
+        client.signIn('somebody', 'wrong'),
+        throwsA(
+          isA<ArchiveError>().having(
+            (e) => e.message,
+            'says it was refused',
+            contains('did not accept'),
+          ),
+        ),
+      );
+    });
+
+    test('and something new being asked for says so', () async {
+      final client = ArchiveClient(
+        pacer: instant(),
+        http_: MockClient((request) async {
+          if (request.method == 'GET') return page(loginPage, 200);
+          return page('<html><body>Please confirm you are human</body>', 200);
+        }),
+      );
+
+      await expectLater(
+        client.signIn('somebody', 'hunter2'),
+        throwsA(
+          isA<ArchiveError>().having(
+            (e) => e.message,
+            'suggests what to do about it',
+            contains('browser'),
+          ),
+        ),
+      );
+    });
+
+    test('a page with no form at all is not a sign-in page', () async {
+      final client = ArchiveClient(
+        pacer: instant(),
+        http_: MockClient((_) async => page('<p>maintenance</p>', 200)),
+      );
+      await expectLater(
+        client.signIn('somebody', 'hunter2'),
+        throwsA(isA<ArchiveError>()),
+      );
+    });
+
+    test('who the archive thinks we are, or nobody', () async {
+      expect(signedInAs(dashboard), 'somebody');
+      expect(signedInAs('<p>signed out</p>'), isNull);
+
+      final client = ArchiveClient(
+        pacer: instant(),
+        http_: MockClient((_) async => page(dashboard, 200)),
+      );
+      expect(await client.whoAmI(), 'somebody');
+    });
+
+    test('forgetting here is not logging out there', () async {
+      /* Dropping the cookies ends the session as far as this app is
+         concerned. The archive still holds it until it expires or the reader
+         logs out on the site. */
+      final client = ArchiveClient(
+        pacer: instant(),
+        cookies: {'_otwarchive_session': 'live'},
+      )..forget();
+      expect(client.cookies, isEmpty);
+    });
+  });
 }
 
 /// Something thrown from underneath, the way a phone throws it.

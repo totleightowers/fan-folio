@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
 import 'library.dart';
+import 'session.dart';
 import 'store.dart';
 
 /// The one place the archive is asked for anything.
@@ -14,9 +15,10 @@ import 'store.dart';
 /// request every seven seconds while every one of them believed it was making
 /// one every twenty-eight.
 class Downloads extends ChangeNotifier {
-  Downloads({required this.library, Map<String, String>? cookies})
-    : _pacer = core.Pacer() {
-    _client = core.ArchiveClient(pacer: _pacer, cookies: cookies);
+  Downloads({required this.library, Session session = Session.none})
+    : _pacer = core.Pacer(),
+      _session = session {
+    _client = core.ArchiveClient(pacer: _pacer, cookies: session.cookies);
     _downloader = core.Downloader(
       client: _client,
       store: LibraryStore(library.db),
@@ -42,6 +44,10 @@ class Downloads extends ChangeNotifier {
 
   List<core.JobView> _jobs = const [];
   List<core.JobView> get jobs => _jobs;
+
+  Session _session;
+  Session get session => _session;
+  String? get signedInAs => _session.username;
 
   /// Whether the archive has asked to be left alone, and until when.
   DateTime? get cooling => _pacer.coolingUntil;
@@ -75,7 +81,26 @@ class Downloads extends ChangeNotifier {
   bool remove(int id) => _queue.remove(id);
   bool rerun(int id) => _queue.rerun(id);
 
-  void setCookies(Map<String, String> cookies) => _client.setCookies(cookies);
+  /// Sign in, and keep the session that comes back.
+  ///
+  /// The password is handed to the archive's own form and goes no further:
+  /// what is kept is the cookie, in app-private storage beside the library
+  /// rather than inside it, so it does not travel in a backup.
+  Future<String> signIn(String username, String password) async {
+    final who = await _client.signIn(username, password);
+    _session = Session(cookies: _client.cookies, username: who);
+    await _session.save();
+    notifyListeners();
+    return who;
+  }
+
+  /// Sign out here, which is not signing out there.
+  Future<void> signOut() async {
+    _client.forget();
+    _session = Session.none;
+    await Session.forget();
+    notifyListeners();
+  }
 
   @override
   void dispose() {

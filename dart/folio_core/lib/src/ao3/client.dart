@@ -16,6 +16,8 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' show parseHttpDate;
 
 import '../sync/pacer.dart';
+import 'forms.dart';
+import 'urls.dart' show origin;
 
 /// How this client presents itself.
 ///
@@ -163,6 +165,122 @@ class ArchiveClient {
   /// Ask for a page, in its turn.
   Future<Page> get(Uri url) => pacer.run(() => _get(url));
 
+  /// Submit a form, in its turn.
+  ///
+  /// Redirects are followed by hand rather than by the client, because every
+  /// hop of a sign-in sets a cookie and a client that follows them itself
+  /// hands back only the last response's headers — which is how a session
+  /// that was granted arrives looking like one that was refused.
+  Future<Page> post(Uri url, Map<String, String> fields) =>
+      pacer.run(() => _post(url, fields));
+
+  Future<Page> _post(Uri url, Map<String, String> fields) async {
+    var at = url;
+    http.Response response;
+
+    for (var hop = 0;; hop++) {
+      try {
+        response = hop == 0
+            ? await _http.post(
+                at,
+                headers: {
+                  ...headers(),
+                  'Content-Type': 'application/x-www-form-urlencoded',
+                  'Sec-Fetch-Site': 'same-origin',
+                },
+                body: encodeForm(fields),
+              )
+            : await _http.get(at, headers: headers());
+      } catch (e) {
+        throw ArchiveError('The app could not reach the archive: $e');
+      }
+
+      _remember(response);
+      final next = response.headers['location'];
+      if (response.statusCode < 300 ||
+          response.statusCode >= 400 ||
+          next == null ||
+          hop >= 5) {
+        break;
+      }
+      at = at.resolve(next);
+      _referer = url;
+    }
+
+    _referer = at;
+    final body = decodeBody(response);
+    if (!response.ok) throw errorFor(response.statusCode, body);
+    return Page(status: response.statusCode, body: body, url: at);
+  }
+
+  /// Sign in, and say who as.
+  ///
+  /// The form is read off the page rather than assembled from field names
+  /// this app happens to know, so the day the archive renames one, this
+  /// submits the new name instead of failing silently. The password is used
+  /// to fill that form and is never written down anywhere.
+  ///
+  /// The archive re-renders the form with an error rather than answering 4xx,
+  /// so a 200 is not a sign-in: who came back is.
+  Future<String> signIn(String username, String password) async {
+    final login = Uri.parse('$origin/users/login');
+    final page = await get(login);
+
+    final form =
+        parseForm(page.body, 'new_user') ?? parseForm(page.body, 'login');
+    final token = form?.fields['authenticity_token'] ?? csrfToken(page.body);
+    if (token == null) {
+      throw const ArchiveError(
+        'The sign-in page had no token on it — the archive’s form has '
+        'changed, or something answered in its place.',
+      );
+    }
+
+    final answer = await post(login, {
+      ...?form?.fields,
+      'authenticity_token': token,
+      'user[login]': username,
+      'user[password]': password,
+      // so the session outlives closing the app, which is the whole point
+      'user[remember_me]': '1',
+      'commit': 'Log In',
+    });
+
+    final who = signedInAs(answer.body);
+    if (who != null) return who;
+
+    if (RegExp(
+      r'password.{0,40}(incorrect|invalid)|user name or password',
+      caseSensitive: false,
+      dotAll: true,
+    ).hasMatch(answer.body)) {
+      throw const ArchiveError('The archive did not accept that sign-in.');
+    }
+    throw const ArchiveError(
+      'That did not take. The archive may be asking for something new — '
+      'try opening it in a browser and see what it wants.',
+    );
+  }
+
+  /// Who the archive thinks we are, or nobody.
+  Future<String?> whoAmI() async {
+    try {
+      return signedInAs((await get(Uri.parse(origin))).body);
+    } on ArchiveError {
+      return null;
+    }
+  }
+
+  /// Sign out here, which is not signing out there.
+  ///
+  /// Dropping the cookies ends this app's session as far as this app is
+  /// concerned. The archive still holds it until it expires or the reader
+  /// logs out on the site, which is worth saying rather than implying.
+  void forget() {
+    _cookies.clear();
+    _referer = null;
+  }
+
   Future<Page> _get(Uri url) async {
     http.Response response;
     try {
@@ -190,8 +308,12 @@ class ArchiveClient {
     if (!response.ok) throw errorFor(response.statusCode, body);
 
     /* The archive answers an expired session with a login page and a 200, so
-       a status alone is not proof the request did what it was asked to. */
-    if (isLoginPage(body)) {
+       a status alone is not proof the request did what it was asked to.
+       Asking for the sign-in page is the one time that page is the answer —
+       keyed on the address rather than on a flag the caller has to remember,
+       because forgetting it makes signing in impossible in a way that reads
+       like an expired session. */
+    if (!isSignInPage(url) && isLoginPage(body)) {
       throw const ArchiveError(
         'The archive returned the login page — the session has expired, '
         'sign in again',
@@ -287,6 +409,19 @@ DateTime? _httpDate(String text) {
   }
 }
 
+/// Whether this address is the sign-in page, where a login form is the point.
+bool isSignInPage(Uri url) => url.path == '/users/login';
+
 /// The archive answers an expired session with a login page and a 200.
 bool isLoginPage(String body) =>
     RegExp(r'<title>\s*Log In', caseSensitive: false).hasMatch(body);
+
+/// Who the archive thinks is reading, read off any page it serves.
+///
+/// The dashboard link carries the pseud, and it is only there when there is a
+/// session behind it — which makes it the honest answer to "am I signed in",
+/// rather than the presence of a cookie the archive may have forgotten.
+String? signedInAs(String body) => RegExp(
+      r'href="/users/([^/"]+)"[^>]*>\s*My Dashboard',
+      caseSensitive: false,
+    ).firstMatch(body)?.group(1);
