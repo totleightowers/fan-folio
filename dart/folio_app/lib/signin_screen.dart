@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
 import 'downloads.dart';
-import 'session.dart';
 import 'theme.dart';
 
 /// Signing in to the archive.
