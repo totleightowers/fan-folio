@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart';
 
 import 'library.dart';
-import 'reader.dart';
+import 'reader_screen.dart';
 import 'theme.dart';
 
 void main() => runApp(const FolioApp());
@@ -344,18 +344,7 @@ class WorkScreen extends StatelessWidget {
                     Text(work.byline, style: TextStyle(color: ground.inkMute)),
                     const SizedBox(height: 16),
                     if (work.hasText)
-                      FilledButton(
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ReaderScreen(
-                              library: library,
-                              work: work,
-                              chapter: 1,
-                            ),
-                          ),
-                        ),
-                        child: const Text('Read'),
-                      )
+                      _ReadButton(library: library, work: work)
                     else
                       Text(
                         'Not downloaded yet.',
@@ -376,57 +365,48 @@ class WorkScreen extends StatelessWidget {
   }
 }
 
-/// A chapter, read.
-class ReaderScreen extends StatelessWidget {
-  const ReaderScreen({
-    required this.library,
-    required this.work,
-    required this.chapter,
-    super.key,
-  });
+/// The way in, which is also the way back to where you were.
+///
+/// A work opened from a shelf opens where it was left off, chapter and all.
+/// Losing your place in a hundred thousand words is the difference between an
+/// app somebody keeps and one they abandon.
+class _ReadButton extends StatelessWidget {
+  const _ReadButton({required this.library, required this.work});
 
   final Library library;
   final WorkRow work;
-  final int chapter;
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: Text('Chapter $chapter')),
-        body: FutureBuilder<String?>(
-          future: library.chapterHtml(work.workId, chapter),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            /* Native text unless the author wrote a skin, in which case the
-               skin is the work and it is read the way they wrote it. */
-            if (needsWebView(skinCss: work.skinCss)) {
-              return const _SkinNotice();
-            }
-            return ChapterView(
-              document: parseChapter(snapshot.data),
-              settings: const ReadingSettings(),
-            );
-          },
-        ),
-      );
-}
-
-/// Until the WebView half is wired, a skinned work says so rather than being
-/// quietly rendered in a way its author did not write.
-class _SkinNotice extends StatelessWidget {
-  const _SkinNotice();
-
-  @override
-  Widget build(BuildContext context) => const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text(
-            'This work carries the author’s own styling, so it is read in the '
-            'archive’s layout rather than as plain text. That reader is not '
-            'wired up in this build yet.',
-            textAlign: TextAlign.center,
+  Future<void> _open(BuildContext context) async {
+    final chapters = await library.chapters(work.workId);
+    final place = await library.placeIn(work.workId);
+    final at = place?.chapter ?? 1;
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScreen(
+          library: library,
+          work: work,
+          chapters: chapters,
+          startAt: at,
+          startOffset: openingOffset(
+            chapter: at,
+            savedChapter: place?.chapter,
+            savedOffset: place?.offset,
           ),
         ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Place?>(
+        future: library.placeIn(work.workId),
+        builder: (context, snapshot) {
+          final at = snapshot.data?.chapter;
+          return FilledButton(
+            onPressed: () => _open(context),
+            child: Text(at != null && at > 1 ? 'Continue chapter $at' : 'Read'),
+          );
+        },
       );
 }

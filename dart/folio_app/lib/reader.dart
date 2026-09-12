@@ -16,12 +16,17 @@ class ChapterView extends StatelessWidget {
   const ChapterView({
     required this.document,
     required this.settings,
+    this.controller,
     this.onLinkTapped,
     super.key,
   });
 
   final core.ChapterDocument document;
   final ReadingSettings settings;
+
+  /// Held by whoever is keeping the reader's place, since the place outlives
+  /// the chapter being looked at.
+  final ScrollController? controller;
   final void Function(String href)? onLinkTapped;
 
   @override
@@ -30,6 +35,7 @@ class ChapterView extends StatelessWidget {
         ? Ground.dark
         : Ground.light;
     return ListView.builder(
+      controller: controller,
       padding: EdgeInsets.symmetric(
         horizontal: settings.margin,
         vertical: settings.verticalMargin,

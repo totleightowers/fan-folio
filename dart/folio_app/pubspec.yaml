@@ -28,6 +28,12 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
 flutter:
+  assets:
+    # The archive's own stylesheet, vendored in 1.x and travelling with the
+    # app for the same reason: a work skin is written against it, and without
+    # it a skinned chapter is styled against nothing.
+    - assets/ao3-work.css
+
   # The face the library is read in, and the face its titles are set in. It
   # ships with the app so it is there with no connection and never quietly
   # falls back to something else on the way. SIL Open Font License; the text
