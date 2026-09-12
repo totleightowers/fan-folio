@@ -119,9 +119,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
           final ch = widget.chapters[i];
           return ListTile(
             selected: ch.number == _chapter,
-            title: Text(ch.title?.isNotEmpty == true
-                ? '${ch.number}. ${ch.title}'
-                : 'Chapter ${ch.number}'),
+            title: Text(
+              ch.title?.isNotEmpty == true
+                  ? '${ch.number}. ${ch.title}'
+                  : 'Chapter ${ch.number}',
+            ),
             onTap: () {
               Navigator.of(context).pop();
               _go(ch.number);
