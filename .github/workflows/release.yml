@@ -40,16 +40,19 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
           NAME="${TAG#v}"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "major=${NAME%%.*}" >> "$GITHUB_OUTPUT"
           # An alpha sits beside 1.x under its own id; only a plain 2.x.y
           # takes org.fanfolio and inherits the library in place.
           case "$NAME" in
-            2.*-*) echo "appid=org.fanfolio.next" >> "$GITHUB_OUTPUT" ;;
-            *)     echo "appid=org.fanfolio" >> "$GITHUB_OUTPUT" ;;
+            2.*-*) APPID=org.fanfolio.next ;;
+            *)     APPID=org.fanfolio ;;
           esac
-          echo "code=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+          {
+            echo "tag=$TAG"
+            echo "name=$NAME"
+            echo "major=${NAME%%.*}"
+            echo "appid=$APPID"
+            echo "code=$(git rev-list --count HEAD)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Tests must pass before anything ships
         run: npm test
