@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
 import 'downloads.dart';
 import 'theme.dart';
 
-/// Signing in to the archive.
+/// Signing in on the archive's own page.
 ///
-/// The password is used to fill the archive's own sign-in form and is never
-/// written down — not here, not in the library, not in a backup. What is kept
-/// is the cookie the archive hands back, which the reader can revoke by
-/// logging out on the site.
+/// Not a username and password box. The archive has no sign-in endpoint for
+/// other people's apps to call, and asking somebody to type their password
+/// into a third-party app is the wrong shape even where it works — it teaches
+/// the habit that phishing relies on, and it cannot answer a captcha, a
+/// two-factor prompt or a Cloudflare challenge, all of which the archive
+/// serves to a phone sooner or later.
+///
+/// So this opens their page, lets them sign in to it exactly as they would in
+/// a browser, and then reads the session cookie out of the platform's own
+/// cookie store. The password is between them and the archive and never
+/// passes through this app at all.
 class SignInScreen extends StatefulWidget {
   const SignInScreen({required this.downloads, super.key});
 
@@ -20,48 +28,41 @@ class SignInScreen extends StatefulWidget {
 }
 
 class _SignInScreenState extends State<SignInScreen> {
-  final TextEditingController _user = TextEditingController();
-  final TextEditingController _password = TextEditingController();
-  bool _hidden = true;
-  bool _working = false;
+  static final Uri _login = Uri.parse(
+    'https://archiveofourown.org/users/login',
+  );
+
+  final CookieManager _cookies = CookieManager.instance();
+  double _loaded = 0;
+  bool _checking = false;
   String? _trouble;
 
-  @override
-  void dispose() {
-    _user.dispose();
-    _password.dispose();
-    super.dispose();
-  }
+  /// Has the archive started calling us somebody?
+  ///
+  /// Watched rather than waited for: there is no single page that means
+  /// "signed in". The archive lands you back wherever you were, and a reader
+  /// might wander for a while before it takes. So every page that finishes
+  /// loading is asked whether it carries a dashboard link, which is the only
+  /// honest sign there is a session behind it.
+  Future<void> _look(InAppWebViewController web) async {
+    if (_checking) return;
+    final html = await web.getHtml();
+    final who = core.signedInAs(html ?? '');
+    if (who == null || !mounted) return;
 
-  Future<void> _go() async {
-    if (_user.text.trim().isEmpty || _password.text.isEmpty) {
-      setState(() => _trouble = 'Both of those are needed.');
-      return;
-    }
-    setState(() {
-      _working = true;
-      _trouble = null;
-    });
-
-    final navigator = Navigator.of(context);
+    setState(() => _checking = true);
     try {
-      final who = await widget.downloads.signIn(
-        _user.text.trim(),
-        _password.text,
-      );
-      // no reason for it to outlive the request that used it
-      _password.clear();
-      navigator.pop(who);
-    } on core.ArchiveError catch (e) {
+      final jar = <String, String>{
+        for (final cookie in await _cookies.getCookies(url: WebUri('$_login')))
+          cookie.name: '${cookie.value}',
+      };
+      await widget.downloads.adoptSession(jar, who);
       if (!mounted) return;
-      setState(() {
-        _working = false;
-        _trouble = e.message;
-      });
+      Navigator.of(context).pop(who);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _working = false;
+        _checking = false;
         _trouble = '$e';
       });
     }
@@ -72,79 +73,58 @@ class _SignInScreenState extends State<SignInScreen> {
     final ground = groundOf(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Sign in')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+      appBar: AppBar(
+        title: const Text('Sign in to the archive'),
+        bottom: _loaded >= 1
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(2),
+                child: LinearProgressIndicator(value: _loaded, minHeight: 2),
+              ),
+      ),
+      body: Column(
         children: [
-          Text(
-            'Signing in lets the app fetch works that are locked to '
-            'registered users, and read your own bookmarks.',
-            style: TextStyle(fontSize: 14, height: 1.5, color: ground.inkMid),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _user,
-            autofocus: true,
-            autocorrect: false,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.next,
-            decoration: InputDecoration(
-              labelText: 'Username or email',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(Radii.field),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _password,
-            obscureText: _hidden,
-            autocorrect: false,
-            enableSuggestions: false,
-            textInputAction: TextInputAction.go,
-            onSubmitted: (_) => _go(),
-            decoration: InputDecoration(
-              labelText: 'Password',
-              errorText: _trouble,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(Radii.field),
-              ),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _hidden
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                ),
-                tooltip: _hidden ? 'Show' : 'Hide',
-                onPressed: () => setState(() => _hidden = !_hidden),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          FilledButton(
-            onPressed: _working ? null : _go,
-            child: Text(_working ? 'Signing in…' : 'Sign in'),
-          ),
-          const SizedBox(height: 22),
           Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: ground.sunken,
-              borderRadius: BorderRadius.circular(Radii.card),
-            ),
+            width: double.infinity,
+            color: ground.sunken,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
             child: Text(
-              'This goes straight to the archive and nowhere else. Your '
-              'password fills their own sign-in form and is not written down '
-              '— not on this phone, not in the library, not in a backup. What '
-              'is kept is the session they hand back, which you can revoke by '
-              'logging out on the site.',
+              'This is the archive’s own page. Your password goes to them and '
+              'never through this app; what is kept here afterwards is the '
+              'session, which you can end by logging out on the site.',
               style: TextStyle(
                 fontSize: 12.5,
-                height: 1.5,
+                height: 1.45,
                 color: ground.inkMute,
               ),
             ),
           ),
+          if (_trouble != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                _trouble!,
+                style: TextStyle(color: ground.accent, fontSize: 13),
+              ),
+            ),
+          Expanded(
+            child: InAppWebView(
+              initialUrlRequest: URLRequest(url: WebUri('$_login')),
+              initialSettings: InAppWebViewSettings(
+                // a sign-in page that will not run scripts is a sign-in page
+                // that cannot answer a challenge
+                javaScriptEnabled: true,
+                // the archive decides what a browser is; presenting as
+                // something else here is asking to be challenged
+                incognito: false,
+                supportZoom: true,
+              ),
+              onProgressChanged: (_, progress) =>
+                  setState(() => _loaded = progress / 100),
+              onLoadStop: (web, _) => _look(web),
+            ),
+          ),
+          if (_checking) const LinearProgressIndicator(minHeight: 2),
         ],
       ),
     );

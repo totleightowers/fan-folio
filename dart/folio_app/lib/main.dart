@@ -19,6 +19,7 @@ import 'theme.dart';
 import 'work_actions.dart';
 import 'work_card.dart';
 import 'work_screen.dart';
+import 'you_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,7 @@ class Shell extends StatefulWidget {
 
 class _ShellState extends State<Shell> {
   final GlobalKey<HomeScreenState> _home = GlobalKey<HomeScreenState>();
+  final GlobalKey<YouScreenState> _you = GlobalKey<YouScreenState>();
   Library? _library;
   Downloads? _downloads;
   KeepWorking? _keepWorking;
@@ -152,6 +154,7 @@ class _ShellState extends State<Shell> {
     if (!mounted) return;
     // a library brought in, or an author unblocked, is a different shelf
     await _home.currentState?.reload();
+    await _you.currentState?.reload();
     setState(() => _libraryEpoch++);
   }
 
@@ -188,6 +191,7 @@ class _ShellState extends State<Shell> {
     if (!mounted) return;
     // reading, deleting or blocking from in there changes what Home says
     await _home.currentState?.reload();
+    await _you.currentState?.reload();
     setState(() => _libraryEpoch++);
   }
 
@@ -255,6 +259,7 @@ class _ShellState extends State<Shell> {
     if (!mounted) return;
     // blocking or fetching from in there changes what the shelves hold
     await _home.currentState?.reload();
+    await _you.currentState?.reload();
     setState(() => _libraryEpoch++);
   }
 
@@ -274,6 +279,7 @@ class _ShellState extends State<Shell> {
     );
     if (!changed || !mounted) return;
     await _home.currentState?.reload();
+    await _you.currentState?.reload();
     setState(() => _libraryEpoch++);
   }
 
@@ -284,6 +290,7 @@ class _ShellState extends State<Shell> {
     if (changed != true || !mounted) return;
     // unblocking puts works back, which is the shelves and the list both
     await _home.currentState?.reload();
+    await _you.currentState?.reload();
     setState(() => _libraryEpoch++);
   }
 
@@ -355,7 +362,11 @@ class _ShellState extends State<Shell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_tab == 0 ? 'Fan Folio' : _viewTitle),
+        title: Text(switch (_tab) {
+          0 => 'Fan Folio',
+          2 => 'You',
+          _ => _viewTitle,
+        }),
         actions: [
           if (_tab == 1)
             IconButton(
@@ -387,7 +398,15 @@ class _ShellState extends State<Shell> {
           ),
         ],
       ),
-      body: _tab == 0
+      body: _tab == 2
+          ? YouScreen(
+              key: _you,
+              library: library,
+              downloads: _downloads,
+              onNarrow: _seeAll,
+              onBlocked: () => _openBlocked(library),
+            )
+          : _tab == 0
           ? HomeScreen(
               key: _home,
               library: library,
@@ -406,11 +425,13 @@ class _ShellState extends State<Shell> {
               onHold: _actOn,
               onPerson: _openPerson,
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _add,
-        tooltip: 'Add a work',
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: _tab == 2
+          ? null
+          : FloatingActionButton(
+              onPressed: _add,
+              tooltip: 'Add a work',
+              child: const Icon(Icons.add),
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() {
@@ -425,6 +446,10 @@ class _ShellState extends State<Shell> {
             icon: Icon(Icons.menu_book_outlined),
             label: 'Library',
           ),
+          /* Signing in lived behind a gear, which is where a thing goes when
+             nobody has decided it matters — and it is the gate for half of
+             what this app can do. */
+          NavigationDestination(icon: Icon(Icons.person_outline), label: 'You'),
         ],
       ),
     );

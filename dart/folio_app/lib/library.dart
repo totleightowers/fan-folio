@@ -528,6 +528,24 @@ class Library {
     return 'fan-folio-$day.db';
   }
 
+  /// The counts that are about you rather than about the library.
+  Future<({int bookmarked, int finished, int later})> yours() async {
+    final rows = await db.rawQuery('''
+      SELECT
+        (SELECT count(*) FROM works
+          WHERE COALESCE(in_bookmarks, 0) = 1 AND COALESCE(hidden, 0) = 0)
+          AS bookmarked,
+        (SELECT count(*) FROM reading WHERE COALESCE(marked_later, 0) = 1)
+          AS later
+    ''');
+    final read = await db.rawQuery(core.readStatsSql);
+    return (
+      bookmarked: rows.first['bookmarked'] as int? ?? 0,
+      later: rows.first['later'] as int? ?? 0,
+      finished: read.first['finished'] as int? ?? 0,
+    );
+  }
+
   /// Which works are your bookmarks now — all of them, as one answer.
   ///
   /// Removal cannot be seen a page at a time, because it is the absence of

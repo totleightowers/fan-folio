@@ -257,54 +257,18 @@ class ArchiveClient {
     return Page(status: response.statusCode, body: body, url: at);
   }
 
-  /// Sign in, and say who as.
+  /// There is no sign-in here, and that is deliberate.
   ///
-  /// The form is read off the page rather than assembled from field names
-  /// this app happens to know, so the day the archive renames one, this
-  /// submits the new name instead of failing silently. The password is used
-  /// to fill that form and is never written down anywhere.
+  /// The archive has no endpoint for other people's apps to call, and posting
+  /// a password to their login form from a phone is the wrong shape twice
+  /// over: it teaches the habit phishing relies on, and it cannot answer a
+  /// captcha, a two-factor prompt or a Cloudflare challenge — all of which
+  /// the archive serves to a phone sooner or later.
   ///
-  /// The archive re-renders the form with an error rather than answering 4xx,
-  /// so a 200 is not a sign-in: who came back is.
-  Future<String> signIn(String username, String password) async {
-    final login = Uri.parse('$origin/users/login');
-    final page = await get(login);
-
-    final form =
-        parseForm(page.body, 'new_user') ?? parseForm(page.body, 'login');
-    final token = form?.fields['authenticity_token'] ?? csrfToken(page.body);
-    if (token == null) {
-      throw const ArchiveError(
-        'The sign-in page had no token on it — the archive’s form has '
-        'changed, or something answered in its place.',
-      );
-    }
-
-    final answer = await post(login, {
-      ...?form?.fields,
-      'authenticity_token': token,
-      'user[login]': username,
-      'user[password]': password,
-      // so the session outlives closing the app, which is the whole point
-      'user[remember_me]': '1',
-      'commit': 'Log In',
-    });
-
-    final who = signedInAs(answer.body);
-    if (who != null) return who;
-
-    if (RegExp(
-      r'password.{0,40}(incorrect|invalid)|user name or password',
-      caseSensitive: false,
-      dotAll: true,
-    ).hasMatch(answer.body)) {
-      throw const ArchiveError('The archive did not accept that sign-in.');
-    }
-    throw const ArchiveError(
-      'That did not take. The archive may be asking for something new — '
-      'try opening it in a browser and see what it wants.',
-    );
-  }
+  /// So signing in happens on the archive's own page, in a webview, and the
+  /// session cookie is read out of the platform's cookie store afterwards
+  /// and handed to [setCookies]. The password is between the reader and the
+  /// archive and never passes through this app.
 
   /// Who the archive thinks we are, or nobody.
   Future<String?> whoAmI() async {

@@ -15,9 +15,13 @@ dependencies:
   sqflite: ^2.3.3
   path: ^1.9.0
   path_provider: ^2.1.4
-  # Works carrying an author's skin are read here rather than as native text,
-  # because the skin is the work: a chat fic, a letter in another hand.
-  webview_flutter: ^4.10.0
+  # Two jobs, one engine. Works carrying an author's skin are read here
+  # rather than as native text, because the skin is the work: a chat fic, a
+  # letter in another hand. And signing in happens on the archive's own page,
+  # which means reading the session cookie back out afterwards — this is the
+  # webview that exposes the platform's cookie store, where an HttpOnly
+  # session cookie actually lives.
+  flutter_inappwebview: ^6.1.5
   # Bringing a library in from a 1.x backup. The alpha has its own private
   # storage and cannot see the 1.x app's, so the file has to be handed over.
   file_picker: ^12.3.0
