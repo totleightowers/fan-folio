@@ -42,6 +42,24 @@ test('the conformance fixture still says what 1.x says', () => {
 });
 
 /**
+ * What to fetch, and what the archive's own forms say to send.
+ *
+ * A wrong "skip" leaves a gap in the library nobody notices until they open
+ * the work. A form field read wrongly submits a private bookmark as a public
+ * one. Both are quiet enough to go unnoticed for a long time, which is what
+ * makes them worth writing down.
+ */
+test('the planning fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/plan.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-plan-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-plan-conformance.mjs` — a decision moved and Dart was not told');
+});
+
+/**
  * What the app decides about a failure, and the order it decides it in.
  *
  * isTransient is a stack of regular expressions whose order is the whole

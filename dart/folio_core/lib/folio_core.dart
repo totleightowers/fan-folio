@@ -4,6 +4,7 @@
 /// tested on the machine it is written on. Nothing in here may import Flutter.
 library;
 
+export 'src/ao3/forms.dart';
 export 'src/ao3/parse.dart';
 export 'src/ao3/text.dart';
 export 'src/ao3/urls.dart';
@@ -15,6 +16,7 @@ export 'src/read/settings.dart';
 export 'src/read/spine.dart';
 export 'src/store/facets.dart';
 export 'src/sync/pacer.dart';
+export 'src/sync/plan.dart';
 export 'src/sync/run.dart';
 export 'src/sync/queue.dart';
 export 'src/store/migrate.dart';

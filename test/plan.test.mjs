@@ -93,3 +93,19 @@ test('an estimate is legible before a long run starts', () => {
   assert.equal(estimate(100, 29000).human, '48 min');
   assert.equal(estimate(3600, 29000).hours, 29);
 });
+
+/**
+ * A listing can carry a number that is not a date.
+ *
+ * Number.isFinite says yes to 1e20, Date says "Invalid Date", and toISOString
+ * on that throws — so one malformed row ended the whole plan rather than being
+ * ignored. Found by porting this to Dart, which refuses the same number in its
+ * own way.
+ */
+test('a number that is not a date is not a date, and is not a crash', () => {
+  assert.equal(epochToDate(1e20), null);
+  assert.equal(epochToDate(-1e20), null);
+  assert.equal(epochToDate(Number.MAX_SAFE_INTEGER), null);
+  assert.equal(epochToDate(1735689600), '2025-01-01');
+  assert.equal(epochToDate(0), '1970-01-01');
+});
