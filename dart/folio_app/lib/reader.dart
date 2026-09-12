@@ -51,8 +51,11 @@ class ChapterView extends StatelessWidget {
   }
 }
 
-/// What the reader has chosen. The same settings 1.x stores, so a reader who
-/// found their setup keeps it across the versions.
+/// What the reader has chosen, ready to paint with.
+///
+/// The choice itself lives in folio_core and is kept in the library, so it
+/// travels in a backup with everything else. This is that choice turned into
+/// the things Flutter needs: a family name, a weight, an alignment.
 class ReadingSettings {
   const ReadingSettings({
     this.size = 19,
@@ -64,9 +67,25 @@ class ReadingSettings {
     this.align = TextAlign.start,
   });
 
+  factory ReadingSettings.from(core.ReadingPrefs prefs) => ReadingSettings(
+    size: prefs.size,
+    lineHeight: prefs.lineHeight,
+    family: familyFor(prefs.face),
+    weight: weightFor(prefs.weight),
+    margin: prefs.margin,
+    verticalMargin: prefs.verticalMargin,
+    /* Justification is a preference and not a default, because justified text
+       without hyphenation — which is what a phone gives you — opens rivers of
+       white down a narrow measure. Somebody who wants it knows they want it. */
+    align: prefs.justified ? TextAlign.justify : TextAlign.start,
+  );
+
   final double size;
   final double lineHeight;
-  final String family;
+
+  /// Null means whatever the device reads in, which is the right answer for
+  /// anyone who has already set that up for themselves system-wide.
+  final String? family;
   final FontWeight weight;
   final double margin;
   final double verticalMargin;
@@ -79,6 +98,27 @@ class ReadingSettings {
     fontWeight: weight,
   );
 }
+
+/// A face the app can actually promise.
+///
+/// Two of these ship with the app, so they are there with no connection and
+/// cannot quietly turn into something else on the way; the other two are names
+/// Android resolves itself. Nothing here is a family that might not exist.
+String? familyFor(core.ReadingFace face) => switch (face) {
+  core.ReadingFace.literata => 'Literata',
+  // Atkinson Hyperlegible was drawn by the Braille Institute to be legible to
+  // low vision readers: the letters that usually collapse into each other —
+  // I l 1, O 0, b d — are drawn to be told apart. For some people it is the
+  // difference between reading a chapter and giving up on it.
+  core.ReadingFace.atkinson => 'Atkinson Hyperlegible',
+  core.ReadingFace.serif => 'serif',
+  core.ReadingFace.monospace => 'monospace',
+  core.ReadingFace.system => null,
+};
+
+/// The slider gives a number; Flutter wants one of nine.
+FontWeight weightFor(int weight) =>
+    FontWeight.values[((weight ~/ 100) - 1).clamp(0, 8)];
 
 class _BlockView extends StatelessWidget {
   const _BlockView({

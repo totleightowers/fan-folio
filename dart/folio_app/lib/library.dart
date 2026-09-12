@@ -301,6 +301,22 @@ class Library {
     return rows.map(WorkRow.fromMap).toList();
   }
 
+  /// How this library is read. Kept in the library rather than in the app's
+  /// own preferences, so a backup carries it and a new phone opens to the type
+  /// the last one was reading in.
+  Future<core.ReadingPrefs> readingPrefs() => core.loadPrefs(_Runner(db));
+
+  Future<void> saveReadingPrefs(core.ReadingPrefs prefs) async {
+    final batch = db.batch();
+    prefs.toMap().forEach((key, value) {
+      batch.insert('meta', {
+        'key': key,
+        'value': value,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    await batch.commit(noResult: true);
+  }
+
   Future<void> close() => db.close();
 }
 

@@ -6,6 +6,7 @@ import 'package:folio_core/folio_core.dart' as core;
 import 'chapter_web.dart';
 import 'library.dart';
 import 'reader.dart';
+import 'reading_sheet.dart';
 import 'theme.dart';
 
 /// Reading a work: the chapter, the way to the next one, and the place kept.
@@ -36,6 +37,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   double _openedAt = 0;
   bool _finishedThisVisit = false;
   Future<String?>? _html;
+  core.ReadingPrefs _prefs = const core.ReadingPrefs();
+  Timer? _prefsSettling;
+  bool _unsaved = false;
 
   int get _total => widget.chapters.isEmpty
       ? (widget.work.chapterCount ?? 1)
@@ -51,14 +55,57 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // nothing else records it: a work opened and read without scrolling would
     // otherwise leave no trace at all.
     unawaited(widget.library.opened(widget.work.workId));
+    unawaited(_loadPrefs());
     WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
   }
 
   @override
   void dispose() {
     _settling?.cancel();
+    _prefsSettling?.cancel();
+    // a setting changed and then left behind by closing the reader is still a
+    // setting changed, so the pending write happens now rather than never
+    _savePrefs();
     _scroll.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadPrefs() async {
+    final prefs = await widget.library.readingPrefs();
+    if (!mounted) return;
+    setState(() => _prefs = prefs);
+  }
+
+  /// Changed on screen at once, written a moment later: a slider dragged from
+  /// fourteen point to twenty-two is thirty settings, and the reader should
+  /// see all thirty and the library should be told once.
+  void _changePrefs(core.ReadingPrefs prefs) {
+    setState(() {
+      _prefs = prefs;
+      _unsaved = true;
+    });
+    _prefsSettling?.cancel();
+    _prefsSettling = Timer(const Duration(milliseconds: 500), _savePrefs);
+  }
+
+  void _savePrefs() {
+    if (!_unsaved) return;
+    _unsaved = false;
+    unawaited(widget.library.saveReadingPrefs(_prefs));
+  }
+
+  void _openSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      // over the chapter, not instead of it: type is chosen by looking at it
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.62,
+      ),
+      builder: (context) =>
+          ReadingSheet(prefs: _prefs, onChanged: _changePrefs),
+    );
   }
 
   void _restore() {
@@ -137,72 +184,92 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final ground = dark ? Ground.dark : Ground.light;
+    /* The reader carries its own light. Somebody reading in bed wants the
+       chapter dark and the library as it was, so this is the reading theme
+       rather than the app's, and it is put on with a Theme so the sheet and
+       its sliders come up on the same paper as the words behind them. */
+    final system = MediaQuery.platformBrightnessOf(context);
+    final brightness = brightnessOf(_prefs.theme, system);
+    final ground = readingGround(_prefs.theme, system);
+    final dark = brightness == Brightness.dark;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.work.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+    return Theme(
+      data: themeFor(ground, brightness),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.work.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.text_fields),
+              tooltip: 'Type and paper',
+              onPressed: _openSettings,
+            ),
+          ],
         ),
-      ),
-      body: FutureBuilder<String?>(
-        future: _html,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final html = snapshot.data;
-          if (html == null) {
-            return const Center(child: Text('That chapter is not here.'));
-          }
-          /* The skin is the work: a chat fic, a letter in another hand. There
+        body: FutureBuilder<String?>(
+          future: _html,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final html = snapshot.data;
+            if (html == null) {
+              return const Center(child: Text('That chapter is not here.'));
+            }
+            /* The skin is the work: a chat fic, a letter in another hand. There
              is no being faithful to that without a cascade, so those chapters
              go to the engine the archive renders them with. */
-          if (core.needsWebView(skinCss: widget.work.skinCss)) {
-            return SkinnedChapterView(
-              chapterHtml: html,
-              skinCss: widget.work.skinCss,
-              settings: ReadingChrome(dark: dark),
+            if (core.needsWebView(skinCss: widget.work.skinCss)) {
+              return SkinnedChapterView(
+                chapterHtml: html,
+                skinCss: widget.work.skinCss,
+                settings: ReadingChrome.from(
+                  _prefs,
+                  ground: ground,
+                  dark: dark,
+                ),
+              );
+            }
+            return ChapterView(
+              document: core.parseChapter(html),
+              settings: ReadingSettings.from(_prefs),
+              controller: _scroll,
             );
-          }
-          return ChapterView(
-            document: core.parseChapter(html),
-            settings: const ReadingSettings(),
-            controller: _scroll,
-          );
-        },
-      ),
-      bottomNavigationBar: _total <= 1
-          ? null
-          : BottomAppBar(
-              color: ground.surface,
-              height: 58,
-              padding: EdgeInsets.zero,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    onPressed: _chapter > 1 ? () => _go(_chapter - 1) : null,
-                    icon: const Icon(Icons.chevron_left),
-                    tooltip: 'Previous chapter',
-                  ),
-                  TextButton(
-                    onPressed: widget.chapters.isEmpty ? null : _pickChapter,
-                    child: Text('$_chapter / $_total'),
-                  ),
-                  IconButton(
-                    onPressed: _chapter < _total
-                        ? () => _go(_chapter + 1)
-                        : null,
-                    icon: const Icon(Icons.chevron_right),
-                    tooltip: 'Next chapter',
-                  ),
-                ],
+          },
+        ),
+        bottomNavigationBar: _total <= 1
+            ? null
+            : BottomAppBar(
+                color: ground.surface,
+                height: 58,
+                padding: EdgeInsets.zero,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                      onPressed: _chapter > 1 ? () => _go(_chapter - 1) : null,
+                      icon: const Icon(Icons.chevron_left),
+                      tooltip: 'Previous chapter',
+                    ),
+                    TextButton(
+                      onPressed: widget.chapters.isEmpty ? null : _pickChapter,
+                      child: Text('$_chapter / $_total'),
+                    ),
+                    IconButton(
+                      onPressed: _chapter < _total
+                          ? () => _go(_chapter + 1)
+                          : null,
+                      icon: const Icon(Icons.chevron_right),
+                      tooltip: 'Next chapter',
+                    ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 }

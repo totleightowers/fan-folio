@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:folio_core/folio_core.dart' show ReadingFace, ReadingPrefs;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'theme.dart';
@@ -32,17 +33,82 @@ class ReadingChrome {
   const ReadingChrome({
     this.size = 19,
     this.lineHeight = 1.7,
-    this.family = 'Literata, Georgia, serif',
+    this.family = 'Georgia, serif',
+    this.weight = 400,
     this.margin = 20,
+    this.justified = false,
     this.dark = false,
+    this.ground = Ground.light,
   });
+
+  /// The same choice the native reader is painting with, so a work with a skin
+  /// and a work without one are read at the same size on the same paper. What
+  /// a skin overrides it overrides on purpose; everything else is the reader's.
+  factory ReadingChrome.from(
+    ReadingPrefs prefs, {
+    required Ground ground,
+    required bool dark,
+  }) => ReadingChrome(
+    size: prefs.size,
+    lineHeight: prefs.lineHeight,
+    family: cssFamily(prefs.face),
+    weight: prefs.weight,
+    margin: prefs.margin,
+    justified: prefs.justified,
+    dark: dark,
+    ground: ground,
+  );
 
   final double size;
   final double lineHeight;
   final String family;
+  final int weight;
   final double margin;
+  final bool justified;
   final bool dark;
+  final Ground ground;
+
+  @override
+  bool operator ==(Object other) =>
+      other is ReadingChrome &&
+      other.size == size &&
+      other.lineHeight == lineHeight &&
+      other.family == family &&
+      other.weight == weight &&
+      other.margin == margin &&
+      other.justified == justified &&
+      other.dark == dark &&
+      other.ground == ground;
+
+  @override
+  int get hashCode => Object.hash(
+    size,
+    lineHeight,
+    family,
+    weight,
+    margin,
+    justified,
+    dark,
+    ground,
+  );
 }
+
+/// The face, as a CSS stack.
+///
+/// Literata and Atkinson ship with the app as Flutter assets, which a WebView
+/// cannot reach: it has its own resource loader and no view of the bundle. So
+/// a skinned chapter asks for the family by name — a device that has it uses
+/// it — and names a real fallback after it rather than landing on whatever the
+/// engine defaults to. The native reader, which is most reading, has the
+/// actual files.
+String cssFamily(ReadingFace face) => switch (face) {
+  ReadingFace.literata => "Literata, Georgia, 'Times New Roman', serif",
+  ReadingFace.atkinson =>
+    "'Atkinson Hyperlegible', 'Helvetica Neue', Arial, sans-serif",
+  ReadingFace.serif => "Georgia, 'Times New Roman', serif",
+  ReadingFace.monospace => "ui-monospace, 'Roboto Mono', monospace",
+  ReadingFace.system => 'system-ui, sans-serif',
+};
 
 class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   WebViewController? _controller;
@@ -54,14 +120,25 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
     _prepare();
   }
 
+  @override
+  void didUpdateWidget(SkinnedChapterView old) {
+    super.didUpdateWidget(old);
+    /* The typography is baked into the document, so a change to it is a new
+       document. Without this the sheet moves every slider in the app and the
+       skinned works are the ones that quietly ignore it. */
+    if (old.settings != widget.settings ||
+        old.chapterHtml != widget.chapterHtml ||
+        old.skinCss != widget.skinCss) {
+      _prepare();
+    }
+  }
+
   Future<void> _prepare() async {
     try {
       final archiveCss = await rootBundle.loadString('assets/ao3-work.css');
       final controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.disabled)
-        ..setBackgroundColor(
-          widget.settings.dark ? Ground.dark.paper : Ground.light.paper,
-        )
+        ..setBackgroundColor(widget.settings.ground.paper)
         ..loadHtmlString(_document(archiveCss));
       if (!mounted) return;
       setState(() => _controller = controller);
@@ -79,7 +156,7 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   /// library, and nothing in a work has any business running.
   String _document(String archiveCss) {
     final s = widget.settings;
-    final ground = s.dark ? Ground.dark : Ground.light;
+    final ground = s.ground;
     String hex(Color c) =>
         '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
@@ -96,8 +173,10 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
     color: ${hex(ground.ink)};
     font-family: ${s.family};
     font-size: ${s.size}px;
+    font-weight: ${s.weight};
     line-height: ${s.lineHeight};
     padding: ${s.margin}px;
+    text-align: ${s.justified ? 'justify' : 'start'};
     overflow-x: clip;
   }
   #workskin img, img { max-width: 100%; height: auto; }
