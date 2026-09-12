@@ -2589,25 +2589,41 @@ test('going back rebuilds the place rather than unhiding a screen', () => {
 test('what the app is doing has a place of its own', () => {
   const activity = html.slice(html.indexOf('<section id="activity"'),
     html.indexOf('</section>', html.indexOf('<section id="activity"')));
-  for (const moved of ['id="job-list"', 'id="stub-count"', 'id="fetch-stubs"', 'id="sync-now"']) {
+  for (const moved of ['id="job-list"', 'id="stub-count"', 'id="fetch-stubs"']) {
     assert.ok(activity.includes(moved), `${moved} belongs in Activity`);
   }
 
+  /* The queue is one of the app's own affairs, which is what Settings is —
+     so it is a screen reached from there rather than a tab. A tab is for a
+     place you go; this is a thing you check. */
   const settings = html.slice(html.indexOf('<section id="settings"'),
     html.indexOf('</section>', html.indexOf('<section id="settings"')));
   for (const gone of ['id="job-list"', 'id="fetch-stubs"', 'id="sync-now"']) {
     assert.ok(!settings.includes(gone), `${gone} is not a setting`);
   }
+  assert.ok(settings.includes('id="open-activity"'), 'but it is reachable from there');
   assert.ok(settings.includes('id="library-facts"'), 'what the library holds can stay');
 });
 
+test('your own bookmarks are about you, not about the queue', () => {
+  /* Checking the archive for bookmarks you made is a fact about a reader.
+     It sat in Activity because that is where the job it starts shows up,
+     which is where the work goes rather than where the question belongs. */
+  const you = html.slice(html.indexOf('<section id="you"'),
+    html.indexOf('</section>', html.indexOf('<section id="you"')));
+  for (const mine of ['id="account"', 'id="sync-now"', 'id="sync-all"', 'id="you-counts"']) {
+    assert.ok(you.includes(mine), `${mine} belongs to You`);
+  }
+});
+
 test('search is an action, not a destination', () => {
-  assert.match(js, /const TABBED = new Set\(\['home', 'library', 'activity'\]\)/,
+  assert.match(js, /const TABBED = new Set\(\['home', 'library', 'you'\]\)/,
     'the box in the top bar already searches whatever screen you are on');
   const tabsAt = html.indexOf('<nav id="tabs"');
   const tabs = html.slice(tabsAt, html.indexOf('</nav>', tabsAt));
   assert.ok(!tabs.includes('data-tab="search"'), 'so it does not also need a tab');
-  assert.ok(tabs.includes('data-tab="activity"'));
+  assert.ok(tabs.includes('data-tab="you"'));
+  assert.ok(!tabs.includes('data-tab="activity"'), 'a queue is not a place you go');
 });
 
 test('a download notification lands on the downloads', () => {
@@ -2820,7 +2836,7 @@ test('the reader has a way into the app that is not the Back button', () => {
   assert.match(html, /id="reader-more"/, 'a chapter had no route out but Back, repeated');
   const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
   const body = menu.slice(0, menu.indexOf('</dialog>'));
-  for (const where of ['home', 'library', 'activity', 'settings']) {
+  for (const where of ['home', 'library', 'you', 'settings']) {
     assert.match(body, new RegExp(`data-go="${where}"`), `${where} is reachable from a chapter`);
   }
   assert.match(js, /\$\('#reader-more'\)\.onclick = \(\) => openSheet/);

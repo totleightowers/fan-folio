@@ -2205,3 +2205,54 @@ button:disabled, .opt:disabled {
 @media (min-width: 44.01rem) {
   .work-title { font-size: 1.9rem; }
 }
+
+/*
+ * What is yours.
+ *
+ * Rows rather than a list of links: each is a question with an answer beside
+ * it, and the answer is the point. Nought is a row worth drawing too — it
+ * says the question has been asked, where a missing row says nothing.
+ */
+.you-counts {
+  margin: 0 0 var(--gap);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.you-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.you-row:last-child { border-bottom: 0; }
+.you-row:active { background: var(--sunken); }
+.you-label { font-size: 15px; }
+.you-n { color: var(--ink-mute); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* The cog carries the news the Activity tab used to, so an hour of
+   downloading two taps down still says so on the way there. */
+#activity-here {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+#activity-here[data-state="held"] { background: var(--ink-mute); }
+#activity-here[data-state="failed"] { background: var(--warn, var(--accent)); }

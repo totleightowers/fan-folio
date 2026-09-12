@@ -182,7 +182,7 @@ function applyPrefs() {
 
 /* ------------------------------------------------------------------ views */
 
-const VIEWS = ['setup', 'home', 'library', 'activity', 'results', 'detail', 'reader', 'settings'];
+const VIEWS = ['setup', 'home', 'library', 'you', 'activity', 'results', 'detail', 'reader', 'settings'];
 const stack = new History();
 
 /** Views the tab bar owns; anything deeper hides it and shows Back instead. */
@@ -190,7 +190,12 @@ const stack = new History();
    the top bar already changes what it searches according to the screen. Its
    results are a child of that screen, reached and left like any other. What
    deserved a tab was the thing with no home at all: what the app is doing. */
-const TABBED = new Set(['home', 'library', 'activity']);
+/* Activity had the third tab. A queue is something the app is doing, and it
+   belongs with the app's own affairs under Settings; what had no home at all
+   was the reader themselves — signed in as, bookmarked, meant to get to,
+   finished. Those were reachable only as filter combinations somebody had to
+   know how to build. */
+const TABBED = new Set(['home', 'library', 'you']);
 
 /**
  * Where the app still looks like the app.
@@ -1539,8 +1544,6 @@ function buildBlocked() {
 }
 
 async function buildSettings() {
-  /* Whatever a bookmark job is doing, the controls that start one say so. */
-  paintSyncButtons();
   buildBlocked();
   buildRemoved();
   const facts = $('#library-facts');
@@ -1673,6 +1676,9 @@ function paintStubs() {
 }
 
 $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
+
+/* Activity is a screen inside Settings rather than a tab. */
+$('#open-activity').onclick = () => { go('activity'); buildActivity(); };
 $('#open-typo').onclick = () => openSheet($('#typography'));
 
 /* The setup screen has its own import button; this is the same action reached
@@ -2263,6 +2269,100 @@ function paintActivityBadge() {
   dot.dataset.state = state;
   dot.setAttribute('aria-label', state === 'busy' ? 'Downloading'
     : state === 'held' ? 'Paused' : state === 'failed' ? 'Needs attention' : '');
+
+  /* Activity is a screen inside Settings now, so the cog carries the same
+     news the tab used to — otherwise an hour of downloading happens two taps
+     down with nothing on the way there to say so. */
+  const here = $('#activity-here');
+  if (here) {
+    here.hidden = !state;
+    here.dataset.state = state;
+  }
+}
+
+/**
+ * What is yours, rather than what is here.
+ *
+ * Signing in lived under the cog, which is where a thing goes when nobody has
+ * decided it matters. The counts beside it were reachable only as filter
+ * combinations somebody had to know how to build: "bookmarked", "marked for
+ * later", "finished" are facts about a reader rather than about a library.
+ */
+async function buildYou() {
+  paintAccount();
+  paintSyncButtons();
+
+  const box = $('#you-counts');
+  if (!box) return;
+  box.textContent = '';
+
+  const counts = yourCounts();
+  const rows = [
+    ['Bookmarked', counts.bookmarked, { state: 'bookmarked' }],
+    ['Marked for later', counts.later, { state: 'later' }],
+    ['Finished', counts.finished, { state: 'finished' }],
+  ];
+
+  for (const [label, n, patch] of rows) {
+    const row = document.createElement('button');
+    row.className = 'you-row';
+    row.innerHTML = '<span class="you-label"></span><span class="you-n"></span>';
+    row.querySelector('.you-label').textContent = label;
+    /* Nought is a row worth seeing too: it says the question has been asked
+       and answered, where a missing row says nothing at all. */
+    row.querySelector('.you-n').textContent = fmt(n);
+    row.onclick = () => openLibraryAs(patch);
+    box.append(row);
+  }
+
+  const blocked = document.createElement('button');
+  blocked.className = 'you-row';
+  blocked.innerHTML = '<span class="you-label">Blocked authors</span><span class="you-n"></span>';
+  blocked.querySelector('.you-n').textContent = fmt(counts.blocked);
+  blocked.onclick = () => goToTab('activity');
+  box.append(blocked);
+}
+
+/** The three questions a reader asks about themselves, counted. */
+function yourCounts() {
+  const out = { bookmarked: 0, later: 0, finished: 0, blocked: 0 };
+  if (!nativeStatus().hasDatabase) return out;
+  const one = (sql) => {
+    try {
+      const got = JSON.parse(window.ArchiveNative.query(sql, '[]'));
+      return Number(got.rows?.[0]?.n ?? 0);
+    } catch {
+      return 0;
+    }
+  };
+  out.bookmarked = one(
+    'SELECT count(*) AS n FROM works '
+    + 'WHERE COALESCE(in_bookmarks, 0) = 1 AND COALESCE(hidden, 0) = 0');
+  out.later = one('SELECT count(*) AS n FROM reading WHERE COALESCE(marked_later, 0) = 1');
+  out.finished = one(
+    'SELECT count(*) AS n FROM works w JOIN reading r ON r.work_id = w.work_id '
+    + 'WHERE COALESCE(w.hidden, 0) = 0 AND COALESCE(r.chapters_read, 0) >= '
+    + 'COALESCE(NULLIF(w.chapter_count, 0), 1)');
+  out.blocked = one('SELECT count(*) AS n FROM blocked');
+  return out;
+}
+
+/**
+ * Land in the library, narrowed to one thing about yourself.
+ *
+ * A fresh view rather than one more condition on the last one, which is how
+ * every other way into the library works.
+ */
+function openLibraryAs(patch) {
+  Object.assign(view, {
+    state: 'all', include: [], exclude: [], rating: [], author: [],
+    bookmarkedBy: '', complete: '', language: '', wordsMin: '', wordsMax: '',
+  }, patch);
+  save(VIEW_KEY, view);
+  paintActiveFilters();
+  offset = 0;
+  loadMore(true);
+  go('library', { filters: JSON.parse(JSON.stringify(view)) });
 }
 
 /**
@@ -5248,6 +5348,7 @@ function goToTab(tab) {
   if (showing() !== route) stack.go(here(), { route, params: {} });
 
   if (route === 'settings') { show('settings', 'lateral'); buildSettings(); return; }
+  if (route === 'you') { show('you', 'lateral'); buildYou(); return; }
   if (route === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
   if (route === 'results') {
     /* The results screen is one reused element, so arriving at it with an
