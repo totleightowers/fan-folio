@@ -40,17 +40,10 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME:-${{ github.event.inputs.tag }}}"
           NAME="${TAG#v}"
-          # An alpha sits beside 1.x under its own id; only a plain 2.x.y
-          # takes org.fanfolio and inherits the library in place.
-          case "$NAME" in
-            2.*-*) APPID=org.fanfolio.next ;;
-            *)     APPID=org.fanfolio ;;
-          esac
           {
             echo "tag=$TAG"
             echo "name=$NAME"
             echo "major=${NAME%%.*}"
-            echo "appid=$APPID"
             echo "code=$(git rev-list --count HEAD)"
           } >> "$GITHUB_OUTPUT"
 
@@ -69,8 +62,9 @@ jobs:
             echo "signed=ephemeral" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build the WebView app
-        if: steps.version.outputs.major == '1'
+      # One app. 2.x is this one, grown up — the Flutter rewrite is put down,
+      # and its ideas came back here rather than its code.
+      - name: Build the app
         env:
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS || 'ci-ephemeral' }}
         run: |
@@ -80,60 +74,10 @@ jobs:
           cp "$ANDROID_HOME/platforms/android-34/android.jar" android/sdk/android.jar
           cd android && ./build.sh
 
-      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
-        if: steps.version.outputs.major == '2'
-        with:
-          channel: stable
-          cache: true
-
-      - name: Build the Flutter app
-        if: steps.version.outputs.major == '2'
-        env:
-          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS || 'ci-ephemeral' }}
-          APP_ID: ${{ steps.version.outputs.appid }}
-        run: |
-          set -e
-          export PATH="$ANDROID_HOME/build-tools/34.0.0:$PATH"
-          cd dart/folio_app
-          flutter pub get
-          flutter test
-          ./tool/android.sh
-          flutter build apk --release \
-            --build-name "${{ steps.version.outputs.name }}" \
-            --build-number "${{ steps.version.outputs.code }}"
-
-          BUILT=build/app/outputs/flutter-apk/app-release.apk
-
-          # Re-signed with the project key rather than whatever Flutter had to
-          # hand. A CI runner generates a fresh debug key every time, so an
-          # app signed with one cannot be updated by the next build of itself.
-          if [ -f "$GITHUB_WORKSPACE/android/keystore.jks" ]; then
-            zip -q -d "$BUILT" 'META-INF/*.RSA' 'META-INF/*.SF' 'META-INF/*.MF' || true
-            zipalign -f 4 "$BUILT" aligned.apk
-            apksigner sign \
-              --ks "$GITHUB_WORKSPACE/android/keystore.jks" \
-              --ks-pass "pass:$KEYSTORE_PASS" \
-              --out "$GITHUB_WORKSPACE/fanfolio2.apk" aligned.apk
-          else
-            cp "$BUILT" "$GITHUB_WORKSPACE/fanfolio2.apk"
-          fi
-
       - name: Release notes
         run: |
           {
-            if [ "${{ steps.version.outputs.major }}" = "2" ]; then
-              echo "Install on Android: download \`fanfolio2.apk\` and open it."
-              echo
-              if [ "${{ steps.version.outputs.appid }}" = "org.fanfolio.next" ]; then
-                echo "> **This is Fan Folio 2, in progress.** It installs *beside*"
-                echo "> your 1.x app rather than replacing it, under its own name, so"
-                echo "> nothing you rely on is touched. It starts with an empty"
-                echo "> library of its own."
-                echo
-              fi
-            else
-              echo "Install on Android: download \`fanfolio.apk\` and open it."
-            fi
+            echo "Install on Android: download \`fanfolio.apk\` and open it."
             echo
             if [ "${{ steps.key.outputs.signed }}" = "real" ]; then
               echo "Signed with the project key, so it installs over a previous version."
@@ -148,7 +92,6 @@ jobs:
         with:
           files: |
             android/fanfolio.apk
-            fanfolio2.apk
           body_path: NOTES.md
           generate_release_notes: true
 

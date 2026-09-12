@@ -71,6 +71,11 @@
       <path d="M10.4 10.8v5.4M13.6 10.8v5.4"/>
     </symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2.8 6.2 13.4h5l-1.6 7.8 7.2-10.6h-5z"/></symbol>
+    <!-- A person, for the tab that is about one. -->
+    <symbol id="i-person" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="3.4"/>
+      <path d="M5.4 20.2a6.6 6.6 0 0 1 13.2 0"/>
+    </symbol>
     <!-- The way back to the work being read. This was the Library icon, which
          is a different place: three books on a shelf, for a button that opens
          one work's own page. A single page with its title line and its text. -->
@@ -153,6 +158,47 @@
   </section>
 
   <!--
+      What is yours.
+
+      Signing in lived under the cog. The counts beside it were reachable only
+      as filter combinations somebody had to know how to build — "bookmarked",
+      "marked for later", "finished" are facts about a reader rather than
+      about a library, and they had nowhere of their own.
+  -->
+  <section id="you" class="view" hidden>
+    <div class="setting-group">
+      <h3 class="group">Archive account</h3>
+      <p class="setting-note">Signing in lets Fan Folio download works, including ones only
+        logged-in readers can see, and read your own bookmarks.</p>
+      <button id="account" class="account-btn">Sign in</button>
+    </div>
+
+    <div id="you-account" class="you-account"></div>
+    <div id="you-counts" class="you-counts"></div>
+
+    <div class="setting-group">
+      <h3 class="group">Your bookmarks on the archive</h3>
+      <p class="setting-note">Checks for bookmarks you have made since the last time, and
+        downloads those works.</p>
+      <button id="sync-now" class="primary">Check for new bookmarks</button>
+      <button id="sync-stop" class="linkish" hidden>Stop</button>
+      <p id="sync-status" class="setting-note" hidden></p>
+      <!--
+          Checking for new ones reads the newest pages and stops where they
+          stop being new, which is quick and can only add. Removing a bookmark
+          on the archive is the absence of something, and absence cannot be
+          seen a page at a time — so putting that right means reading the whole
+          list, which is slow enough to be its own deliberate act.
+      -->
+      <p class="setting-note">Removing a bookmark on the archive cannot be noticed by checking
+        for new ones. Reading the whole list puts that right — it takes as long as your
+        bookmarks are long, and it only changes which works are marked, never what is
+        downloaded.</p>
+      <button id="sync-all" class="ghost">Read the whole bookmark list</button>
+    </div>
+  </section>
+
+  <!--
       What the app is doing, and what it has done.
 
       This was all inside Settings, which is where preferences go. A queue of
@@ -214,35 +260,38 @@
         Fan&nbsp;Folio open to finish.</p>
     </div>
 
-    <div class="setting-group">
-      <h3 class="group">New bookmarks</h3>
-      <p class="setting-note">Checks the archive for bookmarks you have made since the last
-        time, and downloads those works.</p>
-      <button id="sync-now" class="primary">Check for new bookmarks</button>
-      <button id="sync-stop" class="linkish" hidden>Stop</button>
-      <p id="sync-status" class="setting-note" hidden></p>
-      <!--
-          Checking for new ones reads the newest pages and stops where they
-          stop being new, which is quick and can only add. Removing a bookmark
-          on the archive is the absence of something, and absence cannot be
-          seen a page at a time — so putting that right means reading the whole
-          list, which is slow enough to be its own deliberate act.
-      -->
-      <p class="setting-note">Removing a bookmark on the archive cannot be noticed by checking
-        for new ones. Reading the whole list puts that right — it takes as long as your
-        bookmarks are long, and it only changes which works are marked, never what is
-        downloaded.</p>
-      <button id="sync-all" class="ghost">Read the whole bookmark list</button>
-    </div>
-
   </section>
 
   <section id="settings" class="view" hidden>
     <h2 class="settings-title">Settings</h2>
 
+    <!--
+        The library first, because backing it up is the one action here that
+        protects everything else — and it has no business being below a list
+        of typographic preferences.
+    -->
     <div class="setting-group">
-      <h3 class="group">Your library</h3>
+      <h3 class="group">The library</h3>
       <dl id="library-facts" class="facts"></dl>
+      <p class="setting-note">Everything is in one file: the works, the chapters, where you are
+        in each of them, and the search index. Keep a copy somewhere that is not this phone.</p>
+      <button id="backup" class="primary">Back it up</button>
+      <p id="backup-state" class="setting-note" hidden></p>
+      <button id="import-replace" class="linkish">Bring in another library from a file…</button>
+      <p class="setting-note">Works and chapters come from the file. Your reading positions,
+        the kudos you have left, and anything only on this phone stay as they are.</p>
+    </div>
+
+    <!--
+        A queue of hours of work is not a preference, but it is one of the
+        app's own affairs — which is what this screen is for. It had a tab,
+        and a tab is for a place you go rather than a thing you check.
+    -->
+    <div class="setting-group">
+      <h3 class="group">Downloading</h3>
+      <button id="open-activity" class="linkish">Activity<span id="activity-here" hidden></span></button>
+      <p class="setting-note">What is being fetched, what is waiting, what was blocked and what
+        was removed.</p>
     </div>
 
     <div class="setting-group">
@@ -255,23 +304,6 @@
         vibration setting still has the last word.</p>
     </div>
 
-    <div class="setting-group">
-      <h3 class="group">Archive account</h3>
-      <p class="setting-note">Signing in lets Fan Folio download works, including ones only
-        logged-in users can see.</p>
-      <button id="account" class="account-btn">Sign in</button>
-    </div>
-
-    <div class="setting-group">
-      <h3 class="group">Your data</h3>
-      <p class="setting-note">Everything is in one file: the works, the chapters, where you are
-        in each of them, and the search index. Keep a copy somewhere that is not this phone.</p>
-      <button id="backup" class="primary">Back up the library</button>
-      <p id="backup-state" class="setting-note" hidden></p>
-      <button id="import-replace" class="linkish">Add another library from a file…</button>
-      <p class="setting-note">Works and chapters come from the file. Your reading positions,
-        the kudos you have left, and anything only on this phone stay as they are.</p>
-    </div>
 
     <p id="version" class="setting-note version"></p>
   </section>
@@ -395,9 +427,21 @@
 <nav id="tabs" hidden>
   <button data-tab="home" class="on"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
   <button data-tab="library"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
-  <!-- A catalogue download runs for an hour; without this the tab it runs
-       behind looks exactly like a tab nobody has ever pressed. -->
-  <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-bolt"/></svg>Activity<span id="activity-dot" hidden></span></button>
+  <!--
+      What is yours rather than what is here.
+
+      Signing in lived behind the cog, which is where a thing goes when
+      nobody has decided it matters — and it is the gate for half of what
+      this app can do. What you have bookmarked, what you meant to get to
+      and what you have finished are facts about you rather than about the
+      library, and were reachable only as filter combinations somebody had
+      to know how to build.
+
+      Activity had this slot. A queue is something the app is doing, and it
+      belongs with the rest of the app's own affairs, under Settings — with
+      the dot brought along so an hour of downloading still says so.
+  -->
+  <button data-tab="you"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-person"/></svg>You<span id="activity-dot" hidden></span></button>
 </nav>
 
 <dialog id="chapters-dialog">
@@ -411,7 +455,7 @@
   <div class="menu-list">
     <button data-go="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
     <button data-go="library"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
-    <button data-go="activity"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg>Activity</button>
+    <button data-go="you"><svg class="ic" aria-hidden="true"><use href="#i-person"/></svg>You</button>
     <button data-go="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
   </div>
   <button class="close" data-close="reader-menu">Stay here</button>

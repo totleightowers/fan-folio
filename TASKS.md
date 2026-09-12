@@ -8,7 +8,30 @@ below is dropped because the conversation went somewhere else; it waits until
 what is above it is done, and then it is picked up again without being asked
 twice.
 
-## In the order Julia put them
+## Stop 2.x. Port these into 1.x, and that is v2.
+
+Said on 13 September. The Flutter app is put down; the shell-and-page app
+under `app/` takes the parts of it that were worth having and becomes v2.
+
+1. **Author view.** A person as a screen rather than the library wearing a
+   bar: their name, what they wrote, what they liked, and a sync in plain
+   sight on both. The author bar comes *out* of the library view when this
+   lands — nothing else about the library changes.
+2. **You tab.** What is yours — signed in as, bookmarked, for later,
+   finished, blocked.
+3. **Settings, set out the way 2.x sets it out.** Sections with headings,
+   the library's own actions first.
+4. **Activity moves into Settings**, and out of the tab bar, which is what
+   frees the third tab for You.
+5. **An app icon.**
+6. **The work front page, laid out the way 2.x lays it out.**
+7. **Everything on a work page clickable**: the byline opens the person,
+   everything else opens the library already narrowed to it.
+
+Done in that order, a release each, as ever.
+
+## Stopped: the 2.x list
+
 
 1. ~~**Check backup and restore.**~~ alpha.28 — a real round trip, and it
    holds. Not "believe it works" — a round trip that
