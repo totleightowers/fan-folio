@@ -27,12 +27,45 @@ sed -i "s/applicationId \"[^\"]*\"/applicationId \"$APP_ID\"/" "$gradle"
 # Compiled against a new enough Android to satisfy the plugins.
 #
 # flutter.compileSdkVersion is whatever the installed Flutter defaults to, and
-# a plugin that wants a newer one fails the build with a paragraph about it.
+# a plugin wanting a newer one fails the build with a paragraph about it. It is
+# not the app's own setting that matters — each plugin is its own gradle module
+# with its own — so every subproject is told, not just this one.
+#
 # Raising compileSdk is not raising targetSdk or minSdk: it says which APIs may
 # be referenced, not which behaviour the app opts in to or which phones it runs
 # on, so it costs nothing here.
-sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$gradle"
-sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' "$gradle"
+SDK=36
+sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = $SDK/" "$gradle"
+sed -i "s/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion $SDK/" "$gradle"
+
+root=android/build.gradle.kts
+if [ -f "$root" ]; then
+  cat >> "$root" <<KTS
+
+// Every plugin module, not only this app: a plugin brought in by another
+// plugin carries its own compileSdk, and one of them being older than the
+// rest fails the whole build.
+subprojects {
+    afterEvaluate {
+        extensions.findByName("android")?.let { ext ->
+            (ext as com.android.build.gradle.BaseExtension).compileSdkVersion($SDK)
+        }
+    }
+}
+KTS
+else
+  cat >> android/build.gradle <<GROOVY
+
+// Every plugin module, not only this app.
+subprojects {
+    afterEvaluate { p ->
+        if (p.hasProperty('android')) {
+            p.android { compileSdkVersion $SDK }
+        }
+    }
+}
+GROOVY
+fi
 
 # Labelled as what it is, so two Fan Folios on one phone can be told apart.
 manifest=android/app/src/main/AndroidManifest.xml
