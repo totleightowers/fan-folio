@@ -19,18 +19,32 @@ import '../ao3/client.dart';
 /// One picture should not be able to fill the library.
 const int mostBytes = 12 * 1024 * 1024;
 
-/// What a work points at, read out of the markup the archive sent.
+/// What a work points at, read out of what the archive sent.
 ///
-/// Out of the stored chapter rather than composed by anything else: nothing
-/// chooses where a request goes except the work itself.
-List<String> picturesIn(String html) {
+/// Out of the stored chapter and the stored skin rather than composed by
+/// anything else: nothing chooses where a request goes except the work itself.
+///
+/// A skin counts. An author's stylesheet names backgrounds and webfonts, and
+/// a chapter whose skin is half-fetched is a chapter that reaches out to
+/// somebody else's server every time it is opened — or, if it is stopped from
+/// doing that, one that renders wrongly for ever.
+List<String> picturesIn(String html, {String? css}) {
   final found = <String>{};
+
   for (final m in RegExp(
     r'''<img\b[^>]*\bsrc=["'](https://[^"']+)["']''',
     caseSensitive: false,
   ).allMatches(html)) {
     found.add(m.group(1)!);
   }
+
+  for (final m in RegExp(
+    r'''url\(\s*["']?(https://[^"')\s]+)["']?\s*\)''',
+    caseSensitive: false,
+  ).allMatches(css ?? '')) {
+    found.add(m.group(1)!);
+  }
+
   return found.toList();
 }
 
@@ -82,12 +96,14 @@ class Pictures {
   Future<int> fetchFor(
     String workId,
     List<String> chapterHtml, {
+    String? skinCss,
     bool Function()? shouldStop,
   }) async {
     final wanted = <String>{};
     for (final html in chapterHtml) {
       wanted.addAll(picturesIn(html));
     }
+    wanted.addAll(picturesIn('', css: skinCss));
     if (wanted.isEmpty) return 0;
 
     final done = await store.settled(workId);

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:folio_core/folio_core.dart' as core;
@@ -54,9 +55,13 @@ class Downloads extends ChangeNotifier {
         'SELECT html FROM chapters WHERE work_id = ?',
         [workId],
       );
+      final work = await library.db.rawQuery(
+        'SELECT skin_css FROM works WHERE work_id = ?',
+        [workId],
+      );
       await _pictures.fetchFor(workId, [
         for (final row in chapters) '${row['html'] ?? ''}',
-      ]);
+      ], skinCss: work.isEmpty ? null : work.first['skin_css'] as String?);
     } catch (_) {
       /* A picture that will not come is not a work that failed. The text is
          already written down by here, and a chapter with a broken image in
@@ -343,6 +348,37 @@ class Downloads extends ChangeNotifier {
       [workId],
     );
     notifyListeners();
+  }
+
+  /// One picture, asked for from the page it is on.
+  ///
+  /// Fetched through the same clock as everything else and written down where
+  /// it belongs, so a picture somebody asked for once is theirs — offline,
+  /// next time, and in a backup. Null when it could not be had, which the
+  /// reader is told rather than left to infer from a gap.
+  Future<Uint8List?> fetchPicture(String workId, String src) async {
+    final got = await _pictures.fetch(src);
+    await LibraryPictures(library.db).put(workId, got);
+    return got.bytes;
+  }
+
+  /// Everything this work points at that is not here yet.
+  ///
+  /// A library brought in from 1.x has the text of its works and none of
+  /// their pictures, and nothing was ever going to go back for them — the
+  /// fetcher only runs when a work is downloaded, and these never were.
+  Future<int> fetchPicturesFor(String workId) async {
+    final chapters = await library.db.rawQuery(
+      'SELECT html FROM chapters WHERE work_id = ?',
+      [workId],
+    );
+    final work = await library.db.rawQuery(
+      'SELECT skin_css FROM works WHERE work_id = ?',
+      [workId],
+    );
+    return _pictures.fetchFor(workId, [
+      for (final row in chapters) '${row['html'] ?? ''}',
+    ], skinCss: work.isEmpty ? null : work.first['skin_css'] as String?);
   }
 
   bool pause(int id) => _queue.pause(id);
