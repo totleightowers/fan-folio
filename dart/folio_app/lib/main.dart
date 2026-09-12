@@ -238,38 +238,79 @@ class LibraryList extends StatefulWidget {
 }
 
 class _LibraryListState extends State<LibraryList> {
-  List<WorkRow> _works = const [];
+  static const int _pageSize = 60;
+
+  final ScrollController _scroll = ScrollController();
+  final List<WorkRow> _works = [];
   int _total = 0;
   bool _loading = true;
+  bool _more = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _scroll.addListener(_maybeLoadMore);
+    _reload();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(LibraryList old) {
     super.didUpdateWidget(old);
-    if (old.view != widget.view) _load();
+    if (old.view != widget.view) _reload();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final works = await widget.library.works({...widget.view, 'limit': 200});
+  Future<void> _reload() async {
+    setState(() {
+      _loading = true;
+      _works.clear();
+      _more = true;
+    });
     final total = await widget.library.count(widget.view);
     if (!mounted) return;
+    setState(() => _total = total);
+    await _loadMore();
+  }
+
+  /// A library of eight thousand works is not a list you hand somebody whole.
+  ///
+  /// It used to ask for two hundred and stop, which on a real library is
+  /// "showing 200 of 8030" and no way to reach the rest.
+  Future<void> _loadMore() async {
+    if (!_more) return;
+    final page = await widget.library.works({
+      ...widget.view,
+      'limit': _pageSize,
+      'offset': _works.length,
+    });
+    if (!mounted) return;
     setState(() {
-      _works = works;
-      _total = total;
+      _works.addAll(page);
+      _more = page.length == _pageSize && _works.length < _total;
       _loading = false;
     });
+  }
+
+  void _maybeLoadMore() {
+    if (_loading || !_more || !_scroll.hasClients) return;
+    // a screen and a half ahead, so the next page is there before the bottom is
+    final ahead = _scroll.position.viewportDimension * 1.5;
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - ahead) {
+      _loadMore();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final ground = groundOf(context);
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading && _works.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
     if (_works.isEmpty) {
       return _Message(text: 'Nothing matches.', ground: ground);
     }
@@ -280,22 +321,29 @@ class _LibraryListState extends State<LibraryList> {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              _total == _works.length
-                  ? '$_total works'
-                  : 'showing ${_works.length} of $_total',
+              '$_total works',
               style: TextStyle(fontSize: 12.5, color: ground.inkMute),
             ),
           ),
         ),
         Expanded(
           child: ListView.separated(
-            itemCount: _works.length,
+            controller: _scroll,
+            itemCount: _works.length + (_more ? 1 : 0),
             separatorBuilder: (_, __) =>
                 Divider(height: 1, color: ground.lineSoft),
-            itemBuilder: (context, i) => WorkRowTile(
-              work: _works[i],
-              onTap: () => widget.onOpen(_works[i]),
-            ),
+            itemBuilder: (context, i) {
+              if (i >= _works.length) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              }
+              return WorkRowTile(
+                work: _works[i],
+                onTap: () => widget.onOpen(_works[i]),
+              );
+            },
           ),
         ),
       ],

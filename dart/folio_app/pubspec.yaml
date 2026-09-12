@@ -28,6 +28,12 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
 flutter:
+  # Without this the Material icon font is not bundled, and every Icons.*
+  # codepoint falls through to whatever font on the device happens to have a
+  # glyph there — which on Android is a CJK fallback. The search icon came out
+  # as 庸 and the library icon as an empty box.
+  uses-material-design: true
+
   assets:
     # The archive's own stylesheet, vendored in 1.x and travelling with the
     # app for the same reason: a work skin is written against it, and without
