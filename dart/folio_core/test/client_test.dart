@@ -212,6 +212,37 @@ void main() {
       );
     });
 
+    test('a refusal that is a whole web page is not read out loud', () {
+      /* The body of an archive refusal is usually an HTML document, and two
+         hundred characters of doctype and meta tags is worse than nothing:
+         it fills the place where an explanation should be and explains
+         less. The title is where the short version lives. */
+      const page = '<!DOCTYPE html>\n<html lang="en">\n  <head>\n'
+          '    <meta charset="utf-8" />\n'
+          '    <title>Retry later | Archive of Our Own</title>\n'
+          '  </head><body><p>maintenance</p></body></html>';
+
+      final said = errorFor(503, page).message;
+      expect(said, contains('503'));
+      expect(said, contains('Retry later'));
+      expect(said, isNot(contains('<')));
+      expect(said.length, lessThan(120));
+      expect(isTransient(said), isTrue,
+          reason: 'a 503 is the archive having a moment, not a refusal');
+    });
+
+    test('and a page with no title says only the status', () {
+      final said = errorFor(503, '<html><body>nothing</body></html>').message;
+      expect(said, 'The archive answered 503');
+    });
+
+    test('while something that is not a page is passed on as written', () {
+      expect(
+        errorFor(500, 'upstream timed out').message,
+        'The archive answered 500: upstream timed out',
+      );
+    });
+
     test('and the wording keeps the status, because that is what is read', () {
       expect(errorFor(500, 'oops').message,
           startsWith('The archive answered 500'));

@@ -82,10 +82,16 @@ class Page {
 /// that opens "UnknownHostException" reads as a work that cannot be had rather
 /// than a phone that was briefly out of signal.
 class ArchiveError implements Exception {
-  const ArchiveError(this.message, {this.status});
+  const ArchiveError(this.message, {this.status, this.body});
 
   final String message;
   final int? status;
+
+  /// What the archive actually sent, kept apart from what the reader is
+  /// told. Some refusals are only legible in the page — a duplicate kudos is
+  /// an error whose whole meaning is one sentence in the body — and that
+  /// sentence has no business being the message a person reads.
+  final String? body;
 
   @override
   String toString() => message;
@@ -98,10 +104,7 @@ class ArchiveError implements Exception {
 /// else keeps the status in the message, because "answered 429" and
 /// "answered 403" are read very differently downstream.
 ArchiveError errorFor(int status, String body) {
-  final detail = body.trim();
-  final tail = detail.isEmpty
-      ? ''
-      : ': ${detail.substring(0, detail.length < 200 ? detail.length : 200)}';
+  final tail = _saidWhat(body);
 
   if (status == 404) {
     return const ArchiveError(
@@ -115,7 +118,11 @@ ArchiveError errorFor(int status, String body) {
       status: status,
     );
   }
-  return ArchiveError('The archive answered $status$tail', status: status);
+  return ArchiveError(
+    'The archive answered $status$tail',
+    status: status,
+    body: body,
+  );
 }
 
 /// A logged-in, well-behaved archive client.
@@ -415,6 +422,29 @@ DateTime? _httpDate(String text) {
   } catch (_) {
     return null;
   }
+}
+
+/// What the archive said, if it said anything a person can read.
+///
+/// The body of a refusal is usually a whole HTML page, and two hundred
+/// characters of `<!DOCTYPE html><head><meta charset=` is worse than nothing:
+/// it fills the screen where an explanation should be and explains less. So a
+/// page is reduced to its title, which is where the archive puts the short
+/// version, and anything that is not a page is passed through as written.
+String _saidWhat(String body) {
+  final said = body.trim();
+  if (said.isEmpty) return '';
+
+  if (said.startsWith('<') || said.toLowerCase().contains('<html')) {
+    final title = RegExp(
+      r'<title[^>]*>([\s\S]{1,120}?)</title>',
+      caseSensitive: false,
+    ).firstMatch(said)?.group(1);
+    final trimmed = title?.replaceAll(RegExp(r'\s+'), ' ').trim() ?? '';
+    return trimmed.isEmpty ? '' : ' — $trimmed';
+  }
+
+  return ': ${said.substring(0, said.length < 160 ? said.length : 160)}';
 }
 
 /// Whether this address is the sign-in page, where a login form is the point.

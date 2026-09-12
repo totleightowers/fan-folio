@@ -85,7 +85,7 @@ class Acts {
       /* The archive says so in the page it returns rather than in the status:
          a duplicate is an error, and an error saying "already left kudos" is
          the one outcome worth treating as having worked. */
-      if (_alreadyKudosed(e.message)) {
+      if (_alreadyKudosed(e.body ?? '') || _alreadyKudosed(e.message)) {
         return Acted(workId: workId, already: true);
       }
       rethrow;
