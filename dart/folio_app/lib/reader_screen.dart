@@ -207,6 +207,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
+            /* Where somebody actually decides to leave kudos is the end of a
+               chapter, not a shelf. Only offered when there is a session
+               behind it: a button that fails when pressed is worse than one
+               that is not there. */
+            if (widget.downloads?.canAct ?? false)
+              IconButton(
+                icon: const Icon(Icons.star_outline),
+                tooltip: 'On the archive',
+                onPressed: () => showArchiveActs(
+                  context,
+                  downloads: widget.downloads!,
+                  work: widget.work,
+                ),
+              ),
             IconButton(
               icon: const Icon(Icons.text_fields),
               tooltip: 'Type and paper',
