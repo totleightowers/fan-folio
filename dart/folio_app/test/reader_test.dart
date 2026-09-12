@@ -115,7 +115,9 @@ void main() {
           )
           .first,
     );
-    final style = (text.text as TextSpan).children!.first.style!;
+    // the span tree is nested — Text.rich wraps ours, and ours wraps the runs
+    // — so this asks the first span that actually carries words
+    final style = _styleOfFirstWords(text.text)!;
     expect(style.fontSize, 26);
     expect(style.height, 2.1);
     expect(style.fontFamily, 'Atkinson Hyperlegible');
@@ -150,4 +152,17 @@ void main() {
     expect(weightFor(0), FontWeight.w100);
     expect(weightFor(5000), FontWeight.w900);
   });
+}
+
+/// The style on the first span in the tree that has words in it.
+TextStyle? _styleOfFirstWords(InlineSpan span) {
+  TextStyle? found;
+  span.visitChildren((child) {
+    if (child is TextSpan && (child.text?.isNotEmpty ?? false)) {
+      found = child.style;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
