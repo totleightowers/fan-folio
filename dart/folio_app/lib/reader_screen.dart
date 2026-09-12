@@ -64,7 +64,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Map<String, ({String mime, Uint8List bytes})> _pictures = const {};
 
   /// How far through the chapter on screen is, for the line at the foot.
-  double _through = 0;
+  ///
+  /// A notifier rather than a field: this changes on every frame of a scroll,
+  /// and calling setState on the reader for it rebuilt the whole PageView
+  /// under the finger that was dragging — which did not stutter, it simply
+  /// stopped the chapter scrolling at all. Only the line at the foot needs to
+  /// hear about this, so only the line at the foot listens.
+  final ValueNotifier<double> _through = ValueNotifier<double>(0);
 
   int get _total => widget.chapters.isEmpty
       ? (widget.work.chapterCount ?? 1)
@@ -89,6 +95,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // a setting changed and then left behind by closing the reader is still a
     // setting changed, so the pending write happens now rather than never
     _savePrefs();
+    _through.dispose();
     _pages.dispose();
     super.dispose();
   }
@@ -142,8 +149,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     setState(() {
       _chapter = page + 1;
       _openedAt = 0;
-      _through = 0;
     });
+    _through.value = 0;
     unawaited(widget.library.savePlace(widget.work.workId, _chapter, 0));
   }
 
@@ -163,7 +170,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void _scrolled(int chapter, ScrollMetrics at) {
     if (chapter != _chapter) return;
     final span = at.maxScrollExtent;
-    setState(() => _through = span <= 0 ? 1 : (at.pixels / span).clamp(0, 1));
+    _through.value = span <= 0 ? 1 : (at.pixels / span).clamp(0, 1);
 
     _settling?.cancel();
     _settling = Timer(
@@ -193,27 +200,90 @@ class _ReaderScreenState extends State<ReaderScreen> {
     await widget.library.finish(widget.work.workId);
   }
 
+  /// The chapters, and the way back to the work.
+  ///
+  /// Given a height. A bottom sheet sizes itself to its child and a ListView
+  /// asks for all the room there is, so the two together came out as nothing
+  /// at all — the sheet opened and there was no list in it, which from the
+  /// outside is a button that does not work.
   void _pickChapter() {
+    final ground = readingGround(
+      _prefs.theme,
+      MediaQuery.platformBrightnessOf(context),
+    );
+
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) => ListView.builder(
-        itemCount: widget.chapters.length,
-        itemBuilder: (context, i) {
-          final ch = widget.chapters[i];
-          return ListTile(
-            selected: ch.number == _chapter,
-            title: Text(
-              ch.title?.isNotEmpty == true
-                  ? '${ch.number}. ${ch.title}'
-                  : 'Chapter ${ch.number}',
+      isScrollControlled: true,
+      builder: (context) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.7,
+        child: Column(
+          children: [
+            if (widget.onShowWork != null)
+              ListTile(
+                leading: Icon(Icons.article_outlined, color: ground.inkMid),
+                title: Text(widget.work.title),
+                subtitle: Text(
+                  'Summary, tags, and everything this work connects to',
+                  style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  widget.onShowWork!();
+                },
+              ),
+            if (widget.downloads?.canAct ?? false)
+              ListTile(
+                leading: Icon(Icons.star_outline, color: ground.inkMid),
+                title: const Text('On the archive'),
+                subtitle: Text(
+                  'Leave kudos, bookmark it, or comment',
+                  style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  showArchiveActs(
+                    context,
+                    downloads: widget.downloads!,
+                    work: widget.work,
+                  );
+                },
+              ),
+            Divider(height: 1, color: ground.lineSoft),
+            Expanded(
+              child: ListView.builder(
+                itemCount: widget.chapters.length,
+                itemBuilder: (context, i) {
+                  final ch = widget.chapters[i];
+                  return ListTile(
+                    selected: ch.number == _chapter,
+                    leading: SizedBox(
+                      width: 28,
+                      child: Text(
+                        '${ch.number}',
+                        style: TextStyle(
+                          color: ch.number == _chapter
+                              ? ground.accent
+                              : ground.inkFaint,
+                        ),
+                      ),
+                    ),
+                    title: Text(
+                      ch.title?.isNotEmpty == true
+                          ? ch.title!
+                          : 'Chapter ${ch.number}',
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      _turn(ch.number);
+                    },
+                  );
+                },
+              ),
             ),
-            onTap: () {
-              Navigator.of(context).pop();
-              _turn(ch.number);
-            },
-          );
-        },
+          ],
+        ),
       ),
     );
   }
@@ -482,7 +552,7 @@ class _Foot extends StatelessWidget {
   final Ground ground;
   final int chapter;
   final int total;
-  final double through;
+  final ValueNotifier<double> through;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
   final VoidCallback? onPick;
@@ -495,11 +565,14 @@ class _Foot extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          LinearProgressIndicator(
-            value: through,
-            minHeight: 2,
-            backgroundColor: ground.lineSoft,
-            color: ground.accent,
+          ValueListenableBuilder<double>(
+            valueListenable: through,
+            builder: (context, value, _) => LinearProgressIndicator(
+              value: value,
+              minHeight: 2,
+              backgroundColor: ground.lineSoft,
+              color: ground.accent,
+            ),
           ),
           SizedBox(
             height: 50,

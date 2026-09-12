@@ -128,7 +128,9 @@ class _JobTile extends StatelessWidget {
     core.JobState.running => 'Downloading',
     core.JobState.pausing => 'Pausing',
     core.JobState.paused => 'Paused',
-    core.JobState.cancelled => 'Stopped',
+    // a job that was stopped after saying what went wrong was not stopped by
+    // anybody; it gave up, and the line under it says why
+    core.JobState.cancelled => job.say == null ? 'Stopped' : 'Gave up',
     core.JobState.done => job.unfinished > 0 ? 'Finished, partly' : 'Finished',
   };
 

@@ -171,11 +171,23 @@ class Downloads extends ChangeNotifier {
         ..append(job, missing)
         ..seal(job);
     } catch (e) {
+      /* Stopped rather than sealed. A walk that threw did not finish, and a
+         job that says Finished over an error message is the app telling two
+         different stories in the same card. */
       _queue
-        ..note(job, say: '$e')
-        ..seal(job);
+        ..note(job, say: _went(e))
+        ..stop(job);
     }
   }
+
+  /// What went wrong, said the way the reader needs to hear it.
+  ///
+  /// An ArchiveError already carries a sentence somebody can act on; anything
+  /// else is a Dart exception whose toString begins "Exception: ", which is
+  /// noise in front of the part that matters.
+  String _went(Object e) => e is core.ArchiveError
+      ? e.message
+      : '$e'.replaceFirst(RegExp(r'^Exception:\s*'), '');
 
   /// What the library already holds, read once rather than per page.
   Set<String> _held = const {};
@@ -280,8 +292,8 @@ class Downloads extends ChangeNotifier {
         ..seal(job);
     } catch (e) {
       _queue
-        ..note(job, say: '$e')
-        ..seal(job);
+        ..note(job, say: _went(e))
+        ..stop(job);
     }
   }
 
