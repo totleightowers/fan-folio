@@ -75,6 +75,100 @@ class Downloads extends ChangeNotifier {
     return _queue.add(author: 'Added by link', part: workId, workIds: [workId]);
   }
 
+  /// Walk your bookmarks, queue what is not here, and reconcile the rest.
+  ///
+  /// Two things, not one. What to download is the works whose text is
+  /// missing; what is bookmarked is every work the pages listed, whether or
+  /// not it needed fetching. 1.x answered both with the second question and
+  /// so never recorded a bookmark on a work it already held — and stopped
+  /// walking at the first page of familiar works, leaving genuinely new
+  /// bookmarks further down unseen.
+  Future<int> syncBookmarks() async {
+    final who = _session.username;
+    if (who == null) {
+      throw const core.ArchiveError(
+        'Sign in first — your bookmarks are only visible to you.',
+      );
+    }
+
+    await _remember();
+    final job = _queue.add(author: 'My bookmarks', part: 'sync', open: true);
+    unawaited(_walkBookmarks(job, who));
+    return job;
+  }
+
+  Future<void> _walkBookmarks(int job, String who) async {
+    final store = LibraryStore(library.db);
+    try {
+      final found = await core.findNewBookmarks(
+        fetchPage: (page) async {
+          final listing = core.parseListing(
+            (await _client.get(Uri.parse(core.bookmarks(who, page)))).body,
+          );
+          return core.ListingPage(
+            workIds: [for (final blurb in listing.works) blurb.workId],
+            totalPages: listing.total,
+          );
+        },
+        isHeld: (workId) => _held.contains(workId),
+        isBookmarked: (workId) => _bookmarked.contains(workId),
+        onProgress: (p) => _queue.note(job, page: p.page, pages: p.totalPages),
+        shouldStop: () => _queue.isStopped(job),
+      );
+
+      /* Whose bookmarks these are now, as one answer. A work that has stopped
+         being bookmarked does not appear anywhere, so removal cannot be seen
+         a page at a time. Only membership changes: you unbookmarked it, you
+         did not ask to lose it. */
+      final counts = await library.reconcileBookmarks(found.seen);
+      await library.noteBookmarkSync(DateTime.now());
+
+      // and what is actually missing, asked of the library rather than
+      // assumed from what the listing said
+      final wanted = await store.held(found.workIds);
+      final missing = [
+        for (final workId in found.workIds)
+          if (!wanted.contains(workId)) workId,
+      ];
+
+      _queue
+        ..note(
+          job,
+          say:
+              '${counts.kept} bookmarked'
+              '${counts.dropped > 0 ? ', ${counts.dropped} no longer' : ''}'
+              '${missing.isEmpty ? '' : ', ${missing.length} to fetch'}',
+        )
+        ..append(job, missing)
+        ..seal(job);
+    } catch (e) {
+      _queue
+        ..note(job, say: '$e')
+        ..seal(job);
+    }
+  }
+
+  /// What the library already holds, read once rather than per page.
+  Set<String> _held = const {};
+  Set<String> _bookmarked = const {};
+
+  /// Read before a walk, because asking the database twenty times a page is
+  /// twenty round trips for a question whose answer does not change mid-walk.
+  Future<void> _remember() async {
+    final rows = await library.db.rawQuery(
+      'SELECT work_id, COALESCE(has_text, 0) AS t, '
+      'COALESCE(in_bookmarks, 0) AS b FROM works',
+    );
+    _held = {
+      for (final row in rows)
+        if (row['t'] == 1) '${row['work_id']}',
+    };
+    _bookmarked = {
+      for (final row in rows)
+        if (row['b'] == 1) '${row['work_id']}',
+    };
+  }
+
   bool pause(int id) => _queue.pause(id);
   bool resume(int id) => _queue.resume(id);
   bool stop(int id) => _queue.stop(id);

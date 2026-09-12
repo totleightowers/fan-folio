@@ -38,6 +38,36 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _working = false;
   String? _said;
+  String? _lastSync;
+
+  @override
+  void initState() {
+    super.initState();
+    _readLastSync();
+  }
+
+  Future<void> _readLastSync() async {
+    final at = await widget.library.lastBookmarkSync();
+    if (!mounted || at == null) return;
+    setState(() => _lastSync = _when(at));
+  }
+
+  Future<void> _sync() async {
+    final downloads = widget.downloads;
+    if (downloads == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await downloads.syncBookmarks();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Walking your bookmarks. Watch it in Activity.'),
+        ),
+      );
+      widget.onActivity();
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
 
   Future<void> _backUp() async {
     setState(() {
@@ -175,6 +205,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 );
               },
             ),
+          if (widget.downloads?.signedInAs != null)
+            ListTile(
+              leading: Icon(Icons.bookmarks_outlined, color: ground.inkMid),
+              title: const Text('Sync my bookmarks'),
+              subtitle: Text(
+                _lastSync == null
+                    ? 'Fetch what is new, and stop showing as bookmarked what '
+                          'you have unbookmarked.'
+                    : 'Last done $_lastSync. It walks newest first and stops '
+                          'where the bookmarks stop being new.',
+                style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+              ),
+              onTap: _sync,
+            ),
 
           Divider(height: 24, color: ground.lineSoft),
           _Heading('The library', ground: ground),
@@ -258,6 +302,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+}
+
+/// Roughly when, which is all anybody wants from a last-run time.
+String _when(DateTime at) {
+  final ago = DateTime.now().difference(at);
+  if (ago.inMinutes < 2) return 'just now';
+  if (ago.inHours < 1) return '${ago.inMinutes} minutes ago';
+  if (ago.inHours < 24) {
+    return '${ago.inHours} ${ago.inHours == 1 ? 'hour' : 'hours'} ago';
+  }
+  if (ago.inDays < 30) {
+    return '${ago.inDays} ${ago.inDays == 1 ? 'day' : 'days'} ago';
+  }
+  return 'on ${at.toIso8601String().substring(0, 10)}';
 }
 
 /// A size somebody can judge at a glance, which is the only reason to show it.
