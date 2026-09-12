@@ -17,6 +17,7 @@ export 'src/read/settings.dart';
 export 'src/read/spine.dart';
 export 'src/store/facets.dart';
 export 'src/sync/pacer.dart';
+export 'src/sync/download.dart';
 export 'src/sync/plan.dart';
 export 'src/sync/run.dart';
 export 'src/sync/queue.dart';
