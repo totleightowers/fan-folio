@@ -2,7 +2,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart';
 
+import 'activity_screen.dart';
+import 'add_sheet.dart';
 import 'blocked_screen.dart';
+import 'downloads.dart';
 import 'home_screen.dart';
 import 'library.dart';
 import 'filter_sheet.dart';
@@ -42,6 +45,7 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   final GlobalKey<HomeScreenState> _home = GlobalKey<HomeScreenState>();
   Library? _library;
+  Downloads? _downloads;
   bool _loading = true;
   String? _trouble;
   int _tab = 0;
@@ -66,6 +70,7 @@ class _ShellState extends State<Shell> {
       if (!mounted) return;
       setState(() {
         _library = library;
+        _downloads = library == null ? null : Downloads(library: library);
         _loading = false;
       });
     } catch (e) {
@@ -80,8 +85,36 @@ class _ShellState extends State<Shell> {
 
   void _adopt(Library library) => setState(() {
     _library = library;
+    _downloads = Downloads(library: library);
     _loading = false;
   });
+
+  @override
+  void dispose() {
+    _downloads?.dispose();
+    super.dispose();
+  }
+
+  /// Queue a work by link.
+  ///
+  /// Nothing is redrawn afterwards on purpose: the work is queued, not here —
+  /// it arrives a request later, at a reader's pace rather than a scraper's.
+  /// Activity is where that can be watched.
+  Future<void> _add() async {
+    final downloads = _downloads;
+    if (downloads == null) return;
+    await showAddByLink(context, downloads);
+  }
+
+  void _openActivity() {
+    final downloads = _downloads;
+    if (downloads == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ActivityScreen(downloads: downloads),
+      ),
+    );
+  }
 
   Future<void> _open(WorkRow work, {int chapter = 1}) async {
     final library = _library;
@@ -227,6 +260,10 @@ class _ShellState extends State<Shell> {
           PopupMenuButton<void>(
             itemBuilder: (context) => [
               PopupMenuItem<void>(
+                onTap: _openActivity,
+                child: const Text('Activity'),
+              ),
+              PopupMenuItem<void>(
                 onTap: () => _openBlocked(library),
                 child: const Text('Blocked authors'),
               ),
@@ -251,6 +288,11 @@ class _ShellState extends State<Shell> {
               onOpen: _open,
               onHold: _actOn,
             ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _add,
+        tooltip: 'Add a work',
+        child: const Icon(Icons.add),
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() {
