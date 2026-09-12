@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart';
 
@@ -41,13 +42,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _load();
   }
 
+  /// A library just brought in becomes the one on screen.
+  Future<void> _adopt(Library library) async {
+    final works = await library.works({'sort': 'added', 'limit': 200});
+    final total = await library.count();
+    if (!mounted) return;
+    setState(() {
+      _library = library;
+      _works = works;
+      _total = total;
+      _loading = false;
+    });
+  }
+
   Future<void> _load() async {
     try {
       final library = await Library.openExisting();
       if (library == null) {
         setState(() {
           _loading = false;
-          _trouble = 'No library here yet.';
+          _library = null;
         });
         return;
       }
@@ -99,6 +113,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _trouble != null
               ? _Empty(message: _trouble!, ground: ground)
+              : _library == null
+              ? _NoLibrary(ground: ground, onImported: _adopt)
               : ListView.separated(
                   itemCount: _works.length,
                   separatorBuilder: (_, __) => Divider(
@@ -120,6 +136,99 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
     );
   }
+}
+
+/// Nothing here yet, and the way to change that.
+///
+/// This build keeps its own library, separate from the 1.x app's, because
+/// Android gives every application its own private storage and one cannot
+/// read another's. So a library arrives the way it leaves: as a backup file,
+/// handed over.
+class _NoLibrary extends StatefulWidget {
+  const _NoLibrary({required this.ground, required this.onImported});
+
+  final Ground ground;
+  final void Function(Library) onImported;
+
+  @override
+  State<_NoLibrary> createState() => _NoLibraryState();
+}
+
+class _NoLibraryState extends State<_NoLibrary> {
+  bool _working = false;
+  String? _trouble;
+
+  Future<void> _bringOneIn() async {
+    setState(() {
+      _working = true;
+      _trouble = null;
+    });
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        // deliberately not filtered by extension: a backup arrives named all
+        // sorts of things, and a picker that hides the file somebody is
+        // looking straight at is worse than one that shows too much
+        withData: false,
+      );
+      final path = picked?.files.single.path;
+      if (path == null) {
+        setState(() => _working = false);
+        return;
+      }
+      final library = await Library.importFrom(path);
+      if (!mounted) return;
+      widget.onImported(library);
+    } catch (e) {
+      if (!mounted) return;
+      // say what actually went wrong; a blank screen teaches nobody anything
+      setState(() {
+        _working = false;
+        _trouble = '$e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'No library here yet',
+                style: TextStyle(
+                  fontFamily: titleFace,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: widget.ground.ink,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'This build keeps its own library, separate from the one your '
+                '1.x app has, so nothing you rely on is touched. Back up from '
+                'there and bring the file in here.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: widget.ground.inkMute, height: 1.5),
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: _working ? null : _bringOneIn,
+                child: Text(_working ? 'Bringing it in…' : 'Bring in a backup'),
+              ),
+              if (_trouble != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  _trouble!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: widget.ground.inkMute, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
 }
 
 class _Empty extends StatelessWidget {
