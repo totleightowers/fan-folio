@@ -50,7 +50,7 @@ void main() {
       '<div style="text-align:center"><p>A letter.</p></div>',
     ]) {
       final block = doc(markup).blocks.single as Paragraph;
-      expect(block.align, Align.center, reason: markup);
+      expect(block.align, BlockAlign.center, reason: markup);
       expect(textOf(block.runs), 'A letter.');
     }
   });
