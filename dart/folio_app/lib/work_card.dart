@@ -122,12 +122,16 @@ class WorkRowTile extends StatelessWidget {
     required this.work,
     required this.onTap,
     this.onLongPress,
+    this.onPerson,
     super.key,
   });
 
   final WorkRow work;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+
+  /// A byline is a way through the library, not a fact about one work.
+  final void Function(String byline)? onPerson;
 
   @override
   Widget build(BuildContext context) {
@@ -168,10 +172,28 @@ class WorkRowTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    work.byline,
-                    style: TextStyle(fontSize: 13.5, color: ground.inkMute),
-                  ),
+                  if (onPerson == null || work.authors.isEmpty)
+                    Text(
+                      work.byline,
+                      style: TextStyle(fontSize: 13.5, color: ground.inkMute),
+                    )
+                  else
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        for (final name in work.authors)
+                          InkWell(
+                            onTap: () => onPerson!(name),
+                            child: Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: ground.accent,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   if (work.summary?.isNotEmpty ?? false) ...[
                     const SizedBox(height: 6),
                     Text(

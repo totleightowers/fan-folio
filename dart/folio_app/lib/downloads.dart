@@ -169,6 +169,31 @@ class Downloads extends ChangeNotifier {
     };
   }
 
+  /// What one person's pages say they have, without fetching any of it.
+  ///
+  /// Their works, or their bookmarks. A listing page describes twenty works
+  /// for one request, which is why this is worth having at all: it is the
+  /// difference between knowing what somebody has written and downloading it.
+  Future<List<core.Blurb>> peek(
+    String byline, {
+    bool bookmarks = false,
+    int page = 1,
+  }) async {
+    final url = bookmarks
+        ? core.authorBookmarks(byline, page)
+        : core.authorWorks(byline, page);
+    return core.parseListing((await _client.get(Uri.parse(url))).body).works;
+  }
+
+  /// Fetch a named handful, rather than a whole catalogue.
+  ///
+  /// Which is most of what somebody actually wants from a person's page:
+  /// three of these, not all sixty.
+  Future<int> addWorks(String label, List<String> workIds) async {
+    await _remember();
+    return _queue.add(author: label, part: 'picked', workIds: workIds);
+  }
+
   /// How much of an author's catalogue there is, before any of it is fetched.
   ///
   /// One listing page describes twenty works for one request, so walking a

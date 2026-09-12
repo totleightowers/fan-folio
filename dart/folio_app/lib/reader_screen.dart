@@ -12,12 +12,18 @@ import 'reading_sheet.dart';
 import 'theme.dart';
 
 /// Reading a work: the chapter, the way to the next one, and the place kept.
+///
+/// Chapters are pages rather than a list with two arrows under it. Turning a
+/// page is the oldest gesture there is for this, and a reader who has to find
+/// a small chevron at the foot of forty screens of text is being asked to do
+/// something no book ever asked of them.
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({
     required this.library,
     required this.work,
     required this.chapters,
     this.downloads,
+    this.onShowWork,
     this.startAt = 1,
     this.startOffset = 0,
     super.key,
@@ -27,6 +33,11 @@ class ReaderScreen extends StatefulWidget {
   final Downloads? downloads;
   final WorkRow work;
   final List<ChapterRow> chapters;
+
+  /// The work's own page. Offered from the title, for the times the reader
+  /// arrived here straight from Continue reading and never saw it.
+  final VoidCallback? onShowWork;
+
   final int startAt;
   final double startOffset;
 
@@ -35,15 +46,20 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
+  late final PageController _pages = PageController(
+    initialPage: widget.startAt - 1,
+  );
   late int _chapter = widget.startAt;
-  final ScrollController _scroll = ScrollController();
+
   Timer? _settling;
-  double _openedAt = 0;
-  bool _finishedThisVisit = false;
-  Future<String?>? _html;
-  core.ReadingPrefs _prefs = const core.ReadingPrefs();
   Timer? _prefsSettling;
+  double _openedAt = 0;
+  final Set<int> _finished = {};
+  core.ReadingPrefs _prefs = const core.ReadingPrefs();
   bool _unsaved = false;
+
+  /// How far through the chapter on screen is, for the line at the foot.
+  double _through = 0;
 
   int get _total => widget.chapters.isEmpty
       ? (widget.work.chapterCount ?? 1)
@@ -53,14 +69,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
   void initState() {
     super.initState();
     _openedAt = widget.startOffset;
-    _html = widget.library.chapterHtml(widget.work.workId, _chapter);
-    _scroll.addListener(_moved);
     // Opening a work is what puts it on the Continue reading shelf, and
     // nothing else records it: a work opened and read without scrolling would
     // otherwise leave no trace at all.
     unawaited(widget.library.opened(widget.work.workId));
     unawaited(_loadPrefs());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
   }
 
   @override
@@ -70,7 +83,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // a setting changed and then left behind by closing the reader is still a
     // setting changed, so the pending write happens now rather than never
     _savePrefs();
-    _scroll.dispose();
+    _pages.dispose();
     super.dispose();
   }
 
@@ -112,53 +125,60 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  void _restore() {
-    if (!_scroll.hasClients || widget.startOffset <= 0) return;
-    final limit = _scroll.position.maxScrollExtent;
-    _scroll.jumpTo(widget.startOffset.clamp(0, limit));
+  /// A page turned. The place moves with it, from the top.
+  void _arrived(int page) {
+    setState(() {
+      _chapter = page + 1;
+      _openedAt = 0;
+      _through = 0;
+    });
+    unawaited(widget.library.savePlace(widget.work.workId, _chapter, 0));
   }
 
+  void _turn(int to) {
+    if (to < 1 || to > _total) return;
+    _pages.animateToPage(
+      to - 1,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  /// Where the reader has got to in the chapter on screen.
+  ///
   /// Remembered after the scrolling stops, not during it: writing on every
   /// frame is a write per pixel.
-  void _moved() {
+  void _scrolled(int chapter, ScrollMetrics at) {
+    if (chapter != _chapter) return;
+    final span = at.maxScrollExtent;
+    setState(() => _through = span <= 0 ? 1 : (at.pixels / span).clamp(0, 1));
+
     _settling?.cancel();
-    _settling = Timer(const Duration(milliseconds: 400), _settle);
+    _settling = Timer(
+      const Duration(milliseconds: 400),
+      () => _settle(chapter, at),
+    );
   }
 
-  Future<void> _settle() async {
-    if (!mounted || !_scroll.hasClients) return;
-    final y = _scroll.offset;
-    await widget.library.savePlace(widget.work.workId, _chapter, y);
+  Future<void> _settle(int chapter, ScrollMetrics at) async {
+    if (!mounted) return;
+    await widget.library.savePlace(widget.work.workId, chapter, at.pixels);
 
     /* Reaching the end is a real event with a real write behind it. The rule
        is in folio_core, where it is tested against the numbers a phone
        reports — because the version of it that lived inside a reader was
        wrong in a way only a phone could show, and finished works nobody had
        read. */
-    if (_finishedThisVisit || _chapter < _total) return;
+    if (_finished.contains(chapter) || chapter < _total) return;
     final reached = core.reachedTheEnd(
-      scrollY: y,
-      innerHeight: _scroll.position.viewportDimension,
-      scrollHeight:
-          _scroll.position.maxScrollExtent + _scroll.position.viewportDimension,
+      scrollY: at.pixels,
+      innerHeight: at.viewportDimension,
+      scrollHeight: at.maxScrollExtent + at.viewportDimension,
       openedAt: _openedAt,
     );
     if (!reached) return;
-    _finishedThisVisit = true;
+    _finished.add(chapter);
     await widget.library.finish(widget.work.workId);
-  }
-
-  Future<void> _go(int to) async {
-    if (to < 1 || to > _total) return;
-    await _settle();
-    setState(() {
-      _chapter = to;
-      _openedAt = 0;
-      _finishedThisVisit = false;
-      _html = widget.library.chapterHtml(widget.work.workId, to);
-    });
-    if (_scroll.hasClients) _scroll.jumpTo(0);
-    await widget.library.savePlace(widget.work.workId, to, 0);
   }
 
   void _pickChapter() {
@@ -178,12 +198,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
             onTap: () {
               Navigator.of(context).pop();
-              _go(ch.number);
+              _turn(ch.number);
             },
           );
         },
       ),
     );
+  }
+
+  String get _chapterName {
+    for (final ch in widget.chapters) {
+      if (ch.number == _chapter && (ch.title?.isNotEmpty ?? false)) {
+        return ch.title!;
+      }
+    }
+    return _total > 1 ? 'Chapter $_chapter' : widget.work.title;
   }
 
   @override
@@ -201,10 +230,38 @@ class _ReaderScreenState extends State<ReaderScreen> {
       data: themeFor(ground, brightness),
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            widget.work.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+          titleSpacing: 0,
+          title: InkWell(
+            // the work itself, for anyone who arrived from Continue reading
+            // and has never seen what they are in the middle of
+            onTap: widget.onShowWork,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.work.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontFamily: titleFace,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: ground.ink,
+                    ),
+                  ),
+                  if (_total > 1)
+                    Text(
+                      _chapterName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.5, color: ground.inkMute),
+                    ),
+                ],
+              ),
+            ),
           ),
           actions: [
             /* Where somebody actually decides to leave kudos is the end of a
@@ -228,66 +285,204 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
           ],
         ),
-        body: FutureBuilder<String?>(
-          future: _html,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final html = snapshot.data;
-            if (html == null) {
-              return const Center(child: Text('That chapter is not here.'));
-            }
-            /* The skin is the work: a chat fic, a letter in another hand. There
-             is no being faithful to that without a cascade, so those chapters
-             go to the engine the archive renders them with. */
-            if (core.needsWebView(skinCss: widget.work.skinCss)) {
-              return SkinnedChapterView(
-                chapterHtml: html,
-                skinCss: widget.work.skinCss,
-                settings: ReadingChrome.from(
-                  _prefs,
-                  ground: ground,
-                  dark: dark,
-                ),
-              );
-            }
-            return ChapterView(
-              document: core.parseChapter(html),
-              settings: ReadingSettings.from(_prefs),
-              controller: _scroll,
-            );
-          },
+        body: PageView.builder(
+          controller: _pages,
+          itemCount: _total,
+          onPageChanged: _arrived,
+          itemBuilder: (context, i) => _ChapterPage(
+            key: ValueKey('${widget.work.workId}#${i + 1}'),
+            library: widget.library,
+            work: widget.work,
+            number: i + 1,
+            prefs: _prefs,
+            ground: ground,
+            dark: dark,
+            startOffset: i + 1 == widget.startAt ? widget.startOffset : 0,
+            onScrolled: (at) => _scrolled(i + 1, at),
+          ),
         ),
-        bottomNavigationBar: _total <= 1
-            ? null
-            : BottomAppBar(
-                color: ground.surface,
-                height: 58,
-                padding: EdgeInsets.zero,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(
-                      onPressed: _chapter > 1 ? () => _go(_chapter - 1) : null,
-                      icon: const Icon(Icons.chevron_left),
-                      tooltip: 'Previous chapter',
-                    ),
-                    TextButton(
-                      onPressed: widget.chapters.isEmpty ? null : _pickChapter,
-                      child: Text('$_chapter / $_total'),
-                    ),
-                    IconButton(
-                      onPressed: _chapter < _total
-                          ? () => _go(_chapter + 1)
-                          : null,
-                      icon: const Icon(Icons.chevron_right),
-                      tooltip: 'Next chapter',
-                    ),
-                  ],
-                ),
-              ),
+        bottomNavigationBar: _Foot(
+          ground: ground,
+          chapter: _chapter,
+          total: _total,
+          through: _through,
+          onPrevious: _chapter > 1 ? () => _turn(_chapter - 1) : null,
+          onNext: _chapter < _total ? () => _turn(_chapter + 1) : null,
+          onPick: widget.chapters.length > 1 ? _pickChapter : null,
+        ),
       ),
     );
   }
+}
+
+/// One chapter, with its own scroll and its own place in it.
+class _ChapterPage extends StatefulWidget {
+  const _ChapterPage({
+    required this.library,
+    required this.work,
+    required this.number,
+    required this.prefs,
+    required this.ground,
+    required this.dark,
+    required this.startOffset,
+    required this.onScrolled,
+    super.key,
+  });
+
+  final Library library;
+  final WorkRow work;
+  final int number;
+  final core.ReadingPrefs prefs;
+  final Ground ground;
+  final bool dark;
+  final double startOffset;
+  final void Function(ScrollMetrics) onScrolled;
+
+  @override
+  State<_ChapterPage> createState() => _ChapterPageState();
+}
+
+class _ChapterPageState extends State<_ChapterPage> {
+  final ScrollController _scroll = ScrollController();
+  late Future<String?> _html;
+  bool _restored = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _html = widget.library.chapterHtml(widget.work.workId, widget.number);
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _restore() {
+    if (_restored || !_scroll.hasClients || widget.startOffset <= 0) return;
+    _restored = true;
+    _scroll.jumpTo(
+      widget.startOffset.clamp(0, _scroll.position.maxScrollExtent),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String?>(
+    future: _html,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState != ConnectionState.done) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      final html = snapshot.data;
+      if (html == null) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'That chapter is not here yet.',
+              style: TextStyle(color: widget.ground.inkMute),
+            ),
+          ),
+        );
+      }
+
+      /* The skin is the work: a chat fic, a letter in another hand. There is
+         no being faithful to that without a cascade, so those chapters go to
+         the engine the archive renders them with. */
+      if (core.needsWebView(skinCss: widget.work.skinCss)) {
+        return SkinnedChapterView(
+          chapterHtml: html,
+          skinCss: widget.work.skinCss,
+          settings: ReadingChrome.from(
+            widget.prefs,
+            ground: widget.ground,
+            dark: widget.dark,
+          ),
+        );
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
+      return NotificationListener<ScrollNotification>(
+        onNotification: (note) {
+          if (note.depth == 0) widget.onScrolled(note.metrics);
+          return false;
+        },
+        child: ChapterView(
+          document: core.parseChapter(html),
+          settings: ReadingSettings.from(widget.prefs),
+          controller: _scroll,
+        ),
+      );
+    },
+  );
+}
+
+/// Where you are, and the two ways out of it.
+///
+/// Always there, even in a one-chapter work: the line of progress is the
+/// answer to "how much of this is left", which is a question somebody asks of
+/// a short story as readily as of a long one.
+class _Foot extends StatelessWidget {
+  const _Foot({
+    required this.ground,
+    required this.chapter,
+    required this.total,
+    required this.through,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPick,
+  });
+
+  final Ground ground;
+  final int chapter;
+  final int total;
+  final double through;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+  final VoidCallback? onPick;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    color: ground.surface,
+    child: SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LinearProgressIndicator(
+            value: through,
+            minHeight: 2,
+            backgroundColor: ground.lineSoft,
+            color: ground.accent,
+          ),
+          SizedBox(
+            height: 50,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                IconButton(
+                  onPressed: onPrevious,
+                  icon: const Icon(Icons.chevron_left),
+                  tooltip: 'Previous chapter',
+                ),
+                TextButton(
+                  onPressed: onPick,
+                  child: Text(
+                    total > 1 ? '$chapter of $total' : 'One chapter',
+                    style: TextStyle(color: ground.inkMid),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onNext,
+                  icon: const Icon(Icons.chevron_right),
+                  tooltip: 'Next chapter',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }

@@ -10,6 +10,7 @@ import 'home_screen.dart';
 import 'keep_working.dart';
 import 'library.dart';
 import 'filter_sheet.dart';
+import 'person_screen.dart';
 import 'reader_screen.dart';
 import 'search_screen.dart';
 import 'session.dart';
@@ -17,6 +18,7 @@ import 'settings_screen.dart';
 import 'theme.dart';
 import 'work_actions.dart';
 import 'work_card.dart';
+import 'work_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -163,10 +165,52 @@ class _ShellState extends State<Shell> {
     );
   }
 
-  Future<void> _open(WorkRow work, {int chapter = 1}) async {
+  /// Open a work at its own page.
+  ///
+  /// Which is where a work should start. Dropping straight into chapter one
+  /// left nowhere to read what a work is before reading it, no way to reach
+  /// chapter nine, and no way out of a work except backwards.
+  Future<void> _open(WorkRow work) async {
+    final library = _library;
+    if (library == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => WorkScreen(
+          library: library,
+          workId: work.workId,
+          downloads: _downloads,
+          onRead: _read,
+          onPerson: _openPerson,
+          onNarrow: _seeAll,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    // reading, deleting or blocking from in there changes what Home says
+    await _home.currentState?.reload();
+    setState(() => _libraryEpoch++);
+  }
+
+  /// Straight into the text.
+  ///
+  /// What Continue reading is for: a shelf that says "carry on" and then
+  /// shows a description is not carrying on. Everything else arrives at the
+  /// work's own page first and comes through here afterwards.
+  Future<void> _resume(WorkRow work, {int chapter = 1}) async {
     final library = _library;
     if (library == null) return;
     final chapters = await library.chapters(work.workId);
+    if (!mounted) return;
+    await _read(work, chapters, chapter);
+  }
+
+  Future<void> _read(
+    WorkRow work,
+    List<ChapterRow> chapters,
+    int chapter,
+  ) async {
+    final library = _library;
+    if (library == null) return;
     final place = await library.placeIn(work.workId);
     final at = chapter > 1 ? chapter : (place?.chapter ?? 1);
     if (!mounted) return;
@@ -177,6 +221,8 @@ class _ShellState extends State<Shell> {
           downloads: _downloads,
           work: work,
           chapters: chapters,
+          downloads: _downloads,
+          onShowWork: () => _open(work),
           startAt: at,
           startOffset: openingOffset(
             chapter: at,
@@ -186,8 +232,30 @@ class _ShellState extends State<Shell> {
         ),
       ),
     );
+    if (!mounted) return;
     // reading changes what Home has to say about itself
     await _home.currentState?.reload();
+  }
+
+  /// One person, which a byline had no way of being until now.
+  Future<void> _openPerson(String byline) async {
+    final library = _library;
+    if (library == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PersonScreen(
+          library: library,
+          byline: byline,
+          downloads: _downloads,
+          onOpen: _open,
+          onNarrow: _seeAll,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    // blocking or fetching from in there changes what the shelves hold
+    await _home.currentState?.reload();
+    setState(() => _libraryEpoch++);
   }
 
   /// Holding a work offers what you can do to it other than read it.
@@ -221,7 +289,13 @@ class _ShellState extends State<Shell> {
 
   Future<void> _openById(String workId, {int chapter = 1}) async {
     final work = await _library?.work(workId);
-    if (work != null) await _open(work, chapter: chapter);
+    if (work == null) return;
+    // a search result is a passage, so it opens at the passage
+    if (chapter > 1) {
+      await _resume(work, chapter: chapter);
+    } else {
+      await _open(work);
+    }
   }
 
   /// How many filters are in force, which is what the badge counts.
@@ -318,6 +392,7 @@ class _ShellState extends State<Shell> {
               key: _home,
               library: library,
               onOpen: _open,
+              onResume: _resume,
               onHold: _actOn,
               onSeeAll: _seeAll,
               onNarrow: _seeAll,
@@ -329,6 +404,7 @@ class _ShellState extends State<Shell> {
               view: _view,
               onOpen: _open,
               onHold: _actOn,
+              onPerson: _openPerson,
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _add,
@@ -362,6 +438,7 @@ class LibraryList extends StatefulWidget {
     required this.view,
     required this.onOpen,
     this.onHold,
+    this.onPerson,
     super.key,
   });
 
@@ -369,6 +446,7 @@ class LibraryList extends StatefulWidget {
   final Map<String, Object?> view;
   final void Function(WorkRow) onOpen;
   final void Function(WorkRow)? onHold;
+  final void Function(String byline)? onPerson;
 
   @override
   State<LibraryList> createState() => _LibraryListState();
@@ -479,6 +557,7 @@ class _LibraryListState extends State<LibraryList> {
               return WorkRowTile(
                 work: _works[i],
                 onTap: () => widget.onOpen(_works[i]),
+                onPerson: widget.onPerson,
                 onLongPress: widget.onHold == null
                     ? null
                     : () => widget.onHold!(_works[i]),
