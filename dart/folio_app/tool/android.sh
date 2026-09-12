@@ -38,13 +38,18 @@ SDK=36
 sed -i "s/compileSdk = flutter.compileSdkVersion/compileSdk = $SDK/" "$gradle"
 sed -i "s/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion $SDK/" "$gradle"
 
+# Prepended, not appended.
+#
+# Flutter's own root script ends by making every subproject depend on :app for
+# evaluation, which evaluates them there and then — so a block registered after
+# it is registering afterEvaluate on a project that has already been evaluated,
+# and gradle says so and stops. This has to be in place before that line runs.
 root=android/build.gradle.kts
 if [ -f "$root" ]; then
-  cat >> "$root" <<KTS
-
+  cat > /tmp/folio-root.kts <<KTS
 // Every plugin module, not only this app: a plugin brought in by another
-// plugin carries its own compileSdk, and one of them being older than the
-// rest fails the whole build.
+// plugin carries its own compileSdk, and one of them being older than the rest
+// fails the whole build.
 subprojects {
     afterEvaluate {
         extensions.findByName("android")?.let { ext ->
@@ -52,10 +57,13 @@ subprojects {
         }
     }
 }
-KTS
-else
-  cat >> android/build.gradle <<GROOVY
 
+KTS
+  cat "$root" >> /tmp/folio-root.kts
+  mv /tmp/folio-root.kts "$root"
+else
+  root=android/build.gradle
+  cat > /tmp/folio-root.gradle <<GROOVY
 // Every plugin module, not only this app.
 subprojects {
     afterEvaluate { p ->
@@ -64,8 +72,12 @@ subprojects {
         }
     }
 }
+
 GROOVY
+  cat "$root" >> /tmp/folio-root.gradle
+  mv /tmp/folio-root.gradle "$root"
 fi
+head -12 "$root"
 
 # Labelled as what it is, so two Fan Folios on one phone can be told apart.
 manifest=android/app/src/main/AndroidManifest.xml
