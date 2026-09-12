@@ -200,7 +200,7 @@ class _ShelfState extends State<_Shelf> with AutomaticKeepAliveClientMixin {
       _where = 'Reading page 1';
     });
     try {
-      await downloads.syncPerson(
+      final added = await downloads.syncPerson(
         widget.byline,
         bookmarks: widget.bookmarks,
         onProgress: (page, pages, found) {
@@ -217,7 +217,9 @@ class _ShelfState extends State<_Shelf> with AutomaticKeepAliveClientMixin {
       if (!mounted) return;
       setState(() {
         _walking = false;
-        _where = null;
+        _where = added == 0
+            ? null
+            : '$added new ${added == 1 ? 'work' : 'works'} listed';
       });
     } catch (e) {
       if (!mounted) return;

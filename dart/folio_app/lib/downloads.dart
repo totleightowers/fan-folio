@@ -290,7 +290,7 @@ class Downloads extends ChangeNotifier {
     final seen = <String>[];
     var added = 0;
 
-    final walk = await core.walkListing(
+    await core.walkListing(
       fetchPage: (page) async {
         final listing = await peek(byline, bookmarks: bookmarks, page: page);
         final ids = [for (final blurb in listing.works) blurb.workId];
@@ -307,7 +307,9 @@ class Downloads extends ChangeNotifier {
 
     if (bookmarks) await library.noteBookmarkedBy(byline, seen);
     await library.noteWalk('${bookmarks ? 'bookmarks' : 'works'}:$byline');
-    return walk.workIds.length;
+    // how many the library did not already know about, which is the number
+    // worth saying: "62 listed" on a second walk says nothing happened
+    return added;
   }
 
   /// How much of an author's catalogue there is, before any of it is fetched.
