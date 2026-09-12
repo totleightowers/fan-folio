@@ -22,8 +22,18 @@ twice.
    walks the archive and merges. The two go-and-look tabs are redundant.
    Populating them means storing what a listing describes rather than only
    what has been downloaded — twenty works for one request.
-4. **Fix reader navigation and layout.** Still not right after the swipe and
-   scroll fixes.
+4. **Fix reader navigation and layout.** Still not right. Said in full:
+   - Scrolling up and down still does not work. Possibly the horizontal swipe
+     is too eager and takes a drag the chapter should have had.
+   - A swipe on the work's front page should open the reader — where you left
+     off, or at the beginning if you have not.
+   - Do not say "Chapter Text". That is the archive's own landmark heading for
+     screen readers and has no business being shown.
+   - From inside one chapter, reach: the work's front page, another chapter
+     anywhere in the work, and kudos, bookmark and comment.
+
+Do not stop after one of these. Ship it, link the release, and move to the
+next. When the list is empty, go back to the standing goal.
 
 Standing, underneath all of it: parity with 1.x is not met, and my saying the
 list was closed was premature. A release per feature, PR and release linked.
