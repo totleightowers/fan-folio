@@ -14,6 +14,7 @@ Future<bool> showWorkActions(
   BuildContext context, {
   required Library library,
   required WorkRow work,
+  Downloads? downloads,
 }) async {
   final blocked = (await library.blockedNames()).toSet();
   if (!context.mounted) return false;
@@ -21,8 +22,12 @@ Future<bool> showWorkActions(
   final changed = await showModalBottomSheet<bool>(
     context: context,
     showDragHandle: true,
-    builder: (context) =>
-        _WorkActions(library: library, work: work, blocked: blocked),
+    builder: (context) => _WorkActions(
+      library: library,
+      work: work,
+      blocked: blocked,
+      downloads: downloads,
+    ),
   );
   return changed ?? false;
 }
@@ -60,6 +65,7 @@ class _WorkActions extends StatelessWidget {
       return;
     }
 
+    if (!sheet.mounted) return;
     if (!core.shouldWalkWholeListing(cost.pages)) {
       final sure = await showDialog<bool>(
         context: sheet.context,
