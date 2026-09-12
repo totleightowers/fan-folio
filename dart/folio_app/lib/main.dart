@@ -2,12 +2,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart';
 
+import 'blocked_screen.dart';
 import 'home_screen.dart';
 import 'library.dart';
 import 'filter_sheet.dart';
 import 'reader_screen.dart';
 import 'search_screen.dart';
 import 'theme.dart';
+import 'work_actions.dart';
 import 'work_card.dart';
 
 void main() => runApp(const FolioApp());
@@ -47,6 +49,10 @@ class _ShellState extends State<Shell> {
   // what the Library tab is currently narrowed to
   Map<String, Object?> _view = const {'sort': 'added'};
   String _viewTitle = 'Library';
+
+  /// Bumped when something leaves the library, so the list rebuilds from the
+  /// database rather than from the page of works it happens to be holding.
+  int _libraryEpoch = 0;
 
   @override
   void initState() {
@@ -101,6 +107,34 @@ class _ShellState extends State<Shell> {
     );
     // reading changes what Home has to say about itself
     await _home.currentState?.reload();
+  }
+
+  /// Holding a work offers what you can do to it other than read it.
+  ///
+  /// Both of those — deleting and blocking — change what the shelves and the
+  /// library have to say, so whichever of them is on screen is asked again
+  /// afterwards rather than left showing a work that is no longer there.
+  Future<void> _actOn(WorkRow work) async {
+    final library = _library;
+    if (library == null) return;
+    final changed = await showWorkActions(
+      context,
+      library: library,
+      work: work,
+    );
+    if (!changed || !mounted) return;
+    await _home.currentState?.reload();
+    setState(() => _libraryEpoch++);
+  }
+
+  Future<void> _openBlocked(Library library) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => BlockedScreen(library: library)),
+    );
+    if (changed != true || !mounted) return;
+    // unblocking puts works back, which is the shelves and the list both
+    await _home.currentState?.reload();
+    setState(() => _libraryEpoch++);
   }
 
   Future<void> _openById(String workId, {int chapter = 1}) async {
@@ -190,6 +224,14 @@ class _ShellState extends State<Shell> {
               ),
             ),
           ),
+          PopupMenuButton<void>(
+            itemBuilder: (context) => [
+              PopupMenuItem<void>(
+                onTap: () => _openBlocked(library),
+                child: const Text('Blocked authors'),
+              ),
+            ],
+          ),
         ],
       ),
       body: _tab == 0
@@ -197,9 +239,16 @@ class _ShellState extends State<Shell> {
               key: _home,
               library: library,
               onOpen: _open,
+              onHold: _actOn,
               onSeeAll: _seeAll,
             )
-          : LibraryList(library: library, view: _view, onOpen: _open),
+          : LibraryList(
+              key: ValueKey(_libraryEpoch),
+              library: library,
+              view: _view,
+              onOpen: _open,
+              onHold: _actOn,
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() {
@@ -226,12 +275,14 @@ class LibraryList extends StatefulWidget {
     required this.library,
     required this.view,
     required this.onOpen,
+    this.onHold,
     super.key,
   });
 
   final Library library;
   final Map<String, Object?> view;
   final void Function(WorkRow) onOpen;
+  final void Function(WorkRow)? onHold;
 
   @override
   State<LibraryList> createState() => _LibraryListState();
@@ -342,6 +393,9 @@ class _LibraryListState extends State<LibraryList> {
               return WorkRowTile(
                 work: _works[i],
                 onTap: () => widget.onOpen(_works[i]),
+                onLongPress: widget.onHold == null
+                    ? null
+                    : () => widget.onHold!(_works[i]),
               );
             },
           ),

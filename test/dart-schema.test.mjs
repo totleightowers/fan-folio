@@ -42,6 +42,25 @@ test('the conformance fixture still says what 1.x says', () => {
 });
 
 /**
+ * A delete is a list and an order, and three implementations now run it.
+ *
+ * The shell in Java, the dev server in JavaScript and the Flutter app in Dart
+ * each let go of a work by hand, and none can import another's code. A table
+ * added to the library and left off one of those lists is a row still sitting
+ * there after somebody tidies; a blocking rule that drifts is a work that
+ * quietly stops being shown. The fixture records what 1.x does with both.
+ */
+test('the tidying fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/tidy.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-tidy-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-tidy-conformance.mjs` — a delete or a block moved and Dart was not told');
+});
+
+/**
  * The native reader must not lose a word the WebView showed.
  *
  * A reader who finds out a scene is missing finds out by reaching the next
