@@ -225,11 +225,13 @@ class _WorkScreenState extends State<WorkScreen> {
   /// tagged this" means everything, and narrowing what was already on screen
   /// would answer a question nobody asked from a page that does not show what
   /// is already in force.
-  void _narrowTo(String key, String value, {bool many = false}) =>
-      widget.onNarrow({
-        key: many ? [value] : value,
-        'sort': 'added',
-      }, value);
+  void _narrowTo(String key, String value, {bool many = false}) {
+    final view = {
+      key: many ? [value] : value,
+      'sort': 'added',
+    };
+    widget.onNarrow(view, value);
+  }
 
   /// Every tag, by kind, each one a way into the library.
   List<Widget> _tagRows(Ground ground, WorkRow work) {
@@ -291,7 +293,7 @@ class _WorkScreenState extends State<WorkScreen> {
         _Live(
           text: work.language!,
           ground: ground,
-          onTap: () => _narrow({'language': work.language}, work.language!),
+          onTap: () => _narrowTo('language', work.language!),
         ),
       ]);
     }
