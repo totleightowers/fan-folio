@@ -1,8 +1,24 @@
 # What is left
 
 Kept here rather than in my head, so it survives a session and can be argued
-with. Newest understanding at the top of each list; struck-through items stay
-until the release that fixed them has been tested.
+with.
+
+Julia moves between subjects on purpose and expects the list to hold. Nothing
+below is dropped because the conversation went somewhere else; it waits until
+what is above it is done, and then it is picked up again without being asked
+twice.
+
+## Asked for, in the order asked
+
+1. **Person screen: Works and Bookmarks, both populated**, with a prominent
+   sync across both. "Everything they wrote" and "everything they liked" as
+   two go-and-look tabs are redundant.
+2. **Another pass at the reader UI.** Still not right after the swipe and
+   scroll fixes.
+3. **Feature parity with 1.x is not met.** My claim that the list was closed
+   was premature; the standing goal is parity, with a release per feature.
+4. **Match 1.x on the wire**, which is where the 503 most likely comes from.
+5. ~~Keep a task list.~~ This.
 
 ## Now
 
