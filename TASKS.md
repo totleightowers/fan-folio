@@ -10,14 +10,16 @@ twice.
 
 ## In the order Julia put them
 
-1. **Check backup and restore.** Not "believe it works" — a round trip that
+1. ~~**Check backup and restore.**~~ alpha.28 — a real round trip, and it
+   holds. Not "believe it works" — a round trip that
    is actually exercised, because it is the one thing in here that, if it is
    wrong, loses everything else.
-2. **Fix download.** The archive answers 503. Most likely us: 2.x sends a
+2. ~~**Fix download.**~~ alpha.29 — the wire now matches 1.x. Unproven
+   against a live 503; needs a phone. The archive answers 503. Most likely us: 2.x sends a
    made-up Chrome user-agent from a Dart HTTP client and drops Cloudflare's
    own cookies, where 1.x sent the device's real WebView agent and kept every
    cookie it had.
-3. **Fix the author page.** One Works tab and one Bookmarks tab, both
+3. ~~**Fix the author page.**~~ alpha.29 — two shelves, both populated. One Works tab and one Bookmarks tab, both
    populated from what the library knows, each with a prominent sync that
    walks the archive and merges. The two go-and-look tabs are redundant.
    Populating them means storing what a listing describes rather than only

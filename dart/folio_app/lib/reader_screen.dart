@@ -47,10 +47,11 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
-  late final PageController _pages = PageController(
-    initialPage: widget.startAt - 1,
-  );
   late int _chapter = widget.startAt;
+
+  /// Which way the last turn went, so the new chapter comes in from the side
+  /// the finger sent it.
+  bool _forwards = true;
 
   Timer? _settling;
   Timer? _prefsSettling;
@@ -96,7 +97,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // setting changed, so the pending write happens now rather than never
     _savePrefs();
     _through.dispose();
-    _pages.dispose();
     super.dispose();
   }
 
@@ -159,23 +159,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  /// A page turned. The place moves with it, from the top.
-  void _arrived(int page) {
+  /// Turn to a chapter. The place moves with it, from the top.
+  void _turn(int to) {
+    if (to < 1 || to > _total) return;
     setState(() {
-      _chapter = page + 1;
+      _forwards = to > _chapter;
+      _chapter = to;
       _openedAt = 0;
     });
     _through.value = 0;
-    unawaited(widget.library.savePlace(widget.work.workId, _chapter, 0));
+    unawaited(widget.library.savePlace(widget.work.workId, to, 0));
   }
 
-  void _turn(int to) {
-    if (to < 1 || to > _total) return;
-    _pages.animateToPage(
-      to - 1,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
+  /// A horizontal drag, and only a clearly horizontal one.
+  ///
+  /// This used to be a PageView, which meant two scrollables sharing a
+  /// screen: a horizontal one wrapped around a vertical one, both wanting the
+  /// same drag. The horizontal one kept winning, and the chapter would not
+  /// scroll at all. A gesture that has to be sideways before it counts leaves
+  /// every other drag to the words.
+  void _flung(DragEndDetails drag) {
+    final sideways = drag.velocity.pixelsPerSecond.dx;
+    final falling = drag.velocity.pixelsPerSecond.dy.abs();
+    // a swipe that is mostly downwards is somebody scrolling, not turning
+    if (sideways.abs() < 320 || falling > sideways.abs()) return;
+    _turn(sideways < 0 ? _chapter + 1 : _chapter - 1);
   }
 
   /// Where the reader has got to in the chapter on screen.
@@ -382,22 +390,33 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
           ],
         ),
-        body: PageView.builder(
-          controller: _pages,
-          itemCount: _total,
-          onPageChanged: _arrived,
-          itemBuilder: (context, i) => _ChapterPage(
-            key: ValueKey('${widget.work.workId}#${i + 1}'),
-            library: widget.library,
-            work: widget.work,
-            number: i + 1,
-            prefs: _prefs,
-            ground: ground,
-            dark: dark,
-            startOffset: i + 1 == widget.startAt ? widget.startOffset : 0,
-            pictures: _pictures,
-            onFetchPicture: widget.downloads == null ? null : _fetchPicture,
-            onScrolled: (at) => _scrolled(i + 1, at),
+        body: GestureDetector(
+          // the drag belongs to the chapter unless it is plainly sideways
+          onHorizontalDragEnd: _total > 1 ? _flung : null,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            transitionBuilder: (child, animation) => SlideTransition(
+              position: Tween<Offset>(
+                begin: Offset(_forwards ? 0.18 : -0.18, 0),
+                end: Offset.zero,
+              ).animate(animation),
+              child: FadeTransition(opacity: animation, child: child),
+            ),
+            child: _ChapterPage(
+              key: ValueKey('${widget.work.workId}#$_chapter'),
+              library: widget.library,
+              work: widget.work,
+              number: _chapter,
+              prefs: _prefs,
+              ground: ground,
+              dark: dark,
+              startOffset: _chapter == widget.startAt ? widget.startOffset : 0,
+              pictures: _pictures,
+              onFetchPicture: widget.downloads == null ? null : _fetchPicture,
+              onScrolled: (at) => _scrolled(_chapter, at),
+            ),
           ),
         ),
         bottomNavigationBar: _Foot(
@@ -407,7 +426,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
           through: _through,
           onPrevious: _chapter > 1 ? () => _turn(_chapter - 1) : null,
           onNext: _chapter < _total ? () => _turn(_chapter + 1) : null,
-          onPick: widget.chapters.length > 1 ? _pickChapter : null,
+          onPick: _pickChapter,
+          onWork: widget.onShowWork,
+          onActs: (widget.downloads?.canAct ?? false)
+              ? () => showArchiveActs(
+                  context,
+                  downloads: widget.downloads!,
+                  work: widget.work,
+                )
+              : null,
         ),
       ),
     );
@@ -576,6 +603,12 @@ class _Foot extends StatelessWidget {
   final VoidCallback? onNext;
   final VoidCallback? onPick;
 
+  /// The work itself, and the three things that leave the phone. Both named
+  /// rather than hidden behind an icon: somebody at the end of a chapter
+  /// looking for the way to leave kudos should not have to find a star.
+  final VoidCallback? onWork;
+  final VoidCallback? onActs;
+
   @override
   Widget build(BuildContext context) => Container(
     color: ground.surface,
@@ -594,26 +627,38 @@ class _Foot extends StatelessWidget {
             ),
           ),
           SizedBox(
-            height: 50,
+            height: 54,
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                IconButton(
+                  onPressed: onWork,
+                  icon: const Icon(Icons.article_outlined),
+                  tooltip: 'This work',
+                ),
                 IconButton(
                   onPressed: onPrevious,
                   icon: const Icon(Icons.chevron_left),
                   tooltip: 'Previous chapter',
                 ),
-                TextButton(
-                  onPressed: onPick,
-                  child: Text(
-                    total > 1 ? '$chapter of $total' : 'One chapter',
-                    style: TextStyle(color: ground.inkMid),
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: onPick,
+                    icon: Icon(Icons.list, size: 18, color: ground.inkMid),
+                    label: Text(
+                      total > 1 ? '$chapter of $total' : 'Chapters',
+                      style: TextStyle(color: ground.inkMid),
+                    ),
                   ),
                 ),
                 IconButton(
                   onPressed: onNext,
                   icon: const Icon(Icons.chevron_right),
                   tooltip: 'Next chapter',
+                ),
+                IconButton(
+                  onPressed: onActs,
+                  icon: const Icon(Icons.star_outline),
+                  tooltip: 'Kudos, bookmark, comment',
                 ),
               ],
             ),

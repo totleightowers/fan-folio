@@ -238,66 +238,77 @@ class _WorkScreenState extends State<WorkScreen> {
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
-        children: [
-          Text(
-            work.title,
-            style: TextStyle(
-              fontFamily: titleFace,
-              fontSize: 25,
-              fontWeight: FontWeight.w600,
-              height: 1.25,
-              color: ground.ink,
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // the byline, each name its own way in
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Text('by', style: TextStyle(color: ground.inkMute)),
-              for (final name in work.authors)
-                _Live(
-                  text: name,
-                  ground: ground,
-                  strong: true,
-                  onTap: () => widget.onPerson(name),
-                ),
-              if (work.authors.isEmpty)
-                Text('Anonymous', style: TextStyle(color: ground.inkMid)),
-            ],
-          ),
-
-          if (work.summary?.isNotEmpty ?? false) ...[
-            const SizedBox(height: 16),
+      /* A swipe here opens it, where you left off or at the beginning. The
+         same gesture that turns a chapter inside the work opens the work from
+         its cover, which is what a book does. */
+      body: GestureDetector(
+        onHorizontalDragEnd: (drag) {
+          final sideways = drag.velocity.pixelsPerSecond.dx;
+          final falling = drag.velocity.pixelsPerSecond.dy.abs();
+          if (sideways >= -320 || falling > sideways.abs()) return;
+          if (_chapters.isNotEmpty) _read(_resume);
+        },
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+          children: [
             Text(
-              work.summary!,
+              work.title,
               style: TextStyle(
-                fontSize: 15,
-                height: 1.55,
-                color: ground.inkMid,
+                fontFamily: titleFace,
+                fontSize: 25,
+                fontWeight: FontWeight.w600,
+                height: 1.25,
+                color: ground.ink,
               ),
             ),
+            const SizedBox(height: 8),
+
+            // the byline, each name its own way in
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('by', style: TextStyle(color: ground.inkMute)),
+                for (final name in work.authors)
+                  _Live(
+                    text: name,
+                    ground: ground,
+                    strong: true,
+                    onTap: () => widget.onPerson(name),
+                  ),
+                if (work.authors.isEmpty)
+                  Text('Anonymous', style: TextStyle(color: ground.inkMid)),
+              ],
+            ),
+
+            if (work.summary?.isNotEmpty ?? false) ...[
+              const SizedBox(height: 16),
+              Text(
+                work.summary!,
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.55,
+                  color: ground.inkMid,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 18),
+            _Facts(work: work, chapters: _chapters.length, ground: ground),
+
+            const SizedBox(height: 16),
+            ..._tagRows(ground, work),
+
+            const SizedBox(height: 22),
+            _Chapters(
+              chapters: _chapters,
+              at: _resume,
+              ground: ground,
+              onRead: _read,
+            ),
           ],
-
-          const SizedBox(height: 18),
-          _Facts(work: work, chapters: _chapters.length, ground: ground),
-
-          const SizedBox(height: 16),
-          ..._tagRows(ground, work),
-
-          const SizedBox(height: 22),
-          _Chapters(
-            chapters: _chapters,
-            at: _resume,
-            ground: ground,
-            onRead: _read,
-          ),
-        ],
+        ),
       ),
       /* A work the library only knows about is not a dead end. It was
          described by a listing, which costs one request for twenty works —
