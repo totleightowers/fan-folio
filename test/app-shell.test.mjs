@@ -1465,25 +1465,34 @@ test('both halves of a person are filtered the same way', () => {
     'and the badge counts what the row shows');
 });
 
-test('a person is two questions, and the library can ask both', () => {
+test('a person is two questions, asked in one place', () => {
+  /* They used to be two settings of the library's filters, which meant
+     opening somebody threw away whatever you had narrowed to and going back
+     did not find it. A person is a place now. */
   const fn = js.slice(js.indexOf('function showAuthorAs(name, which)'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /filterBy\('bookmarkedBy', name\)/);
-  assert.match(body, /filterBy\('author', name\)/);
+  assert.match(body, /go\('author'/, 'a person is somewhere you go');
+  assert.ok(!/filterBy\(/.test(body), 'and not the library being moved');
 
-  /* Mutually exclusive filters rather than a filter and a mode, so sorting,
-     narrowing by tag and searching within all work the same on either. */
-  const clearing = js.slice(js.indexOf('function filterBy(kind, value)'));
-  assert.match(clearing.slice(0, clearing.indexOf('\n}\n')), /bookmarkedBy: '',/,
-    'switching back to their works must not ask for both at once');
-
-  const bar = js.slice(js.indexOf('function paintAuthorBar('));
-  const body_ = bar.slice(0, bar.indexOf('\n}\n'));
-  assert.match(body_, /view\.author \?\? \[\][\s\S]{0,200}view\.bookmarkedBy \|\| null/,
-    'the bar stays up whichever of the two you are looking at');
+  const paint = js.slice(js.indexOf('function paintAuthor()'));
+  const body_ = paint.slice(0, paint.indexOf('\n}\n'));
+  assert.match(body_, /author-view-works[\s\S]{0,400}author-view-bookmarks/,
+    'both questions are on the screen at once');
   assert.match(body_, /Nothing recorded yet/,
     'and an author walked before this existed says so, rather than looking '
     + 'like somebody who bookmarks nothing');
+
+  /* The library is left exactly as it was. Its own See all is still there
+     for anybody who wants the filters applied. */
+  assert.match(body_, /author-see-all/);
+});
+
+test('the library does not wear a person as a hat', () => {
+  assert.ok(!html.includes('id="author-bar"'),
+    'the bar came out when the person got a screen');
+  const library = html.slice(html.indexOf('<section id="library"'),
+    html.indexOf('</section>', html.indexOf('<section id="library"')));
+  assert.ok(!library.includes('author-sync'), 'and took its buttons with it');
 });
 
 test('the front page hides what the library hides', () => {
@@ -2679,25 +2688,21 @@ test('the whole bookmark list can be read, so removals are noticed', () => {
 test('opening an author shows the author', () => {
   const fn = js.slice(js.indexOf('function showAuthorAs(name, which)'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /filterBy\('author', name\)/, 'the library narrows to them');
+  assert.match(body, /go\('author'/, 'their own screen');
   const opening = js.slice(js.indexOf('function openAuthor(name) {'));
   assert.ok(!/catchUpOn\(name\)/.test(opening.slice(0, opening.indexOf('\n}\n'))),
     'and nothing is asked of the archive by looking at somebody');
 
-  const bar = js.slice(js.indexOf('function paintAuthorBar('));
+  const bar = js.slice(js.indexOf('function paintAuthor('));
   const bbody = bar.slice(0, bar.indexOf('\n}\n'));
   assert.match(bbody, /catchUpOn\(name, parts\)/, 'the work is still one tap');
   assert.match(bbody, /if \(!signedIn\(\)\)/, 'and it needs an account like everything else');
 
-  /* Both halves stays the plain button, because choosing is a decision most
-     people do not want to make. But somebody who follows a writer for their
-     own fic and not their reading was fetching twice the archive they asked
-     for, and it is hours either way. */
-  const both = bbody.indexOf("['works', 'bookmarks']");
-  assert.ok(both !== -1 && both < bbody.indexOf("['works']"),
-    'the pair is offered first and plainly');
-  assert.match(bbody, /\$\('#author-works'\), \['works'\]/);
-  assert.match(bbody, /\$\('#author-bookmarks'\), \['bookmarks'\]/);
+  /* The half you are looking at is the plain button, because that is what
+     somebody on the Bookmarks tab pressing Sync means. Both is beside it for
+     the usual want, and neither is hours of archive you did not ask for. */
+  assert.match(bbody, /\$\('#author-sync-this'\), \[which\]/);
+  assert.match(bbody, /\$\('#author-sync-both'\), \['works', 'bookmarks'\]/);
   assert.match(bbody, /for \(const \[other\] of asking\) other\.disabled = true/,
     'and asking for one half is not an invitation to ask for the other at the same time');
 });

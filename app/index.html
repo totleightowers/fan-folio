@@ -308,6 +308,36 @@
     <p id="version" class="setting-note version"></p>
   </section>
 
+  <!--
+      One person, as a place rather than as the library wearing a hat.
+
+      What they wrote and what they liked are two questions about the same
+      person, so they are two tabs on one screen — and the way to go and read
+      their pages is on both, in plain sight, rather than folded into a bar
+      above a filtered list.
+  -->
+  <section id="author" class="view" hidden>
+    <h2 id="author-name" class="author-name"></h2>
+
+    <div class="author-tabs seg">
+      <button id="author-view-works" class="on">Works</button>
+      <button id="author-view-bookmarks">Bookmarks</button>
+    </div>
+
+    <div class="author-sync">
+      <p id="author-known" class="setting-note"></p>
+      <button id="author-sync-this" class="primary">Sync</button>
+      <div class="author-acts">
+        <button id="author-sync-both" class="linkish">Sync both</button>
+        <button id="author-see-all" class="linkish">See these in the library</button>
+        <button id="author-block" class="linkish danger">Block</button>
+      </div>
+    </div>
+
+    <div id="author-works" class="list"></div>
+    <div id="author-more" class="more"></div>
+  </section>
+
   <section id="library" class="view" hidden>
     <div id="toolbar">
       <div class="toolrow">
@@ -334,38 +364,6 @@
         </label>
       </div>
       <div id="active" class="active-filters"></div>
-      <!--
-          Shown when the library is filtered to one person: what is here of
-          theirs, and one way to go and get the rest. Opening an author used to
-          start that work by itself, which is a lot of archive for a tap.
-      -->
-      <div id="author-bar" hidden>
-        <!--
-            Two things a person is: what they wrote, and what they liked.
-            The library could only ever ask the first, because a walk of
-            somebody's bookmark list kept the works and threw away whose list
-            it was.
-        -->
-        <div class="author-tabs seg">
-          <button id="author-view-works" class="on">Their works</button>
-          <button id="author-view-bookmarks">Their bookmarks</button>
-        </div>
-        <p id="author-known" class="setting-note"></p>
-        <button id="author-sync" class="ghost">Fetch their works and bookmarks</button>
-        <!--
-            Both halves is the usual want and stays the plain button. But
-            somebody who follows a writer for their own fic and not their
-            reading, or the other way round, was made to fetch twice as much
-            archive as they asked for — and the two halves are separate jobs
-            already, so offering them separately costs nothing.
-        -->
-        <div class="author-acts">
-          <button id="author-works" class="linkish">Works only</button>
-          <button id="author-bookmarks" class="linkish">Bookmarks only</button>
-          <!-- The other direction: somebody you do not want to read at all. -->
-          <button id="author-block" class="linkish danger">Block</button>
-        </div>
-      </div>
       <div id="count" class="count"></div>
       <div id="chips" class="chips"></div>
     </div>

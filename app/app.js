@@ -208,7 +208,7 @@ const TABBED = new Set(['home', 'library', 'you']);
  *
  * Only the reader is immersive, and only setup has nothing to navigate yet.
  */
-const KEEPS_TABS = new Set([...TABBED, 'detail', 'results']);
+const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author']);
 
 /** The tab whose part of the app you are in, lit even a screen or two down. */
 let inTab = 'home';
@@ -284,7 +284,7 @@ function show(name, motion = 'none') {
  * could still be quietly searching inside a work you had left two screens
  * ago. A box with no meaning is not shown.
  */
-const SEARCHABLE = new Set(['home', 'library', 'results', 'detail', 'reader']);
+const SEARCHABLE = new Set(['home', 'library', 'results', 'detail', 'reader', 'author']);
 
 /**
  * What the top bar offers, screen by screen.
@@ -330,6 +330,10 @@ function here() {
   const route = showing();
   const params = {};
   if (route === 'detail' && currentWork) params.workId = String(currentWork.work_id);
+  if (route === 'author' && authorShowing.name) {
+    params.author = authorShowing.name;
+    params.which = authorShowing.which;
+  }
   if (route === 'reader' && current.workId) {
     params.workId = String(current.workId);
     params.chapter = Number(current.chapter) || 1;
@@ -379,6 +383,17 @@ function renderPlace(place, motion = 'back') {
       searchInScope = p.scope || 'text';
       show('results', motion);
       runSearch(p.query);
+    } else if (place.route === 'author' && p.author) {
+      show('author', motion);
+      authorShowing = {
+        name: p.author,
+        which: p.which === 'bookmarks' ? 'bookmarks' : 'works',
+        offset: 0,
+        total: 0,
+      };
+      currentAuthor = p.author;
+      paintAuthor();
+      loadAuthorWorks(true);
     } else if (place.route === 'library') {
       if (p.filters) {
         Object.assign(view, p.filters);
@@ -1222,7 +1237,6 @@ async function buildFilterPanelKeepingScroll() {
 function paintActiveFilters() {
   const box = $('#active');
   box.textContent = '';
-  paintAuthorBar();
   const badge = $('#filter-count');
   const n = activeCount();
   badge.hidden = !n;
@@ -2883,43 +2897,36 @@ function bookmarkedByCount(name) {
 /**
  * One person, two ways: what they wrote, or what they liked.
  *
- * The two are mutually exclusive filters rather than a filter and a mode,
- * so everything else the library can do — sorting, narrowing by tag or
- * rating, searching within — works the same on either.
+ * A screen rather than the library wearing a hat. The two are the same
+ * question asked about the same person, so they are two tabs on one place,
+ * and the way to go and read their pages is on both in plain sight.
  */
+let authorShowing = { name: null, which: 'works', offset: 0, total: 0 };
+
 function showAuthorAs(name, which) {
   currentAuthor = name;
-  if (which === 'bookmarks') {
-    filterBy('bookmarkedBy', name);
-  } else {
-    filterBy('author', name);
-  }
-  paintAuthorBar();
+  authorShowing = { name, which, offset: 0, total: 0 };
+  go('author', { author: name, which });
+  paintAuthor();
+  loadAuthorWorks(true);
 }
 
-/** What is here of theirs, and the way to go and get the rest. */
-function paintAuthorBar() {
-  const bar = $('#author-bar');
-  if (!bar) return;
-  /* Whose page this is, however you came to be looking at it: filtered to
-     what they wrote, or filtered to what they liked. */
-  const chosen = view.author ?? [];
-  const name = chosen.length === 1 ? chosen[0] : (view.bookmarkedBy || null);
-  bar.hidden = !name || !isNative;
-  if (bar.hidden) return;
+/** The name, the two tabs, and what going to the archive would cost. */
+function paintAuthor() {
+  const { name, which } = authorShowing;
+  if (!name) return;
+  $('#author-name').textContent = name;
 
-  /*
-   * What they wrote, and what they liked.
-   *
-   * Two different questions about one person, and the library could only ask
-   * the first — a walk of somebody's bookmark list kept the works and threw
-   * away whose list it was, so there was nothing to ask the second of.
-   */
-  const onBookmarks = Boolean(view.bookmarkedBy);
+  const onBookmarks = which === 'bookmarks';
   $('#author-view-works').classList.toggle('on', !onBookmarks);
   $('#author-view-bookmarks').classList.toggle('on', onBookmarks);
   $('#author-view-works').onclick = () => showAuthorAs(name, 'works');
   $('#author-view-bookmarks').onclick = () => showAuthorAs(name, 'bookmarks');
+
+  $('#author-see-all').onclick = () => {
+    if (onBookmarks) filterBy('bookmarkedBy', name);
+    else filterBy('author', name);
+  };
 
   const note = $('#author-known');
   let held = 0;
@@ -2927,12 +2934,12 @@ function paintAuthorBar() {
   try {
     const rows = JSON.parse(window.ArchiveNative.query(
       'SELECT has_text, count(*) AS n FROM works WHERE authors LIKE ? ESCAPE \'\\\' GROUP BY has_text',
-      JSON.stringify([`%${JSON.stringify(String(name)).replace(/[\\%_]/g, (c) => `\\${c}`)}%`])));
+      JSON.stringify([worksByPattern(name)])));
     for (const r of rows.rows ?? []) {
       if (Number(r.has_text) === 1) held = Number(r.n) || 0;
       else known += Number(r.n) || 0;
     }
-  } catch { /* the counts are a courtesy; the button still works */ }
+  } catch { /* the counts are a courtesy; the buttons still work */ }
 
   const seen = seenAuthors[name] ?? {};
   const checked = seen.works?.n != null || seen.bookmarks?.n != null;
@@ -2948,8 +2955,7 @@ function paintAuthorBar() {
     const n = bookmarkedByCount(name);
     note.textContent = n
       ? `${fmt(n)} work${n === 1 ? '' : 's'} in their bookmarks.`
-      : 'Nothing recorded yet. Reading their bookmarks — with the button below — '
-        + 'is what fills this in.';
+      : 'Nothing recorded yet. Syncing their bookmarks is what fills this in.';
   } else {
     note.textContent = `${fmt(held)} of theirs downloaded`
       + (known ? `, ${fmt(known)} known but not` : '')
@@ -2957,19 +2963,20 @@ function paintAuthorBar() {
   }
 
   /*
-   * Both halves, or one of them.
+   * This half, or both.
    *
-   * Both is the usual want and stays the plain button. But somebody who
-   * follows a writer for their own fic and not their reading — or the other
-   * way round — was made to fetch twice as much archive as they asked for,
-   * and it is hours either way. The two halves are already separate jobs, so
-   * offering them separately costs nothing but two words.
+   * Both is the usual want. But somebody who follows a writer for their own
+   * fic and not their reading — or the other way round — was made to fetch
+   * twice as much archive as they asked for, and it is hours either way. The
+   * two halves are already separate jobs, so offering them separately costs
+   * nothing but two words.
    */
   const asking = [
-    [$('#author-sync'), ['works', 'bookmarks'], 'Fetch their works and bookmarks',
+    [$('#author-sync-this'), [which],
+      onBookmarks ? 'Sync their bookmarks' : 'Sync their works',
+      `Reading ${name}'s ${which}`],
+    [$('#author-sync-both'), ['works', 'bookmarks'], 'Sync both',
       `Reading ${name}'s works and bookmarks`],
-    [$('#author-works'), ['works'], 'Works only', `Reading ${name}'s works`],
-    [$('#author-bookmarks'), ['bookmarks'], 'Bookmarks only', `Reading ${name}'s bookmarks`],
   ];
   for (const [button, parts, label, said] of asking) {
     button.disabled = false;
@@ -2988,6 +2995,58 @@ function paintAuthorBar() {
   rid.disabled = false;
   rid.textContent = `Delete their works and block ${name}`;
   rid.onclick = () => askToBlock(name);
+}
+
+/**
+ * The shelf itself, asked for directly rather than by moving the library.
+ *
+ * The library's own filters are left exactly as they were: opening a person
+ * is not a reason to throw away what somebody had narrowed to, and going back
+ * should find the library as they left it.
+ */
+let loadingAuthor = false;
+
+async function loadAuthorWorks(reset = false) {
+  const { name, which } = authorShowing;
+  if (!name || loadingAuthor) return;
+  loadingAuthor = true;
+  if (reset) { authorShowing.offset = 0; $('#author-works').textContent = ''; }
+  $('#author-more').textContent = 'Loading…';
+  try {
+    const params = new URLSearchParams({
+      sort: which === 'bookmarks' ? 'added' : 'updated',
+      state: 'all',
+      limit: '50',
+      offset: String(authorShowing.offset),
+    });
+    if (which === 'bookmarks') params.set('bookmarkedBy', name);
+    else params.set('author', name);
+
+    const { works, total: n } = await api(`/api/works?${params}`);
+    authorShowing.total = n;
+    const box = $('#author-works');
+    for (const w of works) box.append(workRow(w));
+    authorShowing.offset += works.length;
+
+    if (authorShowing.offset < n) {
+      $('#author-more').textContent = '';
+      const more = document.createElement('button');
+      more.className = 'ghost';
+      more.textContent = `Show more (${fmt(n - authorShowing.offset)} left)`;
+      more.onclick = () => loadAuthorWorks();
+      $('#author-more').append(more);
+    } else {
+      $('#author-more').textContent = n
+        ? `${fmt(n)} in all`
+        : (which === 'bookmarks'
+          ? 'Nothing of theirs listed here yet.'
+          : 'Nothing of theirs here yet.');
+    }
+  } catch (e) {
+    $('#author-more').textContent = String(e.message ?? e);
+  } finally {
+    loadingAuthor = false;
+  }
 }
 
 /**
