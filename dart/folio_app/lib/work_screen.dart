@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:folio_core/folio_core.dart' as core;
 
 import 'archive_acts.dart';
 import 'downloads.dart';
@@ -130,13 +129,15 @@ class _WorkScreenState extends State<WorkScreen> {
             icon: const Icon(Icons.more_vert),
             tooltip: 'More',
             onPressed: () async {
+              final here = Navigator.of(context);
               final changed = await showWorkActions(
                 context,
                 library: widget.library,
                 work: work,
                 downloads: widget.downloads,
               );
-              if (changed && mounted) Navigator.of(context).pop(true);
+              // deleting or blocking from here leaves nothing to come back to
+              if (changed) here.pop(true);
             },
           ),
         ],
@@ -218,6 +219,15 @@ class _WorkScreenState extends State<WorkScreen> {
     );
   }
 
+  /// Land in the library, narrowed to one thing this work is.
+  ///
+  /// A fresh view rather than one more condition on the last one: "everything
+  /// tagged this" means everything, and narrowing what was already on screen
+  /// would answer a question nobody asked from a page that does not show what
+  /// is already in force.
+  void _narrow(Map<String, Object?> by, String title) =>
+      widget.onNarrow({...by, 'sort': 'added'}, title);
+
   /// Every tag, by kind, each one a way into the library.
   List<Widget> _tagRows(Ground ground, WorkRow work) {
     const named = {
@@ -256,9 +266,8 @@ class _WorkScreenState extends State<WorkScreen> {
         _Live(
           text: work.rating!,
           ground: ground,
-          onTap: () => widget.onNarrow({
+          onTap: () => _narrow({
             'rating': [work.rating],
-            'sort': 'added',
           }, work.rating!),
         ),
       ]);
@@ -271,9 +280,8 @@ class _WorkScreenState extends State<WorkScreen> {
           _Live(
             text: name,
             ground: ground,
-            onTap: () => widget.onNarrow({
+            onTap: () => _narrow({
               'include': [name],
-              'sort': 'added',
             }, name),
           ),
       ]);
@@ -284,10 +292,7 @@ class _WorkScreenState extends State<WorkScreen> {
         _Live(
           text: work.language!,
           ground: ground,
-          onTap: () => widget.onNarrow({
-            'language': work.language,
-            'sort': 'added',
-          }, work.language!),
+          onTap: () => _narrow({'language': work.language}, work.language!),
         ),
       ]);
     }

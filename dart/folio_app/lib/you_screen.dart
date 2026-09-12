@@ -122,30 +122,21 @@ class YouScreenState extends State<YouScreen> {
             label: 'Bookmarked',
             count: _bookmarked,
             ground: ground,
-            onTap: () => widget.onNarrow(const {
-              'state': 'bookmarked',
-              'sort': 'added',
-            }, 'Bookmarked'),
+            onTap: () => widget.onNarrow(_bookmarked, 'Bookmarked'),
           ),
           _Row(
             icon: Icons.schedule_outlined,
             label: 'Marked for later',
             count: _later,
             ground: ground,
-            onTap: () => widget.onNarrow(const {
-              'state': 'later',
-              'sort': 'title',
-            }, 'Marked for later'),
+            onTap: () => widget.onNarrow(_later, 'Marked for later'),
           ),
           _Row(
             icon: Icons.done_all,
             label: 'Finished',
             count: _read,
             ground: ground,
-            onTap: () => widget.onNarrow(const {
-              'state': 'finished',
-              'sort': 'added',
-            }, 'Finished'),
+            onTap: () => widget.onNarrow(_finished, 'Finished'),
           ),
           _Row(
             icon: Icons.person_off_outlined,
@@ -265,6 +256,18 @@ class _Row extends StatelessWidget {
     onTap: onTap,
   );
 }
+
+/// The three questions this screen asks of the library.
+///
+/// Held as constants rather than written at the call: the formatter splits a
+/// map literal passed inline, and a split argument list then wants a trailing
+/// comma the formatter takes away again.
+const Map<String, Object?> _bookmarked = {
+  'state': 'bookmarked',
+  'sort': 'added',
+};
+const Map<String, Object?> _later = {'state': 'later', 'sort': 'title'};
+const Map<String, Object?> _finished = {'state': 'finished', 'sort': 'added'};
 
 /// Roughly when, which is all anybody wants from a last-run time.
 String _when(DateTime at) {

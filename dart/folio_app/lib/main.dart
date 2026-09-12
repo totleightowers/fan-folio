@@ -341,6 +341,13 @@ class _ShellState extends State<Shell> {
     _tab = 1;
   });
 
+  /// What the bar says it is showing.
+  String get _title => switch (_tab) {
+    0 => 'Fan Folio',
+    2 => 'You',
+    _ => _viewTitle,
+  };
+
   @override
   Widget build(BuildContext context) {
     final ground = groundOf(context);
@@ -362,11 +369,7 @@ class _ShellState extends State<Shell> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(switch (_tab) {
-          0 => 'Fan Folio',
-          2 => 'You',
-          _ => _viewTitle,
-        }),
+        title: Text(_title),
         actions: [
           if (_tab == 1)
             IconButton(
