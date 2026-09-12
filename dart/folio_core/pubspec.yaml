@@ -15,6 +15,14 @@ dependencies:
   # over twenty years and is not well-formed; a parser that recovers the way
   # browsers recover is the difference between a chapter and a mess.
   html: ^0.15.4
+  # Asking the archive for a page. Here rather than in the Flutter half so the
+  # client can be tested against a fake without a phone — which is the whole
+  # reason this package exists.
+  http: ^1.2.0
+  # Retry-After may be a date rather than a count of seconds, and an HTTP date
+  # is fiddly enough to be worth not writing again. Already under http; named
+  # here because this imports it.
+  http_parser: ^4.0.0
 
 dev_dependencies:
   test: ^1.25.0
