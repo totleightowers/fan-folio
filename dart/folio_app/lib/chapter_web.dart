@@ -264,8 +264,8 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
         supportZoom: false,
         disableHorizontalScroll: true,
       ),
-      onReceivedError: (_, _, error) => _wentWrong('${error.description}'),
-      onReceivedHttpError: (_, _, response) =>
+      onReceivedError: (_, __, error) => _wentWrong(error.description),
+      onReceivedHttpError: (_, __, response) =>
           _wentWrong('the page answered ${response.statusCode}'),
     );
   }
