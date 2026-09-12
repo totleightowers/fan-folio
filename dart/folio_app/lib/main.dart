@@ -164,8 +164,9 @@ class _ShellState extends State<Shell> {
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() {
           _tab = i;
-          if (i == 1 && _viewTitle == 'Library')
+          if (i == 1 && _viewTitle == 'Library') {
             _view = const {'sort': 'added'};
+          }
         }),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),

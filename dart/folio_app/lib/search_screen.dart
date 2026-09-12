@@ -214,8 +214,9 @@ class _Passages extends StatelessWidget {
     final pattern = RegExp('<<(.*?)>>', dotAll: true);
     var at = 0;
     for (final m in pattern.allMatches(snippet)) {
-      if (m.start > at)
+      if (m.start > at) {
         spans.add(TextSpan(text: snippet.substring(at, m.start)));
+      }
       spans.add(
         TextSpan(
           text: m.group(1),
