@@ -231,6 +231,54 @@ class Downloads extends ChangeNotifier {
     }
   }
 
+  /// The things that leave the phone.
+  ///
+  /// Kudos are permanent, a comment notifies the author, a bookmark appears
+  /// on a profile. None of them can be taken back from here, so each is its
+  /// own deliberate act rather than a side effect of reading.
+  core.Acts get acts => core.Acts(_client);
+
+  bool get canAct => _session.username != null;
+
+  /// Leave kudos, and remember that they were left.
+  ///
+  /// The archive accepts them once per work per person and there is no way to
+  /// ask afterwards whether they were, so the answer is kept here.
+  Future<bool> leaveKudos(String workId) async {
+    final done = await acts.kudos(workId);
+    await _mark(workId, 'kudos_given');
+    return done.already;
+  }
+
+  Future<void> bookmark(
+    String workId, {
+    String notes = '',
+    String tags = '',
+    bool private = false,
+    bool rec = false,
+  }) async {
+    await acts.bookmark(
+      workId,
+      notes: notes,
+      tags: tags,
+      private: private,
+      rec: rec,
+    );
+    await _mark(workId, 'in_bookmarks');
+    if (rec) await _mark(workId, 'rec');
+  }
+
+  Future<void> comment(String workId, String text) =>
+      acts.comment(workId, text);
+
+  Future<void> _mark(String workId, String column) async {
+    await library.db.rawUpdate(
+      'UPDATE works SET $column = 1 WHERE work_id = ?',
+      [workId],
+    );
+    notifyListeners();
+  }
+
   bool pause(int id) => _queue.pause(id);
   bool resume(int id) => _queue.resume(id);
   bool stop(int id) => _queue.stop(id);

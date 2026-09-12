@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
+import 'archive_acts.dart';
 import 'downloads.dart';
 import 'library.dart';
 import 'theme.dart';
@@ -133,6 +134,20 @@ class _WorkActions extends StatelessWidget {
             ),
           ),
           Divider(height: 1, color: ground.lineSoft),
+
+          if (downloads?.canAct ?? false)
+            ListTile(
+              leading: Icon(Icons.star_outline, color: ground.inkMid),
+              title: const Text('On the archive'),
+              subtitle: Text(
+                'Kudos, a bookmark, a comment.',
+                style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+              ),
+              onTap: () {
+                Navigator.of(context).pop(false);
+                showArchiveActs(context, downloads: downloads!, work: work);
+              },
+            ),
 
           /* One entry per author, because a work having more than one is
              ordinary and both of these are about a person rather than a

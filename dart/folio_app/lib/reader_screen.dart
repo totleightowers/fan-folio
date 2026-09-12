@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
+import 'archive_acts.dart';
 import 'chapter_web.dart';
+import 'downloads.dart';
 import 'library.dart';
 import 'reader.dart';
 import 'reading_sheet.dart';
@@ -15,12 +17,14 @@ class ReaderScreen extends StatefulWidget {
     required this.library,
     required this.work,
     required this.chapters,
+    this.downloads,
     this.startAt = 1,
     this.startOffset = 0,
     super.key,
   });
 
   final Library library;
+  final Downloads? downloads;
   final WorkRow work;
   final List<ChapterRow> chapters;
   final int startAt;
@@ -203,6 +207,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
+            /* Where somebody actually decides to leave kudos is the end of a
+               chapter, not a shelf. Only offered when there is a session
+               behind it: a button that fails when pressed is worse than one
+               that is not there. */
+            if (widget.downloads?.canAct ?? false)
+              IconButton(
+                icon: const Icon(Icons.star_outline),
+                tooltip: 'On the archive',
+                onPressed: () => showArchiveActs(
+                  context,
+                  downloads: widget.downloads!,
+                  work: widget.work,
+                ),
+              ),
             IconButton(
               icon: const Icon(Icons.text_fields),
               tooltip: 'Type and paper',
