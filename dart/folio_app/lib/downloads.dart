@@ -275,6 +275,41 @@ class Downloads extends ChangeNotifier {
     return _queue.add(author: label, part: 'picked', workIds: workIds);
   }
 
+  /// Walk one person's pages and write down what they describe.
+  ///
+  /// One request describes twenty works, so this is how a catalogue becomes
+  /// browsable for the price of reading an index — rather than downloading
+  /// sixty works to find out what they are. Nothing is fetched here; what
+  /// arrives is a shelf of descriptions, and any one of them can be asked for.
+  Future<int> syncPerson(
+    String byline, {
+    required bool bookmarks,
+    void Function(int page, int? pages, int found)? onProgress,
+  }) async {
+    final store = LibraryStore(library.db);
+    final seen = <String>[];
+    var added = 0;
+
+    final walk = await core.walkListing(
+      fetchPage: (page) async {
+        final listing = await peek(byline, bookmarks: bookmarks, page: page);
+        final ids = [for (final blurb in listing.works) blurb.workId];
+        seen.addAll(ids);
+        added += await saveStubs(
+          library.db,
+          listing.works,
+          refused: await store.refused(ids),
+        );
+        onProgress?.call(page, listing.total, seen.length);
+        return core.ListingPage(workIds: ids, totalPages: listing.total);
+      },
+    );
+
+    if (bookmarks) await library.noteBookmarkedBy(byline, seen);
+    await library.noteWalk('${bookmarks ? 'bookmarks' : 'works'}:$byline');
+    return walk.workIds.length;
+  }
+
   /// How much of an author's catalogue there is, before any of it is fetched.
   ///
   /// One listing page describes twenty works for one request, so walking a
