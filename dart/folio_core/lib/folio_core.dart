@@ -7,6 +7,7 @@ library;
 export 'src/ao3/urls.dart';
 export 'src/read/document.dart';
 export 'src/read/progress.dart';
+export 'src/read/reached.dart';
 export 'src/store/migrate.dart';
 export 'src/store/query.dart';
 export 'src/store/schema.g.dart';
