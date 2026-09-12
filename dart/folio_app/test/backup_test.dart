@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio_app/library.dart';
@@ -59,6 +60,52 @@ void main() {
       'offset': 1400,
       'chapters_read': 1,
     });
+    /* A picture, with its bytes. This is the part of a library that is
+       measured in megabytes rather than rows, and the part a backup is most
+       likely to quietly leave behind. */
+    await library.db.insert('images', {
+      'work_id': '58374928',
+      'url': 'https://i.example/one.png',
+      'sha256': 'a' * 64,
+      'mime': 'image/png',
+      'bytes': Uint8List.fromList([137, 80, 78, 71, 13, 10, 26, 10]),
+      'status': 'stored',
+      'fetched_at': '2026-01-01 00:00:00',
+    });
+
+    /* What a chapter used to say. An author who rewrites a scene takes the
+       old one with them; the copy on the device is the only record of it. */
+    await library.db.insert('chapter_versions', {
+      'work_id': '58374928',
+      'number': 1,
+      'html': '<p>What it used to say.</p>',
+      'text': 'What it used to say.',
+      'words': 5,
+      'reason': 'content',
+      'archived_at': '2026-01-01 00:00:00',
+    });
+    await library.db.insert('skin_versions', {
+      'work_id': '58374928',
+      'skin_css': '#workskin p { color: red }',
+      'archived_at': '2026-01-01 00:00:00',
+    });
+
+    // and the small facts that are nobody's data but decide what is shown
+    await library.db.insert('deleted', {
+      'work_id': 'let-it-stay-gone',
+      'title': 'Deleted on purpose',
+      'at': '2026-01-01',
+    });
+    await library.db.insert('blocked', {
+      'name': 'somebody',
+      'at': '2026-01-01',
+    });
+    await library.db.insert('bookmarked_by', {
+      'person': 'cendrillon',
+      'work_id': '58374928',
+      'at': '2026-01-01',
+    });
+
     await library.saveReadingPrefs(const core.ReadingPrefs(size: 22));
     return library;
   }
@@ -98,6 +145,28 @@ void main() {
 
     // and how they read, which travels with the library rather than the app
     expect((await back.readingPrefs()).size, 22);
+
+    /* The megabytes. A picture that does not come back is a chapter that
+       reads differently on the new phone, and nothing says so. */
+    final pictures = await back.picturesFor('58374928');
+    expect(pictures.keys, ['https://i.example/one.png']);
+    expect(pictures.values.single.bytes, hasLength(8));
+    expect(pictures.values.single.mime, 'image/png');
+
+    // what a chapter used to say, and what a skin used to be
+    final versions = await back.db.query('chapter_versions');
+    expect(versions.single['text'], 'What it used to say.');
+    expect(
+      (await back.db.query('skin_versions')).single['skin_css'],
+      contains('color: red'),
+    );
+
+    // and the small facts that decide what is shown
+    expect(await back.refusedIds(), contains('let-it-stay-gone'));
+    expect(await back.blockedNames(), ['somebody']);
+    expect((await back.bookmarkedBy('cendrillon')).map((w) => w.workId), [
+      '58374928',
+    ]);
     await back.close();
   });
 

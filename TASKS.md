@@ -34,6 +34,22 @@ twice.
    - From inside one chapter, reach: the work's front page, another chapter
      anywhere in the work, and kudos, bookmark and comment.
 
+## Said since, and now in hand
+
+- **Sync means download.** A person's sync walks their pages *and* fetches
+  what is missing or stale, rather than only listing it. Works, bookmarks, or
+  both in one go.
+- **Do not pull the same work twice.** The planner compares the day a copy was
+  taken against the date the archive last says the work changed, so most of a
+  listing costs nothing. It was ported and then never wired in.
+- **Keep 1.x's versioning.** A refetch archives the chapters it replaces
+  before writing over them, so an author who rewrites a scene does not take
+  the old one with them. Already there; now covered by a test.
+- **A backup carries everything**, not only the rows: pictures with their
+  bytes, archived chapter and skin versions, tombstones, the blocklist, whose
+  bookmarks a work is in. Now asserted rather than assumed — alpha.28 checked
+  the text and not the megabytes, which was half a check.
+
 Do not stop after one of these. Ship it, link the release, and move to the
 next. When the list is empty, go back to the standing goal.
 

@@ -250,6 +250,10 @@ Future<int> saveStubs(
            one-chapter work reads "1/?", which says the archive does not
            know — when the listing had just told us. */
         'chapters_planned': blurb.chaptersPlanned,
+        /* When the archive last says it changed. This is what the planner
+           compares against the day a copy was taken, and without it every
+           sync is a re-download of everything it lists. */
+        'updated_at': blurb.updatedAt,
         'kudos': blurb.kudos,
         'bookmark_count': blurb.bookmarkCount,
         'hits': blurb.hits,
