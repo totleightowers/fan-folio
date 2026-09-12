@@ -18,6 +18,9 @@ dependencies:
   # Works carrying an author's skin are read here rather than as native text,
   # because the skin is the work: a chat fic, a letter in another hand.
   webview_flutter: ^4.10.0
+  # Bringing a library in from a 1.x backup. The alpha has its own private
+  # storage and cannot see the 1.x app's, so the file has to be handed over.
+  file_picker: ^8.1.2
 
 dev_dependencies:
   flutter_test:
