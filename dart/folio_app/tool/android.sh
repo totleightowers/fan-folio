@@ -24,6 +24,16 @@ gradle=android/app/build.gradle.kts
 sed -i "s/applicationId = \"[^\"]*\"/applicationId = \"$APP_ID\"/" "$gradle"
 sed -i "s/applicationId \"[^\"]*\"/applicationId \"$APP_ID\"/" "$gradle"
 
+# Compiled against a new enough Android to satisfy the plugins.
+#
+# flutter.compileSdkVersion is whatever the installed Flutter defaults to, and
+# a plugin that wants a newer one fails the build with a paragraph about it.
+# Raising compileSdk is not raising targetSdk or minSdk: it says which APIs may
+# be referenced, not which behaviour the app opts in to or which phones it runs
+# on, so it costs nothing here.
+sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' "$gradle"
+sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' "$gradle"
+
 # Labelled as what it is, so two Fan Folios on one phone can be told apart.
 manifest=android/app/src/main/AndroidManifest.xml
 if [ "$APP_ID" != "org.fanfolio" ]; then
