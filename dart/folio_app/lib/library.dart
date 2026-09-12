@@ -163,6 +163,34 @@ class Library {
     return rows.isEmpty ? null : rows.first['html'] as String?;
   }
 
+  /// Where the reader was in this work, if anywhere.
+  Future<Place?> placeIn(String workId) async {
+    final rows = await db.rawQuery(
+      'SELECT chapter, offset, chapters_read FROM reading WHERE work_id = ?',
+      [workId],
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return Place(
+      chapter: row['chapter'] as int?,
+      offset: (row['offset'] as num?)?.toDouble(),
+      chaptersRead: row['chapters_read'] as int? ?? 0,
+    );
+  }
+
+  /// Opened, without saying where — a peek must not move the bookmark.
+  Future<void> opened(String workId) => markOpened(_Runner(db), workId);
+
+  /// Where in the work, and how far down the page.
+  Future<void> savePlace(String workId, int chapter, double offset) => db.rawInsert(
+        saveProgressSql,
+        [workId, chapter, offset, chapter - 1 < 0 ? 0 : chapter - 1],
+      );
+
+  Future<void> finish(String workId, {bool done = true}) => done
+      ? db.rawInsert(markFinishedSql, [workId])
+      : db.rawUpdate(markUnfinishedSql, [workId]);
+
   Future<void> close() => db.close();
 }
 
@@ -184,4 +212,12 @@ class ChapterRow {
   const ChapterRow(this.number, this.title);
   final int number;
   final String? title;
+}
+
+/// Where somebody had got to.
+class Place {
+  const Place({this.chapter, this.offset, this.chaptersRead = 0});
+  final int? chapter;
+  final double? offset;
+  final int chaptersRead;
 }
