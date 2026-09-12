@@ -7,6 +7,7 @@ import 'add_sheet.dart';
 import 'blocked_screen.dart';
 import 'downloads.dart';
 import 'home_screen.dart';
+import 'keep_working.dart';
 import 'library.dart';
 import 'filter_sheet.dart';
 import 'reader_screen.dart';
@@ -17,7 +18,13 @@ import 'theme.dart';
 import 'work_actions.dart';
 import 'work_card.dart';
 
-void main() => runApp(const FolioApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // set up before anything can ask for it; nothing is shown until there is
+  // work, and nobody is asked for permission until then either
+  KeepWorking.prepare();
+  runApp(const FolioApp());
+}
 
 class FolioApp extends StatelessWidget {
   const FolioApp({super.key});
@@ -48,6 +55,7 @@ class _ShellState extends State<Shell> {
   final GlobalKey<HomeScreenState> _home = GlobalKey<HomeScreenState>();
   Library? _library;
   Downloads? _downloads;
+  KeepWorking? _keepWorking;
   bool _loading = true;
   String? _trouble;
   int _tab = 0;
@@ -76,6 +84,7 @@ class _ShellState extends State<Shell> {
         _downloads = library == null
             ? null
             : Downloads(library: library, session: session);
+        _keepWorking = _downloads == null ? null : KeepWorking(_downloads!);
         _loading = false;
       });
     } catch (e) {
@@ -92,16 +101,20 @@ class _ShellState extends State<Shell> {
     // whoever was signed in still is: the session is kept beside the library
     // rather than inside it, so importing one does not sign anybody out
     final session = _downloads?.session ?? Session.none;
+    _keepWorking?.dispose();
     _downloads?.dispose();
+    final downloads = Downloads(library: library, session: session);
     setState(() {
       _library = library;
-      _downloads = Downloads(library: library, session: session);
+      _downloads = downloads;
+      _keepWorking = KeepWorking(downloads);
       _loading = false;
     });
   }
 
   @override
   void dispose() {
+    _keepWorking?.dispose();
     _downloads?.dispose();
     super.dispose();
   }

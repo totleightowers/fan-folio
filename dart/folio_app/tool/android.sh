@@ -86,3 +86,46 @@ if [ "$APP_ID" != "org.fanfolio" ]; then
 fi
 
 grep -n "applicationId" "$gradle"
+
+# The foreground service, declared where Android insists it is declared.
+#
+# A download is an hour of one request every half minute, and Android stops a
+# backgrounded app from making them. Without this a long walk dies the moment
+# somebody answers a message — which on a phone is most of the time, and it
+# dies silently, which is worse.
+#
+# From Android 14 a service must say which kind it is, and the app must hold
+# the matching permission. dataSync is the one that means "fetching something
+# on the reader's behalf". The plugin declares FOREGROUND_SERVICE itself; the
+# typed permission and the service tag are the app's to declare, and the
+# manifest they go in is generated, so they are put there here.
+python3 - "$manifest" <<'PYEOF'
+import re
+import sys
+
+path = sys.argv[1]
+xml = open(path).read()
+
+permission = (
+    '    <uses-permission '
+    'android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />\n'
+)
+service = (
+    '        <!-- Warning: the plugin looks for this exact name. -->\n'
+    '        <service\n'
+    '            android:name="com.pravera.flutter_foreground_task'
+    '.service.ForegroundService"\n'
+    '            android:foregroundServiceType="dataSync"\n'
+    '            android:exported="false" />\n'
+)
+
+if 'FOREGROUND_SERVICE_DATA_SYNC' not in xml:
+    xml = xml.replace('    <application', permission + '    <application', 1)
+if 'ForegroundService' not in xml:
+    xml = re.sub(r'\n(\s*)</application>', '\n' + service + r'\1</application>',
+                 xml, count=1)
+
+open(path, 'w').write(xml)
+PYEOF
+
+grep -n "FOREGROUND_SERVICE_DATA_SYNC\|ForegroundService" "$manifest"
