@@ -153,14 +153,23 @@ void main() {
     await library.backupTo(at('backup.db'));
     await library.close();
 
-    File(at('archive.db-wal')).writeAsStringSync('not a real log');
+    const stale = 'not a real log';
+    File(at('archive.db-wal')).writeAsStringSync(stale);
     File(at('archive.db-shm')).writeAsStringSync('nor this');
 
     final back = await Library.importFromStream(
       File(at('backup.db')).openRead(),
       at('archive.db'),
     );
-    expect(File(at('archive.db-wal')).existsSync(), isFalse);
+
+    /* Not that there is no log — opening the restored library writes one of
+       its own, which is the database working. What must not survive is the
+       one that belonged to the file that was replaced. */
+    final now = File(at('archive.db-wal'));
+    if (now.existsSync()) {
+      expect(now.readAsStringSync(), isNot(contains(stale)));
+    }
+    expect(File(at('archive.db-shm')).existsSync(), isTrue);
     expect((await back.work('58374928'))?.title, 'Stale');
     await back.close();
   });
