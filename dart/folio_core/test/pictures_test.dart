@@ -49,6 +49,33 @@ void main() {
           reason: 'the same picture twice is one picture');
     });
 
+    test("and a skin's own assets count as much as a chapter's", () {
+      /* An author's stylesheet names backgrounds and webfonts. A chapter
+         whose skin is half-fetched either reaches out to somebody else's
+         server every time it is opened, or renders wrongly for ever. */
+      const css = '''
+#workskin .letter { background: url("https://i.example/paper.png") repeat; }
+#workskin .sms { background-image: url(https://i.example/bubble.svg); }
+@font-face { src: url( 'https://f.example/hand.woff2' ) format('woff2'); }
+#workskin .local { background: url(/relative.png); }''';
+
+      expect(picturesIn('', css: css), [
+        'https://i.example/paper.png',
+        'https://i.example/bubble.svg',
+        'https://f.example/hand.woff2',
+      ]);
+    });
+
+    test('and a picture named by both is named once', () {
+      expect(
+        picturesIn(
+          '<img src="https://i.example/a.png">',
+          css: 'body { background: url(https://i.example/a.png) }',
+        ),
+        ['https://i.example/a.png'],
+      );
+    });
+
     test('and nothing at all is nothing', () {
       expect(picturesIn('<p>words</p>'), isEmpty);
       expect(picturesIn(''), isEmpty);

@@ -21,6 +21,7 @@ class ChapterView extends StatelessWidget {
     this.controller,
     this.onLinkTapped,
     this.pictures = const {},
+    this.onFetchPicture,
     super.key,
   });
 
@@ -40,6 +41,9 @@ class ChapterView extends StatelessWidget {
   /// where somebody read it.
   final Map<String, ({String mime, Uint8List bytes})> pictures;
 
+  /// Fetch one picture and keep it. Null while there is nobody to ask.
+  final Future<Uint8List?> Function(String src)? onFetchPicture;
+
   @override
   Widget build(BuildContext context) {
     final ground = Theme.of(context).brightness == Brightness.dark
@@ -58,6 +62,7 @@ class ChapterView extends StatelessWidget {
         ground: ground,
         onLinkTapped: onLinkTapped,
         pictures: pictures,
+        onFetchPicture: onFetchPicture,
       ),
     );
   }
@@ -139,6 +144,7 @@ class _BlockView extends StatelessWidget {
     required this.ground,
     this.onLinkTapped,
     this.pictures = const {},
+    this.onFetchPicture,
   });
 
   final core.Block block;
@@ -146,6 +152,7 @@ class _BlockView extends StatelessWidget {
   final Ground ground;
   final void Function(String href)? onLinkTapped;
   final Map<String, ({String mime, Uint8List bytes})> pictures;
+  final Future<Uint8List?> Function(String src)? onFetchPicture;
 
   @override
   Widget build(BuildContext context) {
@@ -196,6 +203,7 @@ class _BlockView extends StatelessWidget {
                   ground: ground,
                   onLinkTapped: onLinkTapped,
                   pictures: pictures,
+                  onFetchPicture: onFetchPicture,
                 ),
             ],
           ),
@@ -229,6 +237,7 @@ class _BlockView extends StatelessWidget {
                               ground: ground,
                               onLinkTapped: onLinkTapped,
                               pictures: pictures,
+                              onFetchPicture: onFetchPicture,
                             ),
                         ],
                       ),
@@ -252,18 +261,12 @@ class _BlockView extends StatelessWidget {
         );
 
       case core.Picture(:final src, :final alt):
-        /* Held first, network second. A picture kept with the work is one
-           that survives a tunnel and tells nobody it was looked at; going to
-           the network is the fallback for one that was never fetched, or a
-           hotlink that had already rotted when it was tried. */
+        /* Held, or asked for. A picture kept with the work survives a tunnel
+           and tells nobody it was looked at. One that was never fetched sits
+           on somebody else's server, and reaching for it says when and where
+           this work was read — to a host the reader never chose and this app
+           has no relationship with. So it is offered rather than loaded. */
         final held = pictures[src];
-        final missing = Text(
-          alt ?? 'a picture that is not here',
-          style: settings.body.copyWith(
-            color: ground.inkFaint,
-            fontStyle: FontStyle.italic,
-          ),
-        );
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: Semantics(
@@ -271,11 +274,15 @@ class _BlockView extends StatelessWidget {
             child: held != null
                 ? Image.memory(
                     held.bytes,
-                    errorBuilder: (context, error, stack) => missing,
+                    errorBuilder: (context, error, stack) =>
+                        _Absent(alt: alt, settings: settings, ground: ground),
                   )
-                : Image.network(
-                    src,
-                    errorBuilder: (context, error, stack) => missing,
+                : _Elsewhere(
+                    src: src,
+                    alt: alt,
+                    settings: settings,
+                    ground: ground,
+                    onFetch: onFetchPicture,
                   ),
           ),
         );
@@ -369,4 +376,154 @@ class _BlockView extends StatelessWidget {
     }
     return style;
   }
+}
+
+/// A picture the library does not hold.
+///
+/// Offered rather than fetched. One that was never downloaded sits on
+/// somebody else's server, and reaching for it says when and where this work
+/// was read — to a host the reader never chose and this app has no
+/// relationship with. So it is a tap.
+///
+/// And what the tap fetches is kept. A picture asked for once is theirs: next
+/// time, offline, and in a backup.
+class _Elsewhere extends StatefulWidget {
+  const _Elsewhere({
+    required this.src,
+    required this.alt,
+    required this.settings,
+    required this.ground,
+    required this.onFetch,
+  });
+
+  final String src;
+  final String? alt;
+  final ReadingSettings settings;
+  final Ground ground;
+  final Future<Uint8List?> Function(String src)? onFetch;
+
+  @override
+  State<_Elsewhere> createState() => _ElsewhereState();
+}
+
+class _ElsewhereState extends State<_Elsewhere> {
+  bool _asking = false;
+  Uint8List? _got;
+  bool _failed = false;
+
+  Future<void> _ask() async {
+    final fetch = widget.onFetch;
+    if (fetch == null || _asking) return;
+    setState(() => _asking = true);
+    final bytes = await fetch(widget.src);
+    if (!mounted) return;
+    setState(() {
+      _asking = false;
+      _got = bytes;
+      _failed = bytes == null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final got = _got;
+    if (got != null) {
+      return Image.memory(
+        got,
+        errorBuilder: (context, error, stack) => _Absent(
+          alt: widget.alt,
+          settings: widget.settings,
+          ground: widget.ground,
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: widget.onFetch == null || _failed ? null : _ask,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: widget.ground.sunken,
+          borderRadius: BorderRadius.circular(Radii.tag),
+          border: Border.all(color: widget.ground.lineSoft),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_asking)
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              Icon(
+                _failed ? Icons.broken_image_outlined : Icons.image_outlined,
+                size: 18,
+                color: widget.ground.inkMute,
+              ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.alt?.isNotEmpty ?? false
+                        ? widget.alt!
+                        : 'A picture, not downloaded',
+                    style: widget.settings.body.copyWith(
+                      fontSize: 13.5,
+                      height: 1.4,
+                      color: widget.ground.inkMid,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _said(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: widget.ground.inkFaint,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _said() {
+    if (_asking) return 'Fetching it from ${_host(widget.src)}…';
+    if (_failed) return '${_host(widget.src)} would not give it up';
+    if (widget.onFetch == null) return 'From ${_host(widget.src)}';
+    return 'Tap to fetch it from ${_host(widget.src)} and keep it';
+  }
+}
+
+/// Named, because who is being asked matters as much as whether to ask.
+String _host(String src) => Uri.tryParse(src)?.host ?? 'elsewhere';
+
+/// A picture that will not come, said in words rather than as a broken box.
+class _Absent extends StatelessWidget {
+  const _Absent({
+    required this.alt,
+    required this.settings,
+    required this.ground,
+  });
+
+  final String? alt;
+  final ReadingSettings settings;
+  final Ground ground;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    alt ?? 'a picture that is not here',
+    style: settings.body.copyWith(
+      color: ground.inkFaint,
+      fontStyle: FontStyle.italic,
+    ),
+  );
 }

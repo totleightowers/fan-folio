@@ -54,9 +54,13 @@ class Downloads extends ChangeNotifier {
         'SELECT html FROM chapters WHERE work_id = ?',
         [workId],
       );
-      await _pictures.fetchFor(workId, [
-        for (final row in chapters) '${row['html'] ?? ''}',
-      ]);
+      final work = await library.db.rawQuery(
+        'SELECT skin_css FROM works WHERE work_id = ?',
+        [workId],
+      );
+      final html = [for (final row in chapters) '${row['html'] ?? ''}'];
+      final skin = work.isEmpty ? null : work.first['skin_css'] as String?;
+      await _pictures.fetchFor(workId, html, skinCss: skin);
     } catch (_) {
       /* A picture that will not come is not a work that failed. The text is
          already written down by here, and a chapter with a broken image in
@@ -343,6 +347,40 @@ class Downloads extends ChangeNotifier {
       [workId],
     );
     notifyListeners();
+  }
+
+  /// One picture, asked for from the page it is on.
+  ///
+  /// Fetched through the same clock as everything else and written down where
+  /// it belongs, so a picture somebody asked for once is theirs — offline,
+  /// next time, and in a backup. Null when it could not be had, which the
+  /// reader is told rather than left to infer from a gap.
+  Future<Uint8List?> fetchPicture(String workId, String src) async {
+    final got = await _pictures.fetch(src);
+    await LibraryPictures(library.db).put(workId, got);
+    return got.bytes;
+  }
+
+  /// Everything this work points at that is not here yet.
+  ///
+  /// 1.x fetched a work's pictures too, and they travel in a backup like
+  /// everything else — so for most imported works this finds nothing, which
+  /// is the right answer. What it is for is the gaps: a work whose images
+  /// were never got, one that has been revised since, and an author's skin,
+  /// whose own assets 1.x never collected because it looked only for img
+  /// tags and a stylesheet says url(...).
+  Future<int> fetchPicturesFor(String workId) async {
+    final chapters = await library.db.rawQuery(
+      'SELECT html FROM chapters WHERE work_id = ?',
+      [workId],
+    );
+    final work = await library.db.rawQuery(
+      'SELECT skin_css FROM works WHERE work_id = ?',
+      [workId],
+    );
+    final html = [for (final row in chapters) '${row['html'] ?? ''}'];
+    final skin = work.isEmpty ? null : work.first['skin_css'] as String?;
+    return _pictures.fetchFor(workId, html, skinCss: skin);
   }
 
   bool pause(int id) => _queue.pause(id);

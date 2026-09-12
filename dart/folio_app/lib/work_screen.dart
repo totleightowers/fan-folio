@@ -128,6 +128,37 @@ class _WorkScreenState extends State<WorkScreen> {
     }
   }
 
+  /// Go back for the pictures a work never had.
+  ///
+  /// 1.x fetched them too, so for most imported works this finds nothing —
+  /// which is the right answer. It is for the gaps: an image that failed the
+  /// day it was tried, a work revised since, and an author's skin, whose own
+  /// assets 1.x never collected. Offered rather than done quietly, because a
+  /// work with forty inline images is forty requests at a reader's pace.
+  Future<void> _fetchPictures() async {
+    final downloads = widget.downloads;
+    final work = _work;
+    if (downloads == null || work == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Fetching what this work points at…')),
+    );
+    try {
+      final got = await downloads.fetchPicturesFor(work.workId);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            got == 0
+                ? 'Nothing left to fetch for this one.'
+                : '$got ${got == 1 ? 'picture' : 'pictures'} kept.',
+          ),
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
   void _read(int chapter) {
     final work = _work;
     if (work == null) return;
@@ -183,6 +214,12 @@ class _WorkScreenState extends State<WorkScreen> {
                 downloads: widget.downloads!,
                 work: work,
               ),
+            ),
+          if (widget.downloads != null && (_work?.hasText ?? false))
+            IconButton(
+              icon: const Icon(Icons.image_outlined),
+              tooltip: 'Fetch the pictures',
+              onPressed: _fetchPictures,
             ),
           IconButton(
             icon: const Icon(Icons.more_vert),

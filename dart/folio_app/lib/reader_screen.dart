@@ -106,6 +106,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
     setState(() => _pictures = held);
   }
 
+  /// One picture, asked for from the page it is on, and kept.
+  ///
+  /// Most pictures are already here: 1.x fetched them and they travel in a
+  /// backup. This is for the ones that are not — a work revised since, an
+  /// image that failed the day it was tried. Rather than going back for all
+  /// of them unasked, the one somebody actually wanted is fetched when they
+  /// say so, and from then on it is theirs.
+  Future<Uint8List?> _fetchPicture(String src) async {
+    final downloads = widget.downloads;
+    if (downloads == null) return null;
+    final bytes = await downloads.fetchPicture(widget.work.workId, src);
+    if (bytes != null) unawaited(_loadPictures());
+    return bytes;
+  }
+
   Future<void> _loadPrefs() async {
     final prefs = await widget.library.readingPrefs();
     if (!mounted) return;
@@ -381,6 +396,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             dark: dark,
             startOffset: i + 1 == widget.startAt ? widget.startOffset : 0,
             pictures: _pictures,
+            onFetchPicture: widget.downloads == null ? null : _fetchPicture,
             onScrolled: (at) => _scrolled(i + 1, at),
           ),
         ),
@@ -409,6 +425,7 @@ class _ChapterPage extends StatefulWidget {
     required this.dark,
     required this.startOffset,
     required this.pictures,
+    required this.onFetchPicture,
     required this.onScrolled,
     super.key,
   });
@@ -421,6 +438,7 @@ class _ChapterPage extends StatefulWidget {
   final bool dark;
   final double startOffset;
   final Map<String, ({String mime, Uint8List bytes})> pictures;
+  final Future<Uint8List?> Function(String src)? onFetchPicture;
   final void Function(ScrollMetrics) onScrolled;
 
   @override
@@ -528,6 +546,7 @@ class _ChapterPageState extends State<_ChapterPage> {
         settings: ReadingSettings.from(widget.prefs),
         controller: _scroll,
         pictures: widget.pictures,
+        onFetchPicture: widget.onFetchPicture,
       ),
     );
   }

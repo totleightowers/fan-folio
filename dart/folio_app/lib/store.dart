@@ -215,6 +215,81 @@ class LibraryStore implements core.WorkStore {
   }
 }
 
+/// Works a listing described, without fetching any of them.
+///
+/// One request describes twenty works; fetching twenty costs twenty. This is
+/// how somebody's whole catalogue becomes browsable for the price of reading
+/// their index — and it is what makes a Works tab a list rather than a button.
+///
+/// Never over a work already held: a blurb knows less than a work page, and
+/// CONFLICT_IGNORE is the difference between filling in the gaps and writing
+/// a summary over a work somebody has read.
+Future<int> saveStubs(
+  Database db,
+  List<core.Blurb> listed, {
+  Set<String> refused = const {},
+}) async {
+  var added = 0;
+  await db.transaction((txn) async {
+    for (final blurb in listed) {
+      /* A listing describes it; that is not a reason to put back something
+         taken out on purpose. */
+      if (refused.contains(blurb.workId)) continue;
+
+      final row = {
+        'work_id': blurb.workId,
+        'title': blurb.title,
+        'authors': jsonEncode(blurb.authors),
+        'summary': blurb.summary,
+        'rating': blurb.rating,
+        'language': blurb.language,
+        'complete': blurb.complete ? 1 : 0,
+        'words': blurb.words,
+        'chapter_count': blurb.chapters,
+        /* How many the author says there will be. Without it a finished
+           one-chapter work reads "1/?", which says the archive does not
+           know — when the listing had just told us. */
+        'chapters_planned': blurb.chaptersPlanned,
+        'kudos': blurb.kudos,
+        'bookmark_count': blurb.bookmarkCount,
+        'hits': blurb.hits,
+        'source': 'listing',
+        'has_text': 0,
+      };
+      final at = await txn.insert(
+        'works',
+        row,
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      if (at == 0) continue; // already held, and left alone
+      added++;
+
+      for (final entry in {
+        'fandom': blurb.fandoms,
+        'relationship': blurb.relationships,
+        'character': blurb.characters,
+        'freeform': blurb.freeform,
+        'warning': blurb.warnings,
+        'category': blurb.categories,
+      }.entries) {
+        for (final name in entry.value) {
+          final tag = {
+            'work_id': blurb.workId,
+            'kind': entry.key,
+            'name': name,
+          };
+          await txn.insert(
+            'tags',
+            tag,
+            conflictAlgorithm: ConflictAlgorithm.ignore,
+          );
+        }
+      }
+    }
+  });
+  return added;
+}
+
 /// Where the pictures in a work go.
 ///
 /// The same database as the text, because a picture that lives somewhere else

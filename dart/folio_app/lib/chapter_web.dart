@@ -15,13 +15,16 @@ import 'theme.dart';
 /// letter in a different hand. There is no way to be faithful to that without
 /// a cascade, so those chapters are rendered by the same engine the archive
 /// renders them with.
-/// Stored pictures, put into the markup where their addresses were.
+/// Stored pictures, put where their addresses were.
+///
+/// In the chapter's markup and in the author's own stylesheet alike: a skin
+/// names backgrounds and webfonts, and one whose assets are still on somebody
+/// else's server is a chapter that phones out every time it is opened — or,
+/// with the network shut off as it is here, one that renders wrongly for ever.
 ///
 /// A data URI rather than a file or a local server: this page is built as a
 /// string and handed to the engine, and a picture served from anywhere else
-/// is a second thing to keep in step with the first. It also means the
-/// chapter reaches the network for nothing at all, which is both faster in a
-/// tunnel and quieter about when somebody read it.
+/// is a second thing to keep in step with the first.
 String withPictures(
   String html,
   Map<String, ({String mime, Uint8List bytes})> held,
@@ -151,6 +154,22 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   /// no way to know whether the chapter is empty or the engine gave up.
   bool _plainly = false;
 
+  /// Did anything actually come out?
+  ///
+  /// A webview that renders nothing raises no error: it simply occupies the
+  /// screen and shows a rectangle. That is the failure that cost a chapter
+  /// its text and told nobody, so the height of the document is asked for
+  /// once the load has stopped, and nothing is a failure like any other.
+  Future<void> _didItPaint(InAppWebViewController controller) async {
+    try {
+      final tall = await controller.getContentHeight() ?? 0;
+      if (tall > 0) return;
+      _wentWrong('the chapter came out with no height');
+    } catch (e) {
+      _wentWrong('$e');
+    }
+  }
+
   void _wentWrong(String why) {
     if (!mounted || _plainly) return;
     setState(() {
@@ -225,7 +244,7 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   a { color: ${hex(ground.accent)}; }
 </style>
 <article id="workskin">
-<style>${widget.skinCss ?? ''}</style>
+<style>${withPictures(widget.skinCss ?? '', widget.pictures)}</style>
 ${withPictures(widget.chapterHtml, widget.pictures)}
 </article>
 ''';
@@ -257,6 +276,14 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
         /* Off. This is a stranger's markup rendered next to somebody's
            library, and nothing in a work has any business running. */
         javaScriptEnabled: false,
+        /* And it reaches nothing. The chapter, the archive's stylesheet and
+           the work's own skin are all handed over as text; anything else a
+           skin names — a background, a webfont, a hotlinked picture — sits on
+           somebody else's server, and fetching it says when and where this
+           work was read to a host the reader never chose. An offline reader
+           that quietly phones out is not one. */
+        blockNetworkLoads: true,
+        blockNetworkImage: true,
         /* Painted rather than transparent. A transparent webview that has
            failed to render looks exactly like the page behind it, which is
            how a broken chapter reads as an empty one. */
@@ -267,6 +294,7 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
       onReceivedError: (_, __, error) => _wentWrong(error.description),
       onReceivedHttpError: (_, __, response) =>
           _wentWrong('the page answered ${response.statusCode}'),
+      onLoadStop: (controller, _) => _didItPaint(controller),
     );
   }
 }
