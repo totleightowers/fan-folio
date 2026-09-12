@@ -113,7 +113,12 @@ ${widget.chapterHtml}
   @override
   Widget build(BuildContext context) {
     if (_trouble != null) {
-      return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_trouble!)));
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(_trouble!),
+        ),
+      );
     }
     if (_controller == null) {
       return const Center(child: CircularProgressIndicator());

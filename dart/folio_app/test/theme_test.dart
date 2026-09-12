@@ -10,8 +10,16 @@ void main() {
     expect(Ground.light.paper, isNot(Ground.dark.paper));
     expect(Ground.light.ink, isNot(Ground.dark.ink));
     for (final g in [Ground.light, Ground.dark]) {
-      expect(g.paper, isNot(g.surface), reason: 'a card has to sit on something');
-      expect(g.surface, isNot(g.sunken), reason: 'a well has to be cut into something');
+      expect(
+        g.paper,
+        isNot(g.surface),
+        reason: 'a card has to sit on something',
+      );
+      expect(
+        g.surface,
+        isNot(g.sunken),
+        reason: 'a well has to be cut into something',
+      );
       expect(
         {g.ink, g.inkMid, g.inkMute, g.inkFaint}.length,
         4,

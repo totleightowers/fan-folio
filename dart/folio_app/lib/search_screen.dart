@@ -102,7 +102,9 @@ class _SearchScreenState extends State<SearchScreen> {
           onSubmitted: (_) => _run(),
           decoration: InputDecoration(
             border: InputBorder.none,
-            hintText: _inText ? 'Search every word held…' : 'Search titles and tags…',
+            hintText: _inText
+                ? 'Search every word held…'
+                : 'Search titles and tags…',
             hintStyle: TextStyle(color: ground.inkFaint),
           ),
         ),
@@ -127,25 +129,29 @@ class _SearchScreenState extends State<SearchScreen> {
       body: _running
           ? const Center(child: CircularProgressIndicator())
           : _trouble != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Text(
-                      _trouble!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: ground.inkMute),
-                    ),
-                  ),
-                )
-              : _inText
-                  ? _Passages(hits: _hits, ground: ground, onOpen: widget.onOpen)
-                  : _Works(works: _works, ground: ground, onOpen: widget.onOpen),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text(
+                  _trouble!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: ground.inkMute),
+                ),
+              ),
+            )
+          : _inText
+          ? _Passages(hits: _hits, ground: ground, onOpen: widget.onOpen)
+          : _Works(works: _works, ground: ground, onOpen: widget.onOpen),
     );
   }
 }
 
 class _Passages extends StatelessWidget {
-  const _Passages({required this.hits, required this.ground, required this.onOpen});
+  const _Passages({
+    required this.hits,
+    required this.ground,
+    required this.onOpen,
+  });
 
   final List<Hit> hits;
   final Ground ground;
@@ -188,7 +194,11 @@ class _Passages extends StatelessWidget {
                 // are shown as marked rather than as literal angle brackets
                 Text.rich(
                   _marked(hit.snippet, ground),
-                  style: TextStyle(fontSize: 14, height: 1.45, color: ground.inkMid),
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: ground.inkMid,
+                  ),
                 ),
               ],
             ),
@@ -204,11 +214,14 @@ class _Passages extends StatelessWidget {
     final pattern = RegExp('<<(.*?)>>', dotAll: true);
     var at = 0;
     for (final m in pattern.allMatches(snippet)) {
-      if (m.start > at) spans.add(TextSpan(text: snippet.substring(at, m.start)));
-      spans.add(TextSpan(
-        text: m.group(1),
-        style: TextStyle(color: ground.accent, fontWeight: FontWeight.w700),
-      ));
+      if (m.start > at)
+        spans.add(TextSpan(text: snippet.substring(at, m.start)));
+      spans.add(
+        TextSpan(
+          text: m.group(1),
+          style: TextStyle(color: ground.accent, fontWeight: FontWeight.w700),
+        ),
+      );
       at = m.end;
     }
     if (at < snippet.length) spans.add(TextSpan(text: snippet.substring(at)));
@@ -217,7 +230,11 @@ class _Passages extends StatelessWidget {
 }
 
 class _Works extends StatelessWidget {
-  const _Works({required this.works, required this.ground, required this.onOpen});
+  const _Works({
+    required this.works,
+    required this.ground,
+    required this.onOpen,
+  });
 
   final List<WorkRow> works;
   final Ground ground;

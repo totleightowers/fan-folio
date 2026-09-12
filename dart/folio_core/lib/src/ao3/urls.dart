@@ -141,7 +141,8 @@ enum LinkKind { work, chapter, series, external, unknown }
 /// a chapter id is not a work id, and fetching /works/<chapter id> would
 /// quietly return the wrong story rather than fail.
 class LinkTarget {
-  const LinkTarget(this.kind, {this.workId, this.chapterId, this.seriesId, this.externalId});
+  const LinkTarget(this.kind,
+      {this.workId, this.chapterId, this.seriesId, this.externalId});
 
   final LinkKind kind;
 
@@ -161,7 +162,8 @@ class LinkTarget {
 LinkTarget linkTarget(Object? input) {
   final text = '${input ?? ''}'.trim();
   if (text.isEmpty) return const LinkTarget(LinkKind.unknown);
-  if (RegExp(r'^\d+$').hasMatch(text)) return LinkTarget(LinkKind.work, workId: text);
+  if (RegExp(r'^\d+$').hasMatch(text))
+    return LinkTarget(LinkKind.work, workId: text);
 
   final path = _pathOf(text);
 
@@ -171,17 +173,21 @@ LinkTarget linkTarget(Object? input) {
 
   // the archive's own download links: /downloads/123/title.epub
   final download = RegExp(r'/downloads/(\d+)/').firstMatch(path);
-  if (download != null) return LinkTarget(LinkKind.work, workId: download.group(1));
+  if (download != null)
+    return LinkTarget(LinkKind.work, workId: download.group(1));
 
   // a chapter with no work in the path; only the archive knows which work
   final chapter = RegExp(r'/chapters/(\d+)(?:[/?#]|$)').firstMatch(path);
-  if (chapter != null) return LinkTarget(LinkKind.chapter, chapterId: chapter.group(1));
+  if (chapter != null)
+    return LinkTarget(LinkKind.chapter, chapterId: chapter.group(1));
 
   final series = RegExp(r'/series/(\d+)(?:[/?#]|$)').firstMatch(path);
-  if (series != null) return LinkTarget(LinkKind.series, seriesId: series.group(1));
+  if (series != null)
+    return LinkTarget(LinkKind.series, seriesId: series.group(1));
 
   final external = RegExp(r'/external_works/(\d+)').firstMatch(path);
-  if (external != null) return LinkTarget(LinkKind.external, externalId: external.group(1));
+  if (external != null)
+    return LinkTarget(LinkKind.external, externalId: external.group(1));
 
   return const LinkTarget(LinkKind.unknown);
 }

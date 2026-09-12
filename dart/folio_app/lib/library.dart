@@ -20,16 +20,16 @@ class WorkRow {
   });
 
   factory WorkRow.fromMap(Map<String, Object?> row) => WorkRow(
-        workId: '${row['work_id']}',
-        title: row['title'] as String? ?? '(untitled)',
-        authors: _namesFrom(row['authors'] as String?),
-        summary: row['summary'] as String?,
-        words: row['words'] as int?,
-        chapterCount: row['chapter_count'] as int?,
-        fandom: row['fandom'] as String?,
-        hasText: (row['has_text'] as int? ?? 0) == 1,
-        skinCss: row['skin_css'] as String?,
-      );
+    workId: '${row['work_id']}',
+    title: row['title'] as String? ?? '(untitled)',
+    authors: _namesFrom(row['authors'] as String?),
+    summary: row['summary'] as String?,
+    words: row['words'] as int?,
+    chapterCount: row['chapter_count'] as int?,
+    fandom: row['fandom'] as String?,
+    hasText: (row['has_text'] as int? ?? 0) == 1,
+    skinCss: row['skin_css'] as String?,
+  );
 
   final String workId;
   final String title;
@@ -108,7 +108,9 @@ class Library {
       /* Kept, not overwritten. Somebody importing over a library they have
          already read in is replacing it on purpose, and being wrong about
          that should cost them a rename rather than the library. */
-      await existing.rename('$destination.replaced-${DateTime.now().millisecondsSinceEpoch}');
+      await existing.rename(
+        '$destination.replaced-${DateTime.now().millisecondsSinceEpoch}',
+      );
     }
     // the write-ahead log and its index belong to the file they were written
     // beside; carried over they describe a database that is no longer there
@@ -182,10 +184,13 @@ class Library {
   Future<void> opened(String workId) => markOpened(_Runner(db), workId);
 
   /// Where in the work, and how far down the page.
-  Future<void> savePlace(String workId, int chapter, double offset) => db.rawInsert(
-        saveProgressSql,
-        [workId, chapter, offset, chapter - 1 < 0 ? 0 : chapter - 1],
-      );
+  Future<void> savePlace(String workId, int chapter, double offset) =>
+      db.rawInsert(saveProgressSql, [
+        workId,
+        chapter,
+        offset,
+        chapter - 1 < 0 ? 0 : chapter - 1,
+      ]);
 
   Future<void> finish(String workId, {bool done = true}) => done
       ? db.rawInsert(markFinishedSql, [workId])
@@ -200,7 +205,8 @@ class Library {
   /// common word is never considered at all.
   Future<List<Hit>> searchText(String query, {int limit = 40}) async {
     if (query.trim().isEmpty) return const [];
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT c.work_id, c.number, w.title, w.authors,
              snippet(chapter_fts, '<<', '>>', '…', -1, 24) AS snip,
              matchinfo(chapter_fts, 'pcnalx') AS matchinfo
@@ -208,30 +214,37 @@ class Library {
       JOIN chapters c ON c.id = chapter_fts.rowid
       JOIN works w ON w.work_id = c.work_id
       WHERE chapter_fts MATCH ? AND COALESCE(w.hidden, 0) = 0
-      LIMIT ?''', [query, candidates]);
+      LIMIT ?''',
+      [query, candidates],
+    );
 
     return rank(rows, limit: limit)
-        .map((r) => Hit(
-              workId: '${r['work_id']}',
-              chapter: r['number'] as int? ?? 1,
-              title: r['title'] as String? ?? '(untitled)',
-              authors: _namesFrom(r['authors'] as String?),
-              snippet: r['snip'] as String? ?? '',
-            ))
+        .map(
+          (r) => Hit(
+            workId: '${r['work_id']}',
+            chapter: r['number'] as int? ?? 1,
+            title: r['title'] as String? ?? '(untitled)',
+            authors: _namesFrom(r['authors'] as String?),
+            snippet: r['snip'] as String? ?? '',
+          ),
+        )
         .toList();
   }
 
   /// Titles, authors, summaries and tags — a different question from the text.
   Future<List<WorkRow>> searchMeta(String query, {int limit = 40}) async {
     if (query.trim().isEmpty) return const [];
-    final rows = await db.rawQuery('''
+    final rows = await db.rawQuery(
+      '''
       SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
              w.has_text, w.skin_css,
              (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
       FROM work_fts
       JOIN works w ON w.work_id = work_fts.work_id
       WHERE work_fts MATCH ? AND COALESCE(w.hidden, 0) = 0
-      LIMIT ?''', [query, limit]);
+      LIMIT ?''',
+      [query, limit],
+    );
     return rows.map(WorkRow.fromMap).toList();
   }
 
@@ -245,8 +258,10 @@ class _Runner implements SqlRunner {
   final Database db;
 
   @override
-  Future<List<Map<String, Object?>>> query(String sql, [List<Object?> args = const []]) =>
-      db.rawQuery(sql, args);
+  Future<List<Map<String, Object?>>> query(
+    String sql, [
+    List<Object?> args = const [],
+  ]) => db.rawQuery(sql, args);
 
   @override
   Future<void> execute(String sql) => db.execute(sql);

@@ -16,7 +16,16 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html;
 
 /// What is being done to a run of text.
-enum Mark { emphasis, strong, underline, strike, code, superscript, subscript, small }
+enum Mark {
+  emphasis,
+  strong,
+  underline,
+  strike,
+  code,
+  superscript,
+  subscript,
+  small
+}
 
 /// How a block sits in its measure.
 ///
@@ -26,7 +35,8 @@ enum BlockAlign { start, center, end, justify }
 
 /// A run of text with the marks that apply to it, and a link if it is one.
 class Run {
-  const Run(this.text, {this.marks = const {}, this.href, this.isBreak = false});
+  const Run(this.text,
+      {this.marks = const {}, this.href, this.isBreak = false});
 
   /// A line the author asked for, as opposed to a newline in the markup.
   ///
@@ -152,9 +162,32 @@ const Map<String, Mark> _marks = {
 };
 
 const Set<String> _blockTags = {
-  'p', 'div', 'section', 'article', 'aside', 'blockquote', 'pre', 'hr',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'figure',
-  'figcaption', 'table', 'center', 'address', 'details', 'dl', 'dt', 'dd',
+  'p',
+  'div',
+  'section',
+  'article',
+  'aside',
+  'blockquote',
+  'pre',
+  'hr',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'figure',
+  'figcaption',
+  'table',
+  'center',
+  'address',
+  'details',
+  'dl',
+  'dt',
+  'dd',
 };
 
 /// Turn one chapter's HTML into blocks.
@@ -166,7 +199,8 @@ ChapterDocument parseChapter(String? chapterHtml) {
 }
 
 /// Gather blocks out of a list of nodes, carrying inherited marks downwards.
-void _collect(List<dom.Node> nodes, List<Block> out, Run carried, BlockAlign align) {
+void _collect(
+    List<dom.Node> nodes, List<Block> out, Run carried, BlockAlign align) {
   var loose = <Run>[];
 
   void flush() {
@@ -212,9 +246,11 @@ void _collect(List<dom.Node> nodes, List<Block> out, Run carried, BlockAlign ali
 }
 
 /// One block-level element.
-void _block(dom.Element node, List<Block> out, Run carried, BlockAlign inherited) {
+void _block(
+    dom.Element node, List<Block> out, Run carried, BlockAlign inherited) {
   final tag = node.localName ?? '';
-  final align = _alignOf(node) ?? (tag == 'center' ? BlockAlign.center : inherited);
+  final align =
+      _alignOf(node) ?? (tag == 'center' ? BlockAlign.center : inherited);
 
   switch (tag) {
     case 'hr':
@@ -271,7 +307,8 @@ List<Run> _inline(dom.Element node, Run carried) {
   if (mark != null) context = context.withMark(mark);
   if (tag == 'a') {
     final href = node.attributes['href'];
-    if (href != null && href.trim().isNotEmpty) context = context.withHref(href.trim());
+    if (href != null && href.trim().isNotEmpty)
+      context = context.withHref(href.trim());
   }
 
   final runs = <Run>[];
@@ -292,7 +329,8 @@ List<Run> _inline(dom.Element node, Run carried) {
 BlockAlign? _alignOf(dom.Element node) {
   final attr = node.attributes['align']?.toLowerCase().trim();
   final style = node.attributes['style']?.toLowerCase() ?? '';
-  final styled = RegExp(r'text-align\s*:\s*([a-z]+)').firstMatch(style)?.group(1);
+  final styled =
+      RegExp(r'text-align\s*:\s*([a-z]+)').firstMatch(style)?.group(1);
   final name = styled ?? attr;
   return switch (name) {
     'center' || 'centre' => BlockAlign.center,
@@ -336,6 +374,5 @@ List<Run> _trimRuns(List<Run> runs) {
 }
 
 /// Drop empty paragraphs left behind by containers that held only whitespace.
-List<Block> _tidy(List<Block> blocks) => blocks
-    .where((b) => b is! Paragraph || b.runs.isNotEmpty)
-    .toList();
+List<Block> _tidy(List<Block> blocks) =>
+    blocks.where((b) => b is! Paragraph || b.runs.isNotEmpty).toList();

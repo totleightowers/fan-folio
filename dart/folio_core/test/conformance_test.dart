@@ -19,7 +19,8 @@ void main() {
   final fixture = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
 
   group('links resolve the way 1.x resolves them', () {
-    for (final entry in (fixture['links'] as List).cast<Map<String, Object?>>()) {
+    for (final entry
+        in (fixture['links'] as List).cast<Map<String, Object?>>()) {
       final input = entry['input'] as String;
       test('"$input"', () {
         final expected = entry['target'] as Map<String, Object?>;
@@ -39,15 +40,18 @@ void main() {
   });
 
   group('bylines point where 1.x points them', () {
-    for (final entry in (fixture['bylines'] as List).cast<Map<String, Object?>>()) {
+    for (final entry
+        in (fixture['bylines'] as List).cast<Map<String, Object?>>()) {
       final byline = entry['byline'] as String;
       test('"$byline"', () {
         expect(authorPath(byline), entry['path'],
-            reason: 'a pseud read as a username is a 404 for a quarter of a library');
+            reason:
+                'a pseud read as a username is a 404 for a quarter of a library');
         expect(authorWorks(byline), entry['works']);
         expect(authorProfile(byline), entry['profile']);
         expect(isOrphan(byline), entry['orphan'],
-            reason: 'an orphaned work read as an account is a million works to download');
+            reason:
+                'an orphaned work read as an account is a million works to download');
       });
     }
   });

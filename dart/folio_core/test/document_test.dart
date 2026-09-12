@@ -23,7 +23,8 @@ void main() {
   test('marks nest rather than replacing one another', () {
     final d = doc('<p><strong>very <em>very</em> sure</strong></p>');
     final runs = (d.blocks.single as Paragraph).runs;
-    final inner = runs.firstWhere((r) => r.text.trim() == 'very' && r.marks.length > 1);
+    final inner =
+        runs.firstWhere((r) => r.text.trim() == 'very' && r.marks.length > 1);
     expect(inner.marks, {Mark.strong, Mark.emphasis});
   });
 
@@ -31,7 +32,8 @@ void main() {
     /* Fic markup is full of newlines between tags. Treating those as breaks
        would double-space an entire library. */
     final d = doc('<p>First line<br>Second line</p>');
-    expect(textOf((d.blocks.single as Paragraph).runs), 'First line\nSecond line');
+    expect(
+        textOf((d.blocks.single as Paragraph).runs), 'First line\nSecond line');
 
     final wrapped = doc('<p>One\n   two\n   three</p>');
     expect(textOf((wrapped.blocks.single as Paragraph).runs), 'One two three');
@@ -56,7 +58,8 @@ void main() {
   });
 
   test('a quotation is a quotation and keeps its paragraphs', () {
-    final d = doc('<blockquote><p>Dear you,</p><p>I am sorry.</p></blockquote>');
+    final d =
+        doc('<blockquote><p>Dear you,</p><p>I am sorry.</p></blockquote>');
     final quote = d.blocks.single as Quote;
     expect(quote.children.length, 2);
     expect(textOf((quote.children.first as Paragraph).runs), 'Dear you,');

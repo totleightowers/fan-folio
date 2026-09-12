@@ -10,11 +10,13 @@ import 'package:test/test.dart';
 /// a plausible order. So these are the blobs SQLite actually produced for real
 /// queries over the real fixture, with the scores 1.x gave them.
 void main() {
-  final fixture = jsonDecode(
-      File('test/conformance/search.json').readAsStringSync()) as Map<String, Object?>;
+  final fixture =
+      jsonDecode(File('test/conformance/search.json').readAsStringSync())
+          as Map<String, Object?>;
 
   group('a result scores what 1.x scores it', () {
-    for (final entry in (fixture['cases'] as List).cast<Map<String, Object?>>()) {
+    for (final entry
+        in (fixture['cases'] as List).cast<Map<String, Object?>>()) {
       final query = entry['query'] as String;
       test('"$query"', () {
         final rows = (entry['rows'] as List).cast<Map<String, Object?>>();
@@ -39,20 +41,29 @@ void main() {
     final rows = (entry['rows'] as List).cast<Map<String, Object?>>();
     final ranked = rank([
       for (final row in rows)
-        {'rowid': row['rowid'], 'matchinfo': base64Decode(row['matchinfo'] as String)},
+        {
+          'rowid': row['rowid'],
+          'matchinfo': base64Decode(row['matchinfo'] as String)
+        },
     ]);
     final scores = ranked.map((r) => r['score'] as double).toList();
-    expect(scores, orderedEquals(([...scores]..sort((a, b) => b.compareTo(a)))));
+    expect(
+        scores, orderedEquals(([...scores]..sort((a, b) => b.compareTo(a)))));
     expect(ranked.first.containsKey('matchinfo'), isFalse,
         reason: 'the blob is working state, not something a caller should see');
   });
 
-  test('a ranking failure degrades the order rather than losing the results', () {
+  test('a ranking failure degrades the order rather than losing the results',
+      () {
     // Anything unparseable scores zero; nothing throws, because a search that
     // returns nothing is worse than one in an unhelpful order.
     expect(bm25(null), 0);
     expect(bm25(<int>[]), 0);
     expect(bm25([1, 2, 3]), 0);
-    expect(rank([{'rowid': 1, 'matchinfo': null}]).length, 1);
+    expect(
+        rank([
+          {'rowid': 1, 'matchinfo': null}
+        ]).length,
+        1);
   });
 }

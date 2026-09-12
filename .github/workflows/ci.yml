@@ -50,6 +50,13 @@ jobs:
         working-directory: dart/folio_core
         run: dart analyze --fatal-infos
 
+      # Formatted rather than argued about. The lint that asks for trailing
+      # commas is the formatter's own rule, so running the formatter is how
+      # you satisfy it — and it runs here because it can run anywhere Dart
+      # does, unlike the half of this project that needs Flutter.
+      - name: Formatted
+        run: dart format --set-exit-if-changed dart/folio_core dart/folio_app
+
   flutter:
     name: The app builds
     runs-on: ubuntu-latest

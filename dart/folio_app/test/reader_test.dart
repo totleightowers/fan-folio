@@ -11,7 +11,9 @@ import 'package:folio_core/folio_core.dart' as core;
 Widget wrap(Widget child) => MaterialApp(home: Scaffold(body: child));
 
 void main() {
-  testWidgets('a chapter is laid out as text, paragraph by paragraph', (tester) async {
+  testWidgets('a chapter is laid out as text, paragraph by paragraph', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrap(
         ChapterView(
@@ -21,8 +23,14 @@ void main() {
       ),
     );
 
-    expect(find.textContaining('The first.', findRichText: true), findsOneWidget);
-    expect(find.textContaining('The second.', findRichText: true), findsOneWidget);
+    expect(
+      find.textContaining('The first.', findRichText: true),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('The second.', findRichText: true),
+      findsOneWidget,
+    );
   });
 
   testWidgets('emphasis arrives as italics, not as asterisks', (tester) async {
@@ -44,11 +52,17 @@ void main() {
     final italic = spans.whereType<TextSpan>().where(
       (s) => s.style?.fontStyle == FontStyle.italic,
     );
-    expect(italic, isNotEmpty, reason: 'the author emphasised a word and it was lost');
+    expect(
+      italic,
+      isNotEmpty,
+      reason: 'the author emphasised a word and it was lost',
+    );
     expect(italic.first.text, 'certain');
   });
 
-  testWidgets('a scene break is drawn, because it is the pacing', (tester) async {
+  testWidgets('a scene break is drawn, because it is the pacing', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrap(
         ChapterView(
@@ -60,7 +74,9 @@ void main() {
     expect(find.byType(Divider), findsOneWidget);
   });
 
-  testWidgets('a table says so rather than being flattened or dropped', (tester) async {
+  testWidgets('a table says so rather than being flattened or dropped', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       wrap(
         ChapterView(

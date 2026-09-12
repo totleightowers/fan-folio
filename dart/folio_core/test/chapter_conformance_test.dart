@@ -56,11 +56,13 @@ String _text(List<Block> blocks) {
 }
 
 void main() {
-  final fixture = jsonDecode(
-      File('test/conformance/chapters.json').readAsStringSync()) as Map<String, Object?>;
+  final fixture =
+      jsonDecode(File('test/conformance/chapters.json').readAsStringSync())
+          as Map<String, Object?>;
 
   group('a real chapter keeps every word', () {
-    for (final entry in (fixture['chapters'] as List).cast<Map<String, Object?>>()) {
+    for (final entry
+        in (fixture['chapters'] as List).cast<Map<String, Object?>>()) {
       test('chapter ${entry['number']}', () {
         final expected = (entry['words'] as List).cast<String>();
         final actual = _words(parseChapter(entry['html'] as String));
@@ -72,10 +74,12 @@ void main() {
   });
 
   group('and so does every shape fic is written in', () {
-    for (final entry in (fixture['shapes'] as List).cast<Map<String, Object?>>()) {
+    for (final entry
+        in (fixture['shapes'] as List).cast<Map<String, Object?>>()) {
       final html = entry['html'] as String;
       test(html.length > 46 ? '${html.substring(0, 46)}…' : html, () {
-        expect(_words(parseChapter(html)), (entry['words'] as List).cast<String>());
+        expect(_words(parseChapter(html)),
+            (entry['words'] as List).cast<String>());
       });
     }
   });

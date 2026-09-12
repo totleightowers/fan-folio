@@ -42,10 +42,12 @@ void main() {
   test('reading to the foot of a long chapter is reading to its end', () {
     const double room = 12000 - 780;
     expect(end(scrollY: room), isTrue);
-    expect(end(scrollY: room - 60), isTrue, reason: 'nobody scrolls the last pixel');
+    expect(end(scrollY: room - 60), isTrue,
+        reason: 'nobody scrolls the last pixel');
   });
 
-  test('finishing the last stretch of a chapter reopened near its end counts', () {
+  test('finishing the last stretch of a chapter reopened near its end counts',
+      () {
     const double room = 12000 - 780;
     expect(end(scrollY: room, openedAt: room - 900), isTrue);
   });
