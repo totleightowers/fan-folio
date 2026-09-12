@@ -126,6 +126,14 @@ class HomeScreenState extends State<HomeScreen> {
   }
 }
 
+/// The two questions the library could already answer and had no door to.
+///
+/// Held as constants rather than written at the call: the formatter splits a
+/// map literal passed inline, and a split argument list wants a trailing comma
+/// the formatter then takes away again.
+const Map<String, Object?> _forLater = {'state': 'later', 'sort': 'title'};
+const Map<String, Object?> _neverOpened = {'state': 'unread', 'sort': 'added'};
+
 /// Three ways to start, for the times when what you want is not a work but a
 /// way of choosing one.
 class _StartHere extends StatelessWidget {
@@ -173,10 +181,7 @@ class _StartHere extends StatelessWidget {
               child: _Tile(
                 title: 'For later',
                 note: 'what you meant to get to',
-                onTap: () => onNarrow(const {
-                  'state': 'later',
-                  'sort': 'title',
-                }, 'Marked for later'),
+                onTap: () => onNarrow(_forLater, 'Marked for later'),
               ),
             ),
             const SizedBox(width: 10),
@@ -184,10 +189,7 @@ class _StartHere extends StatelessWidget {
               child: _Tile(
                 title: 'Never opened',
                 note: 'the ones still waiting',
-                onTap: () => onNarrow(const {
-                  'state': 'unread',
-                  'sort': 'added',
-                }, 'Never opened'),
+                onTap: () => onNarrow(_neverOpened, 'Never opened'),
               ),
             ),
           ],
