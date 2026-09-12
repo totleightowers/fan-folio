@@ -92,4 +92,46 @@ void main() {
         reason:
             'a count including what the library hides is a library that looks broken');
   });
+
+  test('a surprise is one nobody has opened', () {
+    /* Offering something half-read as a surprise is the Continue reading
+       shelf with a worse name, and offering something a blocked author wrote
+       is the block not working. */
+    final db = library();
+    final all = <Object?>{};
+    for (var i = 0; i < 40; i++) {
+      final rows = db.select(surpriseSql);
+      if (rows.isNotEmpty) all.add(rows.first['work_id']);
+    }
+    expect(all, {'1', '2'}, reason: 'Charlie has been opened');
+
+    db.execute("UPDATE works SET hidden = 1 WHERE work_id = '1'");
+    final again = <Object?>{};
+    for (var i = 0; i < 40; i++) {
+      again.add(db.select(surpriseSql).first['work_id']);
+    }
+    expect(again, {'2'});
+  });
+
+  test('and says so rather than nothing when there is nothing left', () {
+    final db = library();
+    db.execute('UPDATE works SET hidden = 1');
+    expect(db.select(surpriseSql), isEmpty);
+  });
+
+  test('the ways in are the kinds the library actually has', () {
+    /* Rating is a column rather than a row in the tags table, which is why it
+       is listed here with no limit of its own: there are six of them. */
+    expect(
+      browseKinds.map((k) => k.$1),
+      ['fandom', 'relationship', 'character', 'freeform', 'rating'],
+    );
+    for (final (kind, title, howMany) in browseKinds) {
+      expect(title, isNotEmpty);
+      if (kind == 'rating') continue;
+      expect(tagKinds, contains(kind),
+          reason: '$kind is offered as a way in and is not a kind of tag');
+      expect(howMany, greaterThan(0));
+    }
+  });
 }

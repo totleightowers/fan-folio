@@ -256,6 +256,33 @@ class Library {
         .toList();
   }
 
+  /// The busiest handful of each kind, for the ways in that are not a list.
+  ///
+  /// Asked of the whole library rather than of whatever is filtered, because
+  /// this is the front door: narrowing it by what somebody last looked at
+  /// would make the door lead back where they already were.
+  Future<Map<String, List<Count>>> browse() async {
+    final out = <String, List<Count>>{};
+    for (final (kind, _, howMany) in core.browseKinds) {
+      try {
+        final counts = kind == 'rating'
+            ? await facet(core.columnFacet(const {}, 'rating'))
+            : await facet(core.tagFacet(const {}, kind, limit: howMany));
+        if (counts.isNotEmpty) out[kind] = counts;
+      } catch (_) {
+        /* A library old enough to be missing a table is a library with fewer
+           ways in, not a Home screen that will not draw. */
+      }
+    }
+    return out;
+  }
+
+  /// Something nobody has opened. Null when there is nothing left unread.
+  Future<String?> surprise() async {
+    final rows = await db.rawQuery(core.surpriseSql);
+    return rows.isEmpty ? null : '${rows.first['work_id']}';
+  }
+
   Future<List<Hit>> searchText(String query, {int limit = 40}) async {
     if (query.trim().isEmpty) return const [];
     final rows = await db.rawQuery(

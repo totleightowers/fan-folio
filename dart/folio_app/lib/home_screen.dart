@@ -16,6 +16,8 @@ class HomeScreen extends StatefulWidget {
     required this.library,
     required this.onOpen,
     required this.onSeeAll,
+    required this.onNarrow,
+    required this.onOpenById,
     this.onHold,
     super.key,
   });
@@ -23,6 +25,14 @@ class HomeScreen extends StatefulWidget {
   final Library library;
   final void Function(WorkRow) onOpen;
   final void Function(Map<String, Object?> view, String title) onSeeAll;
+
+  /// A chip or a tile is a filter, not a category page: choosing one lands in
+  /// the library already narrowed, which is one screen rather than two.
+  final void Function(Map<String, Object?> view, String title) onNarrow;
+
+  /// Surprise me has a work id rather than a row to open with.
+  final void Function(String workId) onOpenById;
+
   final void Function(WorkRow)? onHold;
 
   @override
@@ -32,6 +42,7 @@ class HomeScreen extends StatefulWidget {
 class HomeScreenState extends State<HomeScreen> {
   final List<(core.Shelf, List<WorkRow>, int)> _shelves = [];
   Stats? _stats;
+  Map<String, List<Count>> _browse = const {};
   bool _loading = true;
 
   @override
@@ -50,12 +61,14 @@ class HomeScreenState extends State<HomeScreen> {
       if (works.isNotEmpty) built.add((shelf, works, total));
     }
     final stats = await widget.library.stats();
+    final browse = await widget.library.browse();
     if (!mounted) return;
     setState(() {
       _shelves
         ..clear()
         ..addAll(built);
       _stats = stats;
+      _browse = browse;
       _loading = false;
     });
   }
@@ -72,26 +85,339 @@ class HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    /* Assembled as a list of sections rather than counted out of an index.
+       The stats used to be placed by arithmetic on the item number, which is
+       fine until something else goes on the screen — and then the ways in
+       land between two shelves. */
+    final sections = <Widget>[
+      for (var i = 0; i < _shelves.length; i++) ...[
+        Builder(
+          builder: (context) {
+            final (shelf, works, total) = _shelves[i];
+            return Shelf(
+              title: shelf.title,
+              works: works,
+              total: total,
+              onOpen: widget.onOpen,
+              onHold: widget.onHold,
+              onSeeAll: () => widget.onSeeAll(shelf.view, shelf.title),
+            );
+          },
+        ),
+        /* The counts go directly under the thing somebody came back for. Left
+           at the foot they sat under every shelf and the whole of Browse,
+           which is present and out of sight. */
+        if (i == 0 && _stats != null) _StatsRow(stats: _stats!),
+      ],
+      _StartHere(
+        library: widget.library,
+        onNarrow: widget.onNarrow,
+        onOpenById: widget.onOpenById,
+      ),
+      if (_browse.isNotEmpty)
+        _Browse(browse: _browse, onNarrow: widget.onNarrow),
+    ];
+
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 24),
-      // the counts go after the first shelf: last in the document they sit
-      // under every shelf, which is present and out of sight
-      itemCount: _shelves.length + 1,
-      itemBuilder: (context, i) {
-        if (i == 1 && _stats != null) return _StatsRow(stats: _stats!);
-        final at = i > 1 ? i - 1 : i;
-        final (shelf, works, total) = _shelves[at];
-        return Shelf(
-          title: shelf.title,
-          works: works,
-          total: total,
-          onOpen: widget.onOpen,
-          onHold: widget.onHold,
-          onSeeAll: () => widget.onSeeAll(shelf.view, shelf.title),
-        );
-      },
+      itemCount: sections.length,
+      itemBuilder: (context, i) => sections[i],
     );
   }
+}
+
+/// Three ways to start, for the times when what you want is not a work but a
+/// way of choosing one.
+class _StartHere extends StatelessWidget {
+  const _StartHere({
+    required this.library,
+    required this.onNarrow,
+    required this.onOpenById,
+  });
+
+  final Library library;
+  final void Function(Map<String, Object?> view, String title) onNarrow;
+  final void Function(String workId) onOpenById;
+
+  Future<void> _surprise(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final workId = await library.surprise();
+    if (workId == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Nothing unread left.')),
+      );
+      return;
+    }
+    onOpenById(workId);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle('Start here'),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _Tile(
+                title: 'Surprise me',
+                note: 'something you have never opened',
+                onTap: () => _surprise(context),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _Tile(
+                title: 'For later',
+                note: 'what you meant to get to',
+                onTap: () => onNarrow(const {
+                  'state': 'later',
+                  'sort': 'title',
+                }, 'Marked for later'),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _Tile(
+                title: 'Never opened',
+                note: 'the ones still waiting',
+                onTap: () => onNarrow(const {
+                  'state': 'unread',
+                  'sort': 'added',
+                }, 'Never opened'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _Tile extends StatelessWidget {
+  const _Tile({required this.title, required this.note, required this.onTap});
+
+  final String title;
+  final String note;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ground = groundOf(context);
+    return Material(
+      color: ground.surface,
+      borderRadius: BorderRadius.circular(Radii.card),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.card),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(Radii.card),
+            border: Border.all(color: ground.lineSoft),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontFamily: titleFace,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w600,
+                    color: ground.ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  note,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.3,
+                    color: ground.inkMute,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ways in that are not a list.
+///
+/// Fic is found by fandom and pairing far more often than by title, so those
+/// are the front door. Each chip is a filter rather than a category page:
+/// tapping one lands in the library already narrowed.
+class _Browse extends StatefulWidget {
+  const _Browse({required this.browse, required this.onNarrow});
+
+  final Map<String, List<Count>> browse;
+  final void Function(Map<String, Object?> view, String title) onNarrow;
+
+  @override
+  State<_Browse> createState() => _BrowseState();
+}
+
+class _BrowseState extends State<_Browse> {
+  late String _kind = widget.browse.keys.first;
+
+  @override
+  Widget build(BuildContext context) {
+    final ground = groundOf(context);
+    final kinds = [
+      for (final (kind, title, _) in core.browseKinds)
+        if (widget.browse[kind]?.isNotEmpty ?? false) (kind, title),
+    ];
+    final counts = widget.browse[_kind] ?? const <Count>[];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionTitle('Browse'),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final (kind, title) in kinds)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(title),
+                      showCheckmark: false,
+                      selected: kind == _kind,
+                      onSelected: (_) => setState(() => _kind = kind),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final count in counts)
+                _BrowseChip(
+                  count: count,
+                  /* A card's spine is a hash of its fandom, so the same name
+                     is the same colour wherever it appears. Tinting the chip
+                     with it makes this row a key to the shelves above. A
+                     pairing or a rating has no spine of its own to agree
+                     with, so it gets none. */
+                  spine: _kind == 'fandom'
+                      ? Color(0xFF000000 | core.spineRgb(count.name))
+                      : null,
+                  ground: ground,
+                  onTap: () => widget.onNarrow(
+                    _kind == 'rating'
+                        ? {
+                            'rating': [count.name],
+                            'sort': 'added',
+                          }
+                        : {
+                            'include': [count.name],
+                            'sort': 'added',
+                          },
+                    count.name,
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrowseChip extends StatelessWidget {
+  const _BrowseChip({
+    required this.count,
+    required this.spine,
+    required this.ground,
+    required this.onTap,
+  });
+
+  final Count count;
+  final Color? spine;
+  final Ground ground;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: ground.surface,
+    borderRadius: BorderRadius.circular(Radii.pill),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(Radii.pill),
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(color: ground.lineSoft),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(11, 7, 11, 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (spine != null) ...[
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: spine,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 7),
+              ],
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 200),
+                child: Text(
+                  count.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.5, color: ground.ink),
+                ),
+              ),
+              const SizedBox(width: 7),
+              Text(
+                '${count.n}',
+                style: TextStyle(fontSize: 12, color: ground.inkFaint),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// A sign, not a headline competing with the titles under it.
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: TextStyle(
+      fontFamily: titleFace,
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      color: groundOf(context).ink,
+    ),
+  );
 }
 
 class _StatsRow extends StatelessWidget {
