@@ -88,7 +88,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final reached = core.reachedTheEnd(
       scrollY: y,
       innerHeight: _scroll.position.viewportDimension,
-      scrollHeight: _scroll.position.maxScrollExtent + _scroll.position.viewportDimension,
+      scrollHeight:
+          _scroll.position.maxScrollExtent + _scroll.position.viewportDimension,
       openedAt: _openedAt,
     );
     if (!reached) return;
@@ -141,7 +142,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.work.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          widget.work.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: FutureBuilder<String?>(
         future: _html,
@@ -189,7 +194,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     child: Text('$_chapter / $_total'),
                   ),
                   IconButton(
-                    onPressed: _chapter < _total ? () => _go(_chapter + 1) : null,
+                    onPressed: _chapter < _total
+                        ? () => _go(_chapter + 1)
+                        : null,
                     icon: const Icon(Icons.chevron_right),
                     tooltip: 'Next chapter',
                   ),

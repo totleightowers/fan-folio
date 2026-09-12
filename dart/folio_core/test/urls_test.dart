@@ -98,7 +98,8 @@ void main() {
         reason: 'a bare name is a pseud of the same name');
     expect(authorProfile('Mother of Pearl (notnacre)'),
         'https://archiveofourown.org/users/notnacre/pseuds/Mother%20of%20Pearl',
-        reason: 'a pseud with a space still has to survive being put in a path');
+        reason:
+            'a pseud with a space still has to survive being put in a path');
   });
 
   test('a tap on an orphaned work does not download the orphanage', () {
@@ -111,7 +112,8 @@ void main() {
         contains('/users/orphan_account/pseuds/x______o/works'));
   });
 
-  test('the work page asks for the whole work and gets past the interstitial', () {
+  test('the work page asks for the whole work and gets past the interstitial',
+      () {
     final url = workPage(work);
     expect(url, contains('view_full_work=true'));
     expect(url, contains('view_adult=true'),

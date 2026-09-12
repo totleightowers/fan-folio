@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:folio_core/folio_core.dart';
+import 'package:folio_core/folio_core.dart' as core;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -20,16 +21,16 @@ class WorkRow {
   });
 
   factory WorkRow.fromMap(Map<String, Object?> row) => WorkRow(
-        workId: '${row['work_id']}',
-        title: row['title'] as String? ?? '(untitled)',
-        authors: _namesFrom(row['authors'] as String?),
-        summary: row['summary'] as String?,
-        words: row['words'] as int?,
-        chapterCount: row['chapter_count'] as int?,
-        fandom: row['fandom'] as String?,
-        hasText: (row['has_text'] as int? ?? 0) == 1,
-        skinCss: row['skin_css'] as String?,
-      );
+    workId: '${row['work_id']}',
+    title: row['title'] as String? ?? '(untitled)',
+    authors: _namesFrom(row['authors'] as String?),
+    summary: row['summary'] as String?,
+    words: row['words'] as int?,
+    chapterCount: row['chapter_count'] as int?,
+    fandom: row['fandom'] as String?,
+    hasText: (row['has_text'] as int? ?? 0) == 1,
+    skinCss: row['skin_css'] as String?,
+  );
 
   final String workId;
   final String title;
@@ -42,6 +43,26 @@ class WorkRow {
   final String? skinCss;
 
   String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
+
+  /// The line under a card: what it is, how long, and whether it is here.
+  String get facts => [
+    if (fandom != null) fandom!,
+    if (words != null) '${_thousands(words!)} words',
+    if (chapterCount != null && chapterCount! > 1) '$chapterCount chapters',
+    if (!hasText) 'not downloaded',
+  ].join(' · ');
+}
+
+/// Thousands separated, because a number nobody can read at a glance is not
+/// doing the job a number is there to do.
+String _thousands(int n) {
+  final digits = '$n';
+  final out = StringBuffer();
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+    out.write(digits[i]);
+  }
+  return out.toString();
 }
 
 /// Authors are a JSON array in a text column. A work with several is ordinary.
@@ -108,7 +129,9 @@ class Library {
       /* Kept, not overwritten. Somebody importing over a library they have
          already read in is replacing it on purpose, and being wrong about
          that should cost them a rename rather than the library. */
-      await existing.rename('$destination.replaced-${DateTime.now().millisecondsSinceEpoch}');
+      await existing.rename(
+        '$destination.replaced-${DateTime.now().millisecondsSinceEpoch}',
+      );
     }
     // the write-ahead log and its index belong to the file they were written
     // beside; carried over they describe a database that is no longer there
@@ -182,14 +205,92 @@ class Library {
   Future<void> opened(String workId) => markOpened(_Runner(db), workId);
 
   /// Where in the work, and how far down the page.
-  Future<void> savePlace(String workId, int chapter, double offset) => db.rawInsert(
-        saveProgressSql,
-        [workId, chapter, offset, chapter - 1 < 0 ? 0 : chapter - 1],
-      );
+  Future<void> savePlace(String workId, int chapter, double offset) =>
+      db.rawInsert(saveProgressSql, [
+        workId,
+        chapter,
+        offset,
+        chapter - 1 < 0 ? 0 : chapter - 1,
+      ]);
 
   Future<void> finish(String workId, {bool done = true}) => done
       ? db.rawInsert(markFinishedSql, [workId])
       : db.rawUpdate(markUnfinishedSql, [workId]);
+
+  /// Every word held, ranked.
+  ///
+  /// The index is FTS4 over the chapter text, so the ranking is computed
+  /// rather than asked for — see folio_core, where it is held to the scores
+  /// 1.x gives the same blobs. SQLite returns matches in rowid order, so the
+  /// candidate pool has to be wider than the answer or the best match for a
+  /// common word is never considered at all.
+  /// One shelf, and how much of it is not on it.
+  Future<(List<WorkRow>, int)> shelf(core.Shelf shelf, {int limit = 12}) async {
+    final rows = await db.rawQuery(shelf.sql(limit: limit));
+    final counted = await db.rawQuery(shelf.countSql);
+    return (
+      rows.map(WorkRow.fromMap).toList(),
+      (counted.first['n'] as int?) ?? 0,
+    );
+  }
+
+  /// What the library amounts to.
+  Future<Stats> stats() async {
+    final totals = (await db.rawQuery(core.statsSql)).first;
+    final read = (await db.rawQuery(core.readStatsSql)).first;
+    return Stats(
+      works: totals['works'] as int? ?? 0,
+      words: (totals['words'] as num?)?.toInt() ?? 0,
+      later: totals['later'] as int? ?? 0,
+      finished: read['finished'] as int? ?? 0,
+      wordsRead: (read['wordsRead'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Future<List<Hit>> searchText(String query, {int limit = 40}) async {
+    if (query.trim().isEmpty) return const [];
+    final rows = await db.rawQuery(
+      '''
+      SELECT c.work_id, c.number, w.title, w.authors,
+             snippet(chapter_fts, '<<', '>>', '…', -1, 24) AS snip,
+             matchinfo(chapter_fts, 'pcnalx') AS matchinfo
+      FROM chapter_fts
+      JOIN chapters c ON c.id = chapter_fts.rowid
+      JOIN works w ON w.work_id = c.work_id
+      WHERE chapter_fts MATCH ? AND COALESCE(w.hidden, 0) = 0
+      LIMIT ?''',
+      [query, candidates],
+    );
+
+    return rank(rows, limit: limit)
+        .map(
+          (r) => Hit(
+            workId: '${r['work_id']}',
+            chapter: r['number'] as int? ?? 1,
+            title: r['title'] as String? ?? '(untitled)',
+            authors: _namesFrom(r['authors'] as String?),
+            snippet: r['snip'] as String? ?? '',
+          ),
+        )
+        .toList();
+  }
+
+  /// Titles, authors, summaries and tags — a different question from the text.
+  Future<List<WorkRow>> searchMeta(String query, {int limit = 40}) async {
+    if (query.trim().isEmpty) return const [];
+    final rows = await db.rawQuery(
+      '''
+      SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
+             w.has_text, w.skin_css,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
+      FROM work_fts
+      JOIN works w ON w.work_id = work_fts.work_id
+      WHERE work_fts MATCH ? AND COALESCE(w.hidden, 0) = 0
+      LIMIT ?''',
+      [query, limit],
+    );
+    return rows.map(WorkRow.fromMap).toList();
+  }
 
   Future<void> close() => db.close();
 }
@@ -201,8 +302,10 @@ class _Runner implements SqlRunner {
   final Database db;
 
   @override
-  Future<List<Map<String, Object?>>> query(String sql, [List<Object?> args = const []]) =>
-      db.rawQuery(sql, args);
+  Future<List<Map<String, Object?>>> query(
+    String sql, [
+    List<Object?> args = const [],
+  ]) => db.rawQuery(sql, args);
 
   @override
   Future<void> execute(String sql) => db.execute(sql);
@@ -212,6 +315,43 @@ class ChapterRow {
   const ChapterRow(this.number, this.title);
   final int number;
   final String? title;
+}
+
+/// What the library amounts to: the line that makes Home read as somebody's
+/// own archive rather than a generic discovery screen.
+class Stats {
+  const Stats({
+    required this.works,
+    required this.words,
+    required this.later,
+    required this.finished,
+    required this.wordsRead,
+  });
+
+  final int works;
+  final int words;
+  final int later;
+  final int finished;
+  final int wordsRead;
+}
+
+/// One passage found, and where it is.
+class Hit {
+  const Hit({
+    required this.workId,
+    required this.chapter,
+    required this.title,
+    required this.authors,
+    required this.snippet,
+  });
+
+  final String workId;
+  final int chapter;
+  final String title;
+  final List<String> authors;
+  final String snippet;
+
+  String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
 }
 
 /// Where somebody had got to.

@@ -73,11 +73,11 @@ class ReadingSettings {
   final TextAlign align;
 
   TextStyle get body => TextStyle(
-        fontFamily: family,
-        fontSize: size,
-        height: lineHeight,
-        fontWeight: weight,
-      );
+    fontFamily: family,
+    fontSize: size,
+    height: lineHeight,
+    fontWeight: weight,
+  );
 }
 
 class _BlockView extends StatelessWidget {
@@ -251,11 +251,11 @@ class _BlockView extends StatelessWidget {
   }
 
   TextAlign? _align(core.BlockAlign align) => switch (align) {
-        core.BlockAlign.start => null,
-        core.BlockAlign.center => TextAlign.center,
-        core.BlockAlign.end => TextAlign.end,
-        core.BlockAlign.justify => TextAlign.justify,
-      };
+    core.BlockAlign.start => null,
+    core.BlockAlign.center => TextAlign.center,
+    core.BlockAlign.end => TextAlign.end,
+    core.BlockAlign.justify => TextAlign.justify,
+  };
 
   TextSpan _span(List<core.Run> runs, {TextStyle? style}) {
     final base = style ?? settings.body;
@@ -267,7 +267,8 @@ class _BlockView extends StatelessWidget {
             style: _styleFor(run, base),
             recognizer: run.href == null || onLinkTapped == null
                 ? null
-                : (TapGestureRecognizer()..onTap = () => onLinkTapped!(run.href!)),
+                : (TapGestureRecognizer()
+                    ..onTap = () => onLinkTapped!(run.href!)),
           ),
       ],
     );
@@ -279,14 +280,17 @@ class _BlockView extends StatelessWidget {
       style = switch (mark) {
         core.Mark.emphasis => style.copyWith(fontStyle: FontStyle.italic),
         core.Mark.strong => style.copyWith(fontWeight: FontWeight.w700),
-        core.Mark.underline => style.copyWith(decoration: TextDecoration.underline),
-        core.Mark.strike => style.copyWith(decoration: TextDecoration.lineThrough),
+        core.Mark.underline => style.copyWith(
+          decoration: TextDecoration.underline,
+        ),
+        core.Mark.strike => style.copyWith(
+          decoration: TextDecoration.lineThrough,
+        ),
         core.Mark.code => style.copyWith(fontFamily: 'monospace'),
         core.Mark.small => style.copyWith(fontSize: style.fontSize! * 0.85),
         // Dart has no baseline shift in a TextStyle, so these are said by size
         core.Mark.superscript ||
-        core.Mark.subscript =>
-          style.copyWith(fontSize: style.fontSize! * 0.75),
+        core.Mark.subscript => style.copyWith(fontSize: style.fontSize! * 0.75),
       };
     }
     if (run.href != null) {

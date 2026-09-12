@@ -10,8 +10,12 @@ class _Runner implements SqlRunner {
   final Database db;
 
   @override
-  Future<List<Map<String, Object?>>> query(String sql, [List<Object?> args = const []]) async =>
-      db.select(sql, args).map((r) => {for (final k in r.keys) k: r[k]}).toList();
+  Future<List<Map<String, Object?>>> query(String sql,
+          [List<Object?> args = const []]) async =>
+      db
+          .select(sql, args)
+          .map((r) => {for (final k in r.keys) k: r[k]})
+          .toList();
 
   @override
   Future<void> execute(String sql) async => db.execute(sql);
@@ -36,7 +40,8 @@ Database oldLibrary() {
     CREATE TABLE tags (work_id TEXT, kind TEXT, name TEXT);
     CREATE TABLE chapters (id INTEGER PRIMARY KEY, work_id TEXT, number INTEGER, html TEXT);
   ''');
-  db.execute("INSERT INTO works (work_id, title, complete) VALUES ('1', 'Alpha', 1)");
+  db.execute(
+      "INSERT INTO works (work_id, title, complete) VALUES ('1', 'Alpha', 1)");
   return db;
 }
 
@@ -91,10 +96,21 @@ void main() {
   test('every reading state can be asked of a migrated library', () async {
     final db = oldLibrary();
     await prepare(_Runner(db));
-    for (final state in ['all', 'reading', 'unread', 'finished', 'later',
-                         'held', 'known', 'bookmarked', 'history', 'rec']) {
+    for (final state in [
+      'all',
+      'reading',
+      'unread',
+      'finished',
+      'later',
+      'held',
+      'known',
+      'bookmarked',
+      'history',
+      'rec'
+    ]) {
       final q = buildWorksQuery({'state': state});
-      expect(() => db.select(q.sql, q.args), returnsNormally, reason: 'state=$state');
+      expect(() => db.select(q.sql, q.args), returnsNormally,
+          reason: 'state=$state');
     }
   });
 }

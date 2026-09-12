@@ -71,7 +71,8 @@ Future<List<String>> ensureColumns(SqlRunner db) async {
       try {
         // quoted, because one of these columns is called offset and that is a
         // keyword everywhere else in a statement
-        await db.execute('ALTER TABLE $table ADD COLUMN "${column.name}" ${column.ddl}');
+        await db.execute(
+            'ALTER TABLE $table ADD COLUMN "${column.name}" ${column.ddl}');
         added.add(column.name);
       } catch (_) {
         // a column that cannot be added must not stop the ones that can

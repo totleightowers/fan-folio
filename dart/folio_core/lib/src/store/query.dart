@@ -91,7 +91,12 @@ const Map<String, String> states = {
 };
 
 const List<String> tagKinds = [
-  'fandom', 'relationship', 'character', 'freeform', 'warning', 'category',
+  'fandom',
+  'relationship',
+  'character',
+  'freeform',
+  'warning',
+  'category',
 ];
 
 /// An integer we are willing to write into SQL, having checked it is one.
@@ -143,7 +148,8 @@ String _jsonString(String value) {
 
 /// A built query: the rows, the count of them, and the values to bind.
 class WorksQuery {
-  const WorksQuery({required this.sql, required this.countSql, required this.args});
+  const WorksQuery(
+      {required this.sql, required this.countSql, required this.args});
 
   final String sql;
   final String countSql;
@@ -180,11 +186,13 @@ WorksQuery buildWorksQuery([Map<String, Object?> filters = const {}]) {
   /// Included tags are an AND: "alpha/beta/omega" *and* "slow burn" is a much
   /// more useful question than either alone, and the one AO3's filters answer.
   for (final tag in _list(filters['include'])) {
-    where.add('EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.name = ?)');
+    where.add(
+        'EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.name = ?)');
     args.add(tag);
   }
   for (final tag in _list(filters['exclude'])) {
-    where.add('NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.name = ?)');
+    where.add(
+        'NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id AND t.name = ?)');
     args.add(tag);
   }
 
@@ -202,7 +210,8 @@ WorksQuery buildWorksQuery([Map<String, Object?> filters = const {}]) {
   /// would match "Anna" inside "Annabel"; the quotes are what stop it.
   final authors = _list(filters['author']);
   if (authors.isNotEmpty) {
-    where.add('(${List.filled(authors.length, "w.authors LIKE ? ESCAPE '\\'").join(' OR ')})');
+    where.add(
+        '(${List.filled(authors.length, "w.authors LIKE ? ESCAPE '\\'").join(' OR ')})');
     args.addAll(authors.map((name) => '%${_likeLiteral(_jsonString(name))}%'));
   }
 

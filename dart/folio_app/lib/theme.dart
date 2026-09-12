@@ -83,20 +83,18 @@ ThemeData themeFor(Ground g, Brightness brightness) {
   final base = ThemeData(brightness: brightness, useMaterial3: true);
   return base.copyWith(
     scaffoldBackgroundColor: g.paper,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: g.accent,
-      brightness: brightness,
-    ).copyWith(
-      surface: g.surface,
-      primary: g.accent,
-      onPrimary: g.onAccent,
-      outlineVariant: g.line,
-    ),
+    colorScheme:
+        ColorScheme.fromSeed(
+          seedColor: g.accent,
+          brightness: brightness,
+        ).copyWith(
+          surface: g.surface,
+          primary: g.accent,
+          onPrimary: g.onAccent,
+          outlineVariant: g.line,
+        ),
     dividerColor: g.line,
-    textTheme: base.textTheme.apply(
-      bodyColor: g.ink,
-      displayColor: g.ink,
-    ),
+    textTheme: base.textTheme.apply(bodyColor: g.ink, displayColor: g.ink),
     appBarTheme: AppBarTheme(
       backgroundColor: g.surface,
       foregroundColor: g.ink,
@@ -124,3 +122,12 @@ ThemeData themeFor(Ground g, Brightness brightness) {
     ),
   );
 }
+
+/// The ground this screen is standing on.
+///
+/// Every screen was asking the same question of Theme.of(context) and writing
+/// the same ternary, which is three lines of the same decision in every file.
+Ground groundOf(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+    ? Ground.dark
+    : Ground.light;

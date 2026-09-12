@@ -6,8 +6,11 @@ library;
 
 export 'src/ao3/urls.dart';
 export 'src/read/document.dart';
+export 'src/search/rank.dart';
 export 'src/read/progress.dart';
 export 'src/read/reached.dart';
+export 'src/read/spine.dart';
 export 'src/store/migrate.dart';
 export 'src/store/query.dart';
+export 'src/store/shelves.dart';
 export 'src/store/schema.g.dart';

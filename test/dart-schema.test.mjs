@@ -59,6 +59,23 @@ test('the chapter fixture still says what 1.x says', () => {
     'run `node tools/emit-chapter-conformance.mjs` — the text changed and Dart was not told');
 });
 
+/**
+ * Ranking is the part of search nobody can eyeball.
+ *
+ * A wrong order looks like a plausible order, so the two versions cannot be
+ * left to agree by inspection. The fixture holds the blobs SQLite actually
+ * produced for real queries and the scores 1.x computed from them.
+ */
+test('the search fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/search.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-search-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-search-conformance.mjs` — the ranking moved and Dart was not told');
+});
+
 test('the emitted statements carry no comment that could cut one in half', () => {
   const dart = readFileSync(
     new URL('../dart/folio_core/lib/src/store/schema.g.dart', import.meta.url), 'utf8');
