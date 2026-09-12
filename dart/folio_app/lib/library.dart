@@ -309,10 +309,8 @@ class Library {
   Future<void> saveReadingPrefs(core.ReadingPrefs prefs) async {
     final batch = db.batch();
     prefs.toMap().forEach((key, value) {
-      batch.insert('meta', {
-        'key': key,
-        'value': value,
-      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      final row = {'key': key, 'value': value};
+      batch.insert('meta', row, conflictAlgorithm: ConflictAlgorithm.replace);
     });
     await batch.commit(noResult: true);
   }
