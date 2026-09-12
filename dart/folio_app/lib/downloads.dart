@@ -106,10 +106,7 @@ class Downloads extends ChangeNotifier {
             (await _client.get(Uri.parse(core.bookmarks(who, page)))).body,
           );
           return core.ListingPage(
-            workIds: [
-              for (final blurb in listing.works)
-                if (blurb.workId != null) blurb.workId!,
-            ],
+            workIds: [for (final blurb in listing.works) blurb.workId],
             totalPages: listing.total,
           );
         },
