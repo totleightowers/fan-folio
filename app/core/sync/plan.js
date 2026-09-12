@@ -13,7 +13,11 @@
 /** AO3's listing epoch → the YYYY-MM-DD the EPUB preface records. */
 export function epochToDate(epoch) {
   if (!Number.isFinite(epoch)) return null;
-  return new Date(epoch * 1000).toISOString().slice(0, 10);
+  const at = new Date(epoch * 1000);
+  /* A listing can carry a number that is not a date. Number.isFinite says yes
+     to 1e20, Date says "Invalid Date", and toISOString on that throws — so one
+     malformed row ended the whole plan rather than being ignored. */
+  return Number.isNaN(at.getTime()) ? null : at.toISOString().slice(0, 10);
 }
 
 /**
