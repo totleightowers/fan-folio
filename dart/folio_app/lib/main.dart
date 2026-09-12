@@ -4,6 +4,7 @@ import 'package:folio_core/folio_core.dart';
 
 import 'library.dart';
 import 'reader_screen.dart';
+import 'search_screen.dart';
 import 'theme.dart';
 
 void main() => runApp(const FolioApp());
@@ -40,6 +41,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  /// Straight to a work, from wherever it was named.
+  Future<void> _openWork(BuildContext context, String workId, {int chapter = 1}) async {
+    final library = _library;
+    if (library == null) return;
+    final work = await library.work(workId);
+    if (work == null || !context.mounted) return;
+    final chapters = await library.chapters(workId);
+    if (!context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReaderScreen(
+          library: library,
+          work: work,
+          chapters: chapters,
+          startAt: chapter,
+        ),
+      ),
+    );
   }
 
   /// A library just brought in becomes the one on screen.
@@ -93,6 +114,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Library'),
+        actions: [
+          if (_library != null)
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Search',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => SearchScreen(
+                    library: _library!,
+                    onOpen: (workId, {int chapter = 1}) =>
+                        _openWork(context, workId, chapter: chapter),
+                  ),
+                ),
+              ),
+            ),
+        ],
         bottom: _total == 0
             ? null
             : PreferredSize(

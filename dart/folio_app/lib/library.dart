@@ -191,6 +191,50 @@ class Library {
       ? db.rawInsert(markFinishedSql, [workId])
       : db.rawUpdate(markUnfinishedSql, [workId]);
 
+  /// Every word held, ranked.
+  ///
+  /// The index is FTS4 over the chapter text, so the ranking is computed
+  /// rather than asked for — see folio_core, where it is held to the scores
+  /// 1.x gives the same blobs. SQLite returns matches in rowid order, so the
+  /// candidate pool has to be wider than the answer or the best match for a
+  /// common word is never considered at all.
+  Future<List<Hit>> searchText(String query, {int limit = 40}) async {
+    if (query.trim().isEmpty) return const [];
+    final rows = await db.rawQuery('''
+      SELECT c.work_id, c.number, w.title, w.authors,
+             snippet(chapter_fts, '<<', '>>', '…', -1, 24) AS snip,
+             matchinfo(chapter_fts, 'pcnalx') AS matchinfo
+      FROM chapter_fts
+      JOIN chapters c ON c.id = chapter_fts.rowid
+      JOIN works w ON w.work_id = c.work_id
+      WHERE chapter_fts MATCH ? AND COALESCE(w.hidden, 0) = 0
+      LIMIT ?''', [query, candidates]);
+
+    return rank(rows, limit: limit)
+        .map((r) => Hit(
+              workId: '${r['work_id']}',
+              chapter: r['number'] as int? ?? 1,
+              title: r['title'] as String? ?? '(untitled)',
+              authors: _namesFrom(r['authors'] as String?),
+              snippet: r['snip'] as String? ?? '',
+            ))
+        .toList();
+  }
+
+  /// Titles, authors, summaries and tags — a different question from the text.
+  Future<List<WorkRow>> searchMeta(String query, {int limit = 40}) async {
+    if (query.trim().isEmpty) return const [];
+    final rows = await db.rawQuery('''
+      SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
+             w.has_text, w.skin_css,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
+      FROM work_fts
+      JOIN works w ON w.work_id = work_fts.work_id
+      WHERE work_fts MATCH ? AND COALESCE(w.hidden, 0) = 0
+      LIMIT ?''', [query, limit]);
+    return rows.map(WorkRow.fromMap).toList();
+  }
+
   Future<void> close() => db.close();
 }
 
@@ -212,6 +256,25 @@ class ChapterRow {
   const ChapterRow(this.number, this.title);
   final int number;
   final String? title;
+}
+
+/// One passage found, and where it is.
+class Hit {
+  const Hit({
+    required this.workId,
+    required this.chapter,
+    required this.title,
+    required this.authors,
+    required this.snippet,
+  });
+
+  final String workId;
+  final int chapter;
+  final String title;
+  final List<String> authors;
+  final String snippet;
+
+  String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
 }
 
 /// Where somebody had got to.
