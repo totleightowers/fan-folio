@@ -2,7 +2,38 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { inflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+
+/**
+ * The picture in a PNG, rather than the bytes of one.
+ *
+ * Comparing files byte for byte compares the compressor as much as the
+ * drawing: zlib does not promise the same output across versions, so a test
+ * written that way fails on a machine whose Node is a release ahead. What has
+ * to be the same is the pixels.
+ */
+function pixels(png) {
+  let at = 8;
+  let width = 0;
+  const parts = [];
+  while (at < png.length) {
+    const length = png.readUInt32BE(at);
+    const type = png.toString('ascii', at + 4, at + 8);
+    if (type === 'IHDR') width = png.readUInt32BE(at + 8);
+    if (type === 'IDAT') parts.push(png.subarray(at + 8, at + 8 + length));
+    at += 12 + length;
+  }
+  const raw = inflateSync(Buffer.concat(parts));
+  // written with no filter, so a row is its bytes with the filter byte dropped
+  const stride = width * 3;
+  const out = Buffer.alloc(raw.length - raw.length / (stride + 1));
+  for (let row = 0; row * (stride + 1) < raw.length; row++) {
+    raw.copy(out, row * stride, row * (stride + 1) + 1,
+      (row + 1) * (stride + 1));
+  }
+  return out;
+}
 
 const res = (p) => fileURLToPath(new URL(`../android/res/${p}`, import.meta.url));
 
@@ -29,7 +60,7 @@ test('the launcher icon is drawn from the shapes it is drawn from', () => {
     [fileURLToPath(new URL('../tools/make-icon.mjs', import.meta.url))]);
 
   for (const [at, was] of before) {
-    assert.deepEqual(readFileSync(at), was,
+    assert.deepEqual(pixels(readFileSync(at)), pixels(was),
       `run \`node tools/make-icon.mjs\` — ${at.split('/').slice(-2).join('/')} has drifted`);
   }
 });
