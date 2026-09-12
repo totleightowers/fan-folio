@@ -108,13 +108,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // deliberately not filtered by extension: a backup arrives named all
       // sorts of things, and a picker that hides the file somebody is looking
       // straight at is worse than one that shows too much
-      final picked = await FilePicker.platform.pickFiles(withData: false);
-      final path = picked?.files.single.path;
-      if (path == null) {
+      final picked = await FilePicker.pickFile();
+      if (picked == null) {
         if (mounted) setState(() => _working = false);
         return;
       }
-      final library = await Library.importFrom(path);
+      final library = await Library.importFromStream(picked.readAsByteStream());
       if (!mounted) return;
       widget.onImported(library);
       Navigator.of(context).pop();

@@ -120,7 +120,19 @@ class Library {
   /// picker may be a temporary the picker will delete, and the library is the
   /// one thing in this app that must not go missing. The copy becomes this
   /// app's own library and is brought up to date on the way in.
-  static Future<Library> importFrom(String sourcePath, [String? at]) async {
+  /// Take in a library from a backup.
+  ///
+  /// A stream rather than a path, because a file handed over by the system
+  /// picker on Android often has no path at all — it is a content:// URI the
+  /// picker will resolve and may later revoke — and because a library big
+  /// enough to be worth keeping is too big to read into memory on the way in.
+  ///
+  /// Written to this app's own storage rather than opened where it lies: the
+  /// library is the one thing in this app that must not go missing.
+  static Future<Library> importFromStream(
+    Stream<List<int>> bytes, [
+    String? at,
+  ]) async {
     final destination = at ?? await defaultPath();
     await Directory(p.dirname(destination)).create(recursive: true);
 
@@ -140,7 +152,13 @@ class Library {
       if (stale.existsSync()) await stale.delete();
     }
 
-    await File(sourcePath).copy(destination);
+    final out = File(destination).openWrite();
+    try {
+      await out.addStream(bytes);
+    } finally {
+      await out.close();
+    }
+
     final db = await openDatabase(destination);
     await prepare(_Runner(db));
     return Library._(db, destination);
