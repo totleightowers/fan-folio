@@ -4,6 +4,7 @@
 /// tested on the machine it is written on. Nothing in here may import Flutter.
 library;
 
+export 'src/ao3/acts.dart';
 export 'src/ao3/client.dart';
 export 'src/ao3/forms.dart';
 export 'src/ao3/parse.dart';
