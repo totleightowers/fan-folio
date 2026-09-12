@@ -215,6 +215,43 @@ class LibraryStore implements core.WorkStore {
   }
 }
 
+/// Where the pictures in a work go.
+///
+/// The same database as the text, because a picture that lives somewhere else
+/// is a picture a backup loses and a delete leaves behind.
+class LibraryPictures implements core.PictureStore {
+  const LibraryPictures(this.db);
+
+  final Database db;
+
+  @override
+  Future<Set<String>> settled(String workId) async {
+    final rows = await db.rawQuery('SELECT url FROM images WHERE work_id = ?', [
+      workId,
+    ]);
+    return {for (final row in rows) '${row['url']}'};
+  }
+
+  @override
+  Future<void> put(String workId, core.StoredPicture picture) async {
+    final row = {
+      'work_id': workId,
+      'url': picture.url,
+      'sha256': picture.sha256,
+      'mime': picture.mime,
+      'bytes': picture.bytes,
+      // why it is not here, so it is not asked for again every open
+      'status': picture.stored ? 'stored' : (picture.trouble ?? 'no'),
+      'fetched_at': DateTime.now().toIso8601String().substring(0, 19),
+    };
+    await db.insert(
+      'images',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+}
+
 /// Whitespace is not a change. Compared the way 1.x compares it.
 String _settled(String? html) =>
     (html ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();

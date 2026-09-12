@@ -23,8 +23,12 @@ class Downloads extends ChangeNotifier {
       client: _client,
       store: LibraryStore(library.db),
     );
+    _pictures = core.Pictures(
+      client: _client,
+      store: LibraryPictures(library.db),
+    );
     _queue = core.JobQueue(
-      runTask: _downloader.run,
+      runTask: _fetch,
       wait: (d) => Future<void>.delayed(d),
       shouldRetry: core.isTransient,
       retryWait: core.retryDelay,
@@ -36,10 +40,35 @@ class Downloads extends ChangeNotifier {
     );
   }
 
+  /// Fetch a work, and then the pictures in it.
+  ///
+  /// In that order and in the same turn: a chapter is worth having before its
+  /// illustrations, and a work whose images are still coming should already
+  /// be readable. Every one of them goes through the same clock as
+  /// everything else — a work with forty inline pictures is forty requests,
+  /// and they are somebody else's bandwidth as much as the archive's.
+  Future<void> _fetch(String workId) async {
+    await _downloader.run(workId);
+    try {
+      final chapters = await library.db.rawQuery(
+        'SELECT html FROM chapters WHERE work_id = ?',
+        [workId],
+      );
+      await _pictures.fetchFor(workId, [
+        for (final row in chapters) '${row['html'] ?? ''}',
+      ]);
+    } catch (_) {
+      /* A picture that will not come is not a work that failed. The text is
+         already written down by here, and a chapter with a broken image in
+         it is worth more than no chapter. */
+    }
+  }
+
   final Library library;
   final core.Pacer _pacer;
   late final core.ArchiveClient _client;
   late final core.Downloader _downloader;
+  late final core.Pictures _pictures;
   late final core.JobQueue _queue;
 
   List<core.JobView> _jobs = const [];
