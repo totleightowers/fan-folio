@@ -574,6 +574,64 @@ class Library {
     );
   }
 
+  /// The works one person has bookmarked, as far as this library knows.
+  ///
+  /// Recorded by walking their bookmark pages: one request describes twenty,
+  /// so this is a list somebody can browse rather than a button that fetches.
+  Future<List<WorkRow>> bookmarkedBy(String person, {int limit = 500}) async {
+    final rows = await db.rawQuery(
+      '''
+      SELECT w.*, r.marked_later,
+             (SELECT name FROM tags t
+               WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1)
+               AS fandom
+      FROM bookmarked_by b
+      JOIN works w ON w.work_id = b.work_id
+      LEFT JOIN reading r ON r.work_id = w.work_id
+      WHERE b.person = ? AND COALESCE(w.hidden, 0) = 0
+      ORDER BY b.at DESC, w.title COLLATE NOCASE
+      LIMIT ?''',
+      [person, limit],
+    );
+    return rows.map(WorkRow.fromMap).toList();
+  }
+
+  /// Whose bookmark list these works are in.
+  ///
+  /// Added to rather than replaced: a walk reads the pages it can reach, and
+  /// treating a partial read as the whole truth would drop everything below
+  /// where it stopped.
+  Future<void> noteBookmarkedBy(String person, List<String> workIds) async {
+    if (workIds.isEmpty) return;
+    final at = DateTime.now().toIso8601String().substring(0, 19);
+    await db.transaction((txn) async {
+      for (final workId in workIds) {
+        await txn.rawInsert(
+          'INSERT OR IGNORE INTO bookmarked_by (person, work_id, at) '
+          'VALUES (?,?,?)',
+          [person, workId, at],
+        );
+      }
+    });
+  }
+
+  /// When somebody's works or bookmarks were last walked.
+  Future<DateTime?> lastWalk(String key) async {
+    try {
+      final rows = await db.rawQuery('SELECT value FROM meta WHERE key = ?', [
+        'walk.$key',
+      ]);
+      return rows.isEmpty ? null : DateTime.tryParse('${rows.first['value']}');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> noteWalk(String key) async {
+    final row = {'key': 'walk.$key', 'value': DateTime.now().toIso8601String()};
+    await db.insert('meta', row, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   /// Which works are your bookmarks now — all of them, as one answer.
   ///
   /// Removal cannot be seen a page at a time, because it is the absence of

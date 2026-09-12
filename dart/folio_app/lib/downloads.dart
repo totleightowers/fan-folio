@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
 import 'library.dart';
@@ -81,6 +82,41 @@ class Downloads extends ChangeNotifier {
   Session _session;
   Session get session => _session;
   String? get signedInAs => _session.username;
+
+  /// Present as the browser this device actually has.
+  ///
+  /// 1.x asked Android for it and sent that. Asked once, because it does not
+  /// change while the app is running, and quietly: a device that will not say
+  /// leaves the fallback in place rather than failing to download anything.
+  Future<void> useThisDevicesAgent() async {
+    try {
+      final agent = await InAppWebViewController.getDefaultUserAgent();
+      if (agent.isNotEmpty) _client.useAgent(agent);
+    } catch (_) {
+      // not worth a single failed request, let alone a failed startup
+    }
+  }
+
+  /// Take the cookies the webview holds now, rather than the ones copied down
+  /// at sign-in.
+  ///
+  /// The archive reissues them — a session is refreshed, Cloudflare grants
+  /// clearance again — and a snapshot taken once goes stale while the
+  /// browser on the same device is holding the current set.
+  Future<void> refreshCookies() async {
+    try {
+      final jar = await CookieManager.instance().getCookies(
+        url: WebUri(core.origin),
+      );
+      if (jar.isEmpty) return;
+      final held = {for (final c in jar) c.name: '${c.value}'};
+      _client.setCookies(held);
+      _session = Session(cookies: held, username: _session.username);
+      await _session.save();
+    } catch (_) {
+      // the session already in hand is better than none
+    }
+  }
 
   /// Whether the archive has asked to be left alone, and until when.
   DateTime? get cooling => _pacer.coolingUntil;
@@ -237,6 +273,43 @@ class Downloads extends ChangeNotifier {
   Future<int> addWorks(String label, List<String> workIds) async {
     await _remember();
     return _queue.add(author: label, part: 'picked', workIds: workIds);
+  }
+
+  /// Walk one person's pages and write down what they describe.
+  ///
+  /// One request describes twenty works, so this is how a catalogue becomes
+  /// browsable for the price of reading an index — rather than downloading
+  /// sixty works to find out what they are. Nothing is fetched here; what
+  /// arrives is a shelf of descriptions, and any one of them can be asked for.
+  Future<int> syncPerson(
+    String byline, {
+    required bool bookmarks,
+    void Function(int page, int? pages, int found)? onProgress,
+  }) async {
+    final store = LibraryStore(library.db);
+    final seen = <String>[];
+    var added = 0;
+
+    await core.walkListing(
+      fetchPage: (page) async {
+        final listing = await peek(byline, bookmarks: bookmarks, page: page);
+        final ids = [for (final blurb in listing.works) blurb.workId];
+        seen.addAll(ids);
+        added += await saveStubs(
+          library.db,
+          listing.works,
+          refused: await store.refused(ids),
+        );
+        onProgress?.call(page, listing.total, seen.length);
+        return core.ListingPage(workIds: ids, totalPages: listing.total);
+      },
+    );
+
+    if (bookmarks) await library.noteBookmarkedBy(byline, seen);
+    await library.noteWalk('${bookmarks ? 'bookmarks' : 'works'}:$byline');
+    // how many the library did not already know about, which is the number
+    // worth saying: "62 listed" on a second walk says nothing happened
+    return added;
   }
 
   /// How much of an author's catalogue there is, before any of it is fetched.
@@ -400,6 +473,7 @@ class Downloads extends ChangeNotifier {
   /// a backup — a backup is made to be handed to a new phone, and a session
   /// cookie inside one is an account somebody else can sign into.
   Future<void> adoptSession(Map<String, String> cookies, String who) async {
+    await useThisDevicesAgent();
     _client.setCookies(cookies);
     _session = Session(cookies: cookies, username: who);
     await _session.save();

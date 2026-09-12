@@ -52,6 +52,10 @@ class _SignInScreenState extends State<SignInScreen> {
 
     setState(() => _checking = true);
     try {
+      /* Every cookie the archive set, Cloudflare's included. They were
+         issued to this device's own webview, minutes ago, to the browser the
+         client presents itself as — dropping them makes the next request
+         look like a fresh unverified client. */
       final jar = <String, String>{
         for (final cookie in await _cookies.getCookies(url: WebUri('$_login')))
           cookie.name: '${cookie.value}',

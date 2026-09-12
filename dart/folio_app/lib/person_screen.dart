@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
-import 'package:folio_core/folio_core.dart' as core;
 
 import 'downloads.dart';
 import 'library.dart';
 import 'theme.dart';
 import 'work_card.dart';
 
-/// One person: what of theirs you have, what they have, and what they liked.
+/// One person: what they wrote, and what they liked.
 ///
-/// A byline was dead text, which made an author a fact about a work rather
-/// than a way through a library. Three questions get asked of a name — what
-/// of theirs have I got, what else have they written, what do they read — and
-/// they are three tabs rather than three screens because they are the same
-/// question about the same person.
+/// Two questions, and both are answered from the library rather than by
+/// sending somebody to a screen that offers to go and look. A listing
+/// describes twenty works for one request, so walking somebody's pages is
+/// cheap and downloading them is not — which means the honest shape is a
+/// shelf that is already populated, with a way to go and see what has
+/// changed since.
 class PersonScreen extends StatefulWidget {
   const PersonScreen({
     required this.library,
@@ -34,7 +34,8 @@ class PersonScreen extends StatefulWidget {
 }
 
 class _PersonScreenState extends State<PersonScreen> {
-  List<WorkRow> _held = const [];
+  List<WorkRow> _wrote = const [];
+  List<WorkRow> _liked = const [];
   bool _blocked = false;
   bool _loading = true;
 
@@ -44,34 +45,33 @@ class _PersonScreenState extends State<PersonScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    final held = await widget.library.works({..._theirs, 'limit': 200});
-    final blocked = (await widget.library.blockedNames()).contains(
-      widget.byline,
-    );
-    if (!mounted) return;
-    setState(() {
-      _held = held;
-      _blocked = blocked;
-      _loading = false;
-    });
-  }
-
   /// Everything of theirs the library holds, as the Library would ask it.
   Map<String, Object?> get _theirs => {
     'author': [widget.byline],
     'sort': 'added',
   };
 
+  Future<void> _load() async {
+    final wrote = await widget.library.works({..._theirs, 'limit': 500});
+    final liked = await widget.library.bookmarkedBy(widget.byline);
+    final blocked = (await widget.library.blockedNames()).contains(
+      widget.byline,
+    );
+    if (!mounted) return;
+    setState(() {
+      _wrote = wrote;
+      _liked = liked;
+      _blocked = blocked;
+      _loading = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final ground = groundOf(context);
-    final online = widget.downloads;
 
     return DefaultTabController(
-      // their works and their bookmarks are only askable with a session, and
-      // an empty tab that cannot say why is worse than no tab
-      length: online == null ? 1 : 3,
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: Text(
@@ -79,390 +79,320 @@ class _PersonScreenState extends State<PersonScreen> {
             style: TextStyle(fontFamily: titleFace, color: ground.ink),
           ),
           actions: [
-            if (online != null)
-              PopupMenuButton<String>(
-                itemBuilder: (context) => [
-                  PopupMenuItem(
-                    value: 'block',
-                    child: Text(_blocked ? 'Unblock' : 'Block'),
-                  ),
-                ],
-                onSelected: (_) async {
-                  await widget.library.setBlocked(
-                    widget.byline,
-                    blocked: !_blocked,
-                  );
-                  await _load();
-                },
-              ),
+            PopupMenuButton<String>(
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'block',
+                  child: Text(_blocked ? 'Unblock' : 'Block'),
+                ),
+              ],
+              onSelected: (_) async {
+                await widget.library.setBlocked(
+                  widget.byline,
+                  blocked: !_blocked,
+                );
+                await _load();
+              },
+            ),
           ],
           bottom: TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
             tabs: [
-              Tab(text: 'In your library (${_held.length})'),
-              if (online != null) const Tab(text: 'Everything they wrote'),
-              if (online != null) const Tab(text: 'What they liked'),
+              Tab(text: 'Works (${_wrote.length})'),
+              Tab(text: 'Bookmarks (${_liked.length})'),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _Held(
-              works: _held,
-              loading: _loading,
-              ground: ground,
-              byline: widget.byline,
-              onOpen: widget.onOpen,
-              onSeeAll: () => widget.onNarrow(_theirs, widget.byline),
-            ),
-            if (online != null)
-              _FromTheArchive(
-                key: const ValueKey('works'),
-                downloads: online,
-                library: widget.library,
-                byline: widget.byline,
-                bookmarks: false,
-                onOpen: widget.onOpen,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : TabBarView(
+                children: [
+                  _Shelf(
+                    works: _wrote,
+                    byline: widget.byline,
+                    bookmarks: false,
+                    library: widget.library,
+                    downloads: widget.downloads,
+                    ground: ground,
+                    onOpen: widget.onOpen,
+                    onSynced: _load,
+                    onSeeAll: () => widget.onNarrow(_theirs, widget.byline),
+                  ),
+                  _Shelf(
+                    works: _liked,
+                    byline: widget.byline,
+                    bookmarks: true,
+                    library: widget.library,
+                    downloads: widget.downloads,
+                    ground: ground,
+                    onOpen: widget.onOpen,
+                    onSynced: _load,
+                  ),
+                ],
               ),
-            if (online != null)
-              _FromTheArchive(
-                key: const ValueKey('bookmarks'),
-                downloads: online,
-                library: widget.library,
-                byline: widget.byline,
-                bookmarks: true,
-                onOpen: widget.onOpen,
-              ),
-          ],
-        ),
       ),
     );
   }
 }
 
-class _Held extends StatelessWidget {
-  const _Held({
+/// One shelf, and the way to bring it up to date.
+class _Shelf extends StatefulWidget {
+  const _Shelf({
     required this.works,
-    required this.loading,
-    required this.ground,
     required this.byline,
+    required this.bookmarks,
+    required this.library,
+    required this.downloads,
+    required this.ground,
     required this.onOpen,
-    required this.onSeeAll,
+    required this.onSynced,
+    this.onSeeAll,
   });
 
   final List<WorkRow> works;
-  final bool loading;
-  final Ground ground;
-  final String byline;
-  final void Function(WorkRow) onOpen;
-  final VoidCallback onSeeAll;
-
-  @override
-  Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
-    if (works.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            'Nothing of theirs is here yet.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: ground.inkMute, height: 1.5),
-          ),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      itemCount: works.length + 1,
-      separatorBuilder: (_, __) => Divider(height: 1, color: ground.lineSoft),
-      itemBuilder: (context, i) {
-        if (i == works.length) {
-          return Padding(
-            padding: const EdgeInsets.all(16),
-            child: OutlinedButton(
-              onPressed: onSeeAll,
-              child: const Text('See these in the library'),
-            ),
-          );
-        }
-        return WorkRowTile(work: works[i], onTap: () => onOpen(works[i]));
-      },
-    );
-  }
-}
-
-/// What their pages say, which is not the same as what you hold.
-///
-/// Asked only when the tab is opened: a person's page is a request, and
-/// loading two of them because somebody tapped a byline is two requests
-/// nobody asked for.
-class _FromTheArchive extends StatefulWidget {
-  const _FromTheArchive({
-    required this.downloads,
-    required this.library,
-    required this.byline,
-    required this.bookmarks,
-    required this.onOpen,
-    super.key,
-  });
-
-  final Downloads downloads;
-  final Library library;
   final String byline;
   final bool bookmarks;
+  final Library library;
+  final Downloads? downloads;
+  final Ground ground;
   final void Function(WorkRow) onOpen;
+  final Future<void> Function() onSynced;
+  final VoidCallback? onSeeAll;
 
   @override
-  State<_FromTheArchive> createState() => _FromTheArchiveState();
+  State<_Shelf> createState() => _ShelfState();
 }
 
-class _FromTheArchiveState extends State<_FromTheArchive>
-    with AutomaticKeepAliveClientMixin {
-  final List<core.Blurb> _listed = [];
-  Set<String> _held = const {};
-  final Set<String> _queued = {};
-  bool _started = false;
-  bool _asking = false;
+class _ShelfState extends State<_Shelf> with AutomaticKeepAliveClientMixin {
+  bool _walking = false;
+  String? _where;
   String? _trouble;
-
-  /// Where the walk has got to, and how far it goes.
-  int _page = 0;
-  int _pages = 1;
-
-  bool get _more => _page < _pages;
+  String? _lastWalk;
 
   @override
   bool get wantKeepAlive => true;
 
-  /// One more page, which is one more request.
+  String get _key =>
+      '${widget.bookmarks ? 'bookmarks' : 'works'}:${widget.byline}';
+
+  @override
+  void initState() {
+    super.initState();
+    _readLastWalk();
+  }
+
+  Future<void> _readLastWalk() async {
+    final at = await widget.library.lastWalk(_key);
+    if (!mounted || at == null) return;
+    setState(() => _lastWalk = _when(at));
+  }
+
+  /// Walk their pages and write down what they describe.
   ///
-  /// Asked for rather than fetched on scroll. Every page is a request on the
-  /// same clock as everything else — roughly half a minute apart — so a list
-  /// that loaded itself as somebody scrolled would be a list that stalls, and
-  /// a person idly flicking would be spending the archive's patience without
-  /// being told. A button says what it costs.
-  Future<void> _askForMore() async {
+  /// The whole of them, not the first page: a person with sixty works has
+  /// three pages, and stopping at one is the bug that made this screen lie
+  /// about what it was showing.
+  Future<void> _sync() async {
+    final downloads = widget.downloads;
+    if (downloads == null || _walking) return;
     setState(() {
-      _started = true;
-      _asking = true;
+      _walking = true;
       _trouble = null;
+      _where = 'Reading page 1';
     });
     try {
-      final listing = await widget.downloads.peek(
+      final added = await downloads.syncPerson(
         widget.byline,
         bookmarks: widget.bookmarks,
-        page: _page + 1,
+        onProgress: (page, pages, found) {
+          if (!mounted) return;
+          setState(() {
+            _where = pages == null
+                ? 'Page $page · $found so far'
+                : 'Page $page of $pages · $found so far';
+          });
+        },
       );
-      final known = {for (final blurb in _listed) blurb.workId};
-      final fresh = [
-        for (final blurb in listing.works)
-          if (!known.contains(blurb.workId)) blurb,
-      ];
-      final held = await _heldAmong(fresh);
+      await widget.onSynced();
+      await _readLastWalk();
       if (!mounted) return;
       setState(() {
-        _listed.addAll(fresh);
-        _held = {..._held, ...held};
-        _page = listing.current > 0 ? listing.current : _page + 1;
-        _pages = listing.total > 0 ? listing.total : _page;
-        _asking = false;
+        _walking = false;
+        _where = added == 0
+            ? null
+            : '$added new ${added == 1 ? 'work' : 'works'} listed';
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _asking = false;
+        _walking = false;
+        _where = null;
         _trouble = '$e';
       });
     }
   }
 
-  Future<Set<String>> _heldAmong(List<core.Blurb> listed) async {
-    final ids = [for (final blurb in listed) blurb.workId];
-    if (ids.isEmpty) return const {};
-    final marks = List.filled(ids.length, '?').join(',');
-    final rows = await widget.library.db.rawQuery(
-      'SELECT work_id FROM works '
-      'WHERE work_id IN ($marks) AND COALESCE(has_text, 0) = 1',
-      ids,
-    );
-    return {for (final row in rows) '${row['work_id']}'};
-  }
-
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final ground = groundOf(context);
+    final ground = widget.ground;
 
-    if (_asking && _listed.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (!_started) {
-      /* Not fetched on arrival. Tapping a byline should cost nothing; asking
-         the archive is a deliberate thing, at a reader's pace. */
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                widget.bookmarks
-                    ? 'What this person has bookmarked, from their page on '
-                          'the archive.'
-                    : 'Everything on their works page, whether or not it is '
-                          'here.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: ground.inkMute, height: 1.5),
-              ),
-              if (_trouble != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _trouble!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: ground.accent, fontSize: 13),
-                ),
-              ],
-              const SizedBox(height: 18),
-              FilledButton(
-                onPressed: _askForMore,
-                child: const Text('Have a look'),
-              ),
-            ],
-          ),
+    return Column(
+      children: [
+        _SyncBar(
+          bookmarks: widget.bookmarks,
+          byline: widget.byline,
+          ground: ground,
+          walking: _walking,
+          where: _where,
+          trouble: _trouble,
+          lastWalk: _lastWalk,
+          onSync: widget.downloads == null ? null : _sync,
         ),
-      );
-    }
-
-    final listed = _listed;
-    if (listed.isEmpty) {
-      return Center(
-        child: Text(
-          widget.bookmarks
-              ? 'Their bookmarks are not public.'
-              : 'Their works page lists nothing.',
-          style: TextStyle(color: ground.inkMute),
-        ),
-      );
-    }
-
-    return ListView.separated(
-      itemCount: listed.length + 1,
-      separatorBuilder: (_, __) => Divider(height: 1, color: ground.lineSoft),
-      itemBuilder: (context, i) {
-        if (i == listed.length) {
-          return _Tail(
-            shown: listed.length,
-            pages: _pages,
-            page: _page,
-            more: _more,
-            asking: _asking,
-            trouble: _trouble,
-            ground: ground,
-            onMore: _askForMore,
-          );
-        }
-        final blurb = listed[i];
-        final have = _held.contains(blurb.workId);
-        final queued = _queued.contains(blurb.workId);
-
-        return ListTile(
-          title: Text(
-            blurb.title ?? '(untitled)',
-            style: TextStyle(
-              fontFamily: titleFace,
-              fontWeight: FontWeight.w600,
-              color: ground.ink,
-            ),
-          ),
-          subtitle: Text(
-            [
-              blurb.authors.join(', '),
-              if (blurb.words != null) '${blurb.words} words',
-              if (blurb.fandoms.isNotEmpty) blurb.fandoms.first,
-            ].where((s) => s.isNotEmpty).join(' · '),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, color: ground.inkMute),
-          ),
-          trailing: have
-              ? Icon(Icons.check, color: ground.inkFaint, size: 20)
-              : IconButton(
-                  icon: Icon(queued ? Icons.schedule : Icons.download_outlined),
-                  tooltip: queued ? 'Queued' : 'Fetch it',
-                  onPressed: queued
-                      ? null
-                      : () async {
-                          setState(() => _queued.add(blurb.workId));
-                          await widget.downloads.addWorks(widget.byline, [
-                            blurb.workId,
-                          ]);
-                        },
+        Expanded(
+          child: widget.works.isEmpty
+              ? _Nothing(bookmarks: widget.bookmarks, ground: ground)
+              : ListView.separated(
+                  itemCount:
+                      widget.works.length + (widget.onSeeAll == null ? 0 : 1),
+                  separatorBuilder: (_, __) =>
+                      Divider(height: 1, color: ground.lineSoft),
+                  itemBuilder: (context, i) {
+                    if (i == widget.works.length) {
+                      return Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: OutlinedButton(
+                          onPressed: widget.onSeeAll,
+                          child: const Text('See these in the library'),
+                        ),
+                      );
+                    }
+                    return WorkRowTile(
+                      work: widget.works[i],
+                      onTap: () => widget.onOpen(widget.works[i]),
+                    );
+                  },
                 ),
-          onTap: have
-              ? () async {
-                  final work = await widget.library.work(blurb.workId);
-                  if (work != null) widget.onOpen(work);
-                }
-              : null,
-        );
-      },
+        ),
+      ],
     );
   }
 }
 
-/// The foot of a listing: what has been seen, and what asking for more costs.
-class _Tail extends StatelessWidget {
-  const _Tail({
-    required this.shown,
-    required this.pages,
-    required this.page,
-    required this.more,
-    required this.asking,
-    required this.trouble,
+/// The sync, where it can be seen without hunting for it.
+class _SyncBar extends StatelessWidget {
+  const _SyncBar({
+    required this.bookmarks,
+    required this.byline,
     required this.ground,
-    required this.onMore,
+    required this.walking,
+    required this.where,
+    required this.trouble,
+    required this.lastWalk,
+    required this.onSync,
   });
 
-  final int shown;
-  final int pages;
-  final int page;
-  final bool more;
-  final bool asking;
-  final String? trouble;
+  final bool bookmarks;
+  final String byline;
   final Ground ground;
-  final VoidCallback onMore;
+  final bool walking;
+  final String? where;
+  final String? trouble;
+  final String? lastWalk;
+  final VoidCallback? onSync;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-    child: Column(
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+    padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+    decoration: BoxDecoration(
+      color: ground.surface,
+      borderRadius: BorderRadius.circular(Radii.card),
+      border: Border.all(color: ground.lineSoft),
+    ),
+    child: Row(
       children: [
-        Text(
-          /* Twenty to a page, so the total is what the archive says its
-             pages come to rather than a count of works — near enough to
-             judge by, and honest about being near enough. */
-          more ? '$shown so far, page $page of $pages' : '$shown in all',
-          style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                bookmarks
+                    ? 'What $byline has bookmarked'
+                    : 'Everything $byline has written',
+                style: TextStyle(
+                  fontFamily: titleFace,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                  color: ground.ink,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                where ??
+                    trouble ??
+                    (lastWalk == null
+                        ? 'Read their pages and list what is there. Nothing '
+                              'is downloaded by it.'
+                        : 'Last read $lastWalk'),
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: trouble == null ? ground.inkMute : ground.accent,
+                ),
+              ),
+            ],
+          ),
         ),
-        if (trouble != null) ...[
-          const SizedBox(height: 8),
-          Text(
-            trouble!,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: ground.accent),
+        const SizedBox(width: 10),
+        if (walking)
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        else
+          FilledButton.tonal(
+            onPressed: onSync,
+            child: Text(lastWalk == null ? 'Sync' : 'Sync again'),
           ),
-        ],
-        if (more) ...[
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: asking ? null : onMore,
-            child: Text(asking ? 'Asking…' : 'Twenty more (one request)'),
-          ),
-        ],
       ],
     ),
   );
+}
+
+class _Nothing extends StatelessWidget {
+  const _Nothing({required this.bookmarks, required this.ground});
+
+  final bool bookmarks;
+  final Ground ground;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Text(
+        bookmarks
+            ? 'Nothing of theirs is listed here yet. Sync to read their '
+                  'bookmarks — if they are public.'
+            : 'Nothing of theirs is here yet. Sync to list their works.',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: ground.inkMute, height: 1.5),
+      ),
+    ),
+  );
+}
+
+/// Roughly when, which is all anybody wants from a last-run time.
+String _when(DateTime at) {
+  final ago = DateTime.now().difference(at);
+  if (ago.inMinutes < 2) return 'just now';
+  if (ago.inHours < 1) return '${ago.inMinutes} minutes ago';
+  if (ago.inHours < 24) {
+    return '${ago.inHours} ${ago.inHours == 1 ? 'hour' : 'hours'} ago';
+  }
+  if (ago.inDays < 30) {
+    return '${ago.inDays} ${ago.inDays == 1 ? 'day' : 'days'} ago';
+  }
+  return 'on ${at.toIso8601String().substring(0, 10)}';
 }

@@ -33,21 +33,25 @@ import 'urls.dart' show origin;
 const String honestAgent =
     'FanFolio/2.0 (personal offline reader for my own AO3 account)';
 
+/// Only a fallback. The device's own is asked for at startup and used
+/// instead; this is what to say before that answer has come back.
 const String browserAgent =
-    'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 '
+    'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';
 
 /// Cookies that must not be replayed.
 ///
-/// Cloudflare's bot-management cookies are bound to the client they were
-/// issued to. Replaying one minted for a WebView while claiming to be
-/// something else is a contradiction Cloudflare is built to notice; dropping
-/// them lets it issue fresh ones that match whoever is actually asking.
-bool keepCookie(String name) =>
-    !name.startsWith('__cf') &&
-    name != '_cfuvid' &&
-    // a spent one-shot flag
-    name != 'flash_is_set';
+/// Only one, and it is a spent flag rather than a session.
+///
+/// Cloudflare's own cookies used to be dropped here, carried over from the
+/// tooling this client was modelled on — where they had been minted by a
+/// python login and were being replayed from node, which is a contradiction
+/// Cloudflare exists to notice. On the phone they are nothing of the sort:
+/// they were issued to this device's own webview, minutes earlier, to the
+/// browser this client presents itself as. Throwing away the clearance that
+/// was granted to us makes every request look like a fresh unverified client,
+/// which is the shortest road to a 503.
+bool keepCookie(String name) => name != 'flash_is_set';
 
 /// A cookie string, filtered down to what is ours to send.
 String cookieHeader(Map<String, String> jar) => [
@@ -147,6 +151,18 @@ class ArchiveClient {
   /// Announce ourselves as a tool rather than as the browser we are inside.
   final bool identify;
 
+  /// The browser this device actually has.
+  ///
+  /// 1.x asked Android for it and sent that. This sent a string written down
+  /// months ago naming a phone model and a Chrome version that have nothing
+  /// to do with whoever is holding the device — which is a worse signal than
+  /// the truth, not a better one, because it does not match the session the
+  /// archive already has or anything else about the request.
+  String? _agent;
+
+  // ignore: use_setters_to_change_properties
+  void useAgent(String agent) => _agent = agent;
+
   /// Someone on page seven got there from page six. Arriving with no referer
   /// at all, page after page, is not what browsing looks like.
   Uri? _referer;
@@ -164,7 +180,7 @@ class ArchiveClient {
   Map<String, String> headers() {
     final cookie = cookieHeader(_cookies);
     return {
-      'User-Agent': identify ? honestAgent : browserAgent,
+      'User-Agent': identify ? honestAgent : (_agent ?? browserAgent),
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
           'image/avif,image/webp,*/*;q=0.8',
       'Accept-Language': 'en-GB,en;q=0.9',
