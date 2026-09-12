@@ -62,6 +62,16 @@ test('a work in progress is not marked complete', () => {
 test('paragraph breaks become whitespace, not run-together words', () => {
   assert.equal(htmlToText('<p>end.</p><p>Next</p>'), 'end.\nNext');
   assert.equal(htmlToText('<script>bad()</script><p>ok</p>'), 'ok');
+
+  /* A paragraph nobody closed is still a paragraph.
+     Only closing tags ended a line, so <p>one<p>two — which every browser
+     that has ever rendered fic treats as two paragraphs — came out as
+     "onetwo": one word where there were two. That went into the search index
+     and into the work's length, silently, and it was found by porting this to
+     Dart and having a real HTML parser disagree about a word count. */
+  assert.equal(htmlToText('<p>one<p>two'), 'one\ntwo');
+  assert.equal(countWords(htmlToText('<p>one<p>two')), 2);
+  assert.equal(htmlToText('<div>a<div>b</div></div>'), 'a\nb');
 });
 
 test('entities decode, including numeric', () => {

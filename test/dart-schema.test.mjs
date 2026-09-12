@@ -41,6 +41,24 @@ test('the conformance fixture still says what 1.x says', () => {
     'run `node tools/emit-conformance.mjs` — the rules moved and Dart was not told');
 });
 
+/**
+ * The native reader must not lose a word the WebView showed.
+ *
+ * A reader who finds out a scene is missing finds out by reaching the next
+ * one. The fixture records the words of real chapters, from the implementation
+ * that has been showing them for weeks; the Dart document model is required to
+ * produce the same ones.
+ */
+test('the chapter fixture still says what 1.x says', () => {
+  const fixture = fileURLToPath(
+    new URL('../dart/folio_core/test/conformance/chapters.json', import.meta.url));
+  const before = readFileSync(fixture, 'utf8');
+  execFileSync(process.execPath,
+    [fileURLToPath(new URL('../tools/emit-chapter-conformance.mjs', import.meta.url))]);
+  assert.equal(before, readFileSync(fixture, 'utf8'),
+    'run `node tools/emit-chapter-conformance.mjs` — the text changed and Dart was not told');
+});
+
 test('the emitted statements carry no comment that could cut one in half', () => {
   const dart = readFileSync(
     new URL('../dart/folio_core/lib/src/store/schema.g.dart', import.meta.url), 'utf8');

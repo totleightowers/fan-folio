@@ -78,6 +78,16 @@ export function htmlToText(html) {
     out = out
       .replace(/<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, '')
       .replace(/<\/(p|div|h[1-6]|li|blockquote|tr)>/gi, '\n')
+      /* An opening tag ends a line too, where one has not ended already.
+         Only closing tags did, and fic markup is full of paragraphs nobody
+         closed — <p>one<p>two is two paragraphs to every browser that has
+         ever rendered it, and was "onetwo" here. That ran words together in
+         the search index and undercounted the work, both silently.
+         Conditioned on there not being a break already so that well-formed
+         markup is untouched: </p><p> stays one line ending, not two.
+         Found by porting this to Dart, where a real HTML parser disagreed
+         with it about a chapter's word count. */
+      .replace(/(?<!\n)<(p|div|h[1-6]|li|blockquote|tr)\b[^>]*>/gi, '\n')
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]*>/g, '');
   } while (out !== previous);
