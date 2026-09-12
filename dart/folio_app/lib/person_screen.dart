@@ -220,32 +220,53 @@ class _FromTheArchive extends StatefulWidget {
 
 class _FromTheArchiveState extends State<_FromTheArchive>
     with AutomaticKeepAliveClientMixin {
-  List<core.Blurb>? _listed;
+  final List<core.Blurb> _listed = [];
   Set<String> _held = const {};
   final Set<String> _queued = {};
+  bool _started = false;
   bool _asking = false;
   String? _trouble;
+
+  /// Where the walk has got to, and how far it goes.
+  int _page = 0;
+  int _pages = 1;
+
+  bool get _more => _page < _pages;
 
   @override
   bool get wantKeepAlive => true;
 
-  Future<void> _ask() async {
+  /// One more page, which is one more request.
+  ///
+  /// Asked for rather than fetched on scroll. Every page is a request on the
+  /// same clock as everything else — roughly half a minute apart — so a list
+  /// that loaded itself as somebody scrolled would be a list that stalls, and
+  /// a person idly flicking would be spending the archive's patience without
+  /// being told. A button says what it costs.
+  Future<void> _askForMore() async {
     setState(() {
+      _started = true;
       _asking = true;
       _trouble = null;
     });
     try {
-      final listed = await widget.downloads.peek(
+      final listing = await widget.downloads.peek(
         widget.byline,
         bookmarks: widget.bookmarks,
+        page: _page + 1,
       );
-      final held = await widget.library
-          .works({'limit': 1})
-          .then((_) async => _heldAmong(listed));
+      final known = {for (final blurb in _listed) blurb.workId};
+      final fresh = [
+        for (final blurb in listing.works)
+          if (!known.contains(blurb.workId)) blurb,
+      ];
+      final held = await _heldAmong(fresh);
       if (!mounted) return;
       setState(() {
-        _listed = listed;
-        _held = held;
+        _listed.addAll(fresh);
+        _held = {..._held, ...held};
+        _page = listing.current > 0 ? listing.current : _page + 1;
+        _pages = listing.total > 0 ? listing.total : _page;
         _asking = false;
       });
     } catch (e) {
@@ -274,9 +295,11 @@ class _FromTheArchiveState extends State<_FromTheArchive>
     super.build(context);
     final ground = groundOf(context);
 
-    if (_asking) return const Center(child: CircularProgressIndicator());
+    if (_asking && _listed.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    if (_listed == null) {
+    if (!_started) {
       /* Not fetched on arrival. Tapping a byline should cost nothing; asking
          the archive is a deliberate thing, at a reader's pace. */
       return Center(
@@ -303,14 +326,17 @@ class _FromTheArchiveState extends State<_FromTheArchive>
                 ),
               ],
               const SizedBox(height: 18),
-              FilledButton(onPressed: _ask, child: const Text('Have a look')),
+              FilledButton(
+                onPressed: _askForMore,
+                child: const Text('Have a look'),
+              ),
             ],
           ),
         ),
       );
     }
 
-    final listed = _listed!;
+    final listed = _listed;
     if (listed.isEmpty) {
       return Center(
         child: Text(
@@ -323,9 +349,21 @@ class _FromTheArchiveState extends State<_FromTheArchive>
     }
 
     return ListView.separated(
-      itemCount: listed.length,
+      itemCount: listed.length + 1,
       separatorBuilder: (_, __) => Divider(height: 1, color: ground.lineSoft),
       itemBuilder: (context, i) {
+        if (i == listed.length) {
+          return _Tail(
+            shown: listed.length,
+            pages: _pages,
+            page: _page,
+            more: _more,
+            asking: _asking,
+            trouble: _trouble,
+            ground: ground,
+            onMore: _askForMore,
+          );
+        }
         final blurb = listed[i];
         final have = _held.contains(blurb.workId);
         final queued = _queued.contains(blurb.workId);
@@ -373,4 +411,58 @@ class _FromTheArchiveState extends State<_FromTheArchive>
       },
     );
   }
+}
+
+/// The foot of a listing: what has been seen, and what asking for more costs.
+class _Tail extends StatelessWidget {
+  const _Tail({
+    required this.shown,
+    required this.pages,
+    required this.page,
+    required this.more,
+    required this.asking,
+    required this.trouble,
+    required this.ground,
+    required this.onMore,
+  });
+
+  final int shown;
+  final int pages;
+  final int page;
+  final bool more;
+  final bool asking;
+  final String? trouble;
+  final Ground ground;
+  final VoidCallback onMore;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+    child: Column(
+      children: [
+        Text(
+          /* Twenty to a page, so the total is what the archive says its
+             pages come to rather than a count of works — near enough to
+             judge by, and honest about being near enough. */
+          more ? '$shown so far, page $page of $pages' : '$shown in all',
+          style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+        ),
+        if (trouble != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            trouble!,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12.5, color: ground.accent),
+          ),
+        ],
+        if (more) ...[
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: asking ? null : onMore,
+            child: Text(asking ? 'Asking…' : 'Twenty more (one request)'),
+          ),
+        ],
+      ],
+    ),
+  );
 }

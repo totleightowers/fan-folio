@@ -203,7 +203,7 @@ class Downloads extends ChangeNotifier {
   /// Their works, or their bookmarks. A listing page describes twenty works
   /// for one request, which is why this is worth having at all: it is the
   /// difference between knowing what somebody has written and downloading it.
-  Future<List<core.Blurb>> peek(
+  Future<core.Listing> peek(
     String byline, {
     bool bookmarks = false,
     int page = 1,
@@ -211,7 +211,7 @@ class Downloads extends ChangeNotifier {
     final url = bookmarks
         ? core.authorBookmarks(byline, page)
         : core.authorWorks(byline, page);
-    return core.parseListing((await _client.get(Uri.parse(url))).body).works;
+    return core.parseListing((await _client.get(Uri.parse(url))).body);
   }
 
   /// Fetch a named handful, rather than a whole catalogue.
