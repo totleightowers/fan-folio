@@ -222,7 +222,6 @@ class _ShellState extends State<Shell> {
       MaterialPageRoute<void>(
         builder: (_) => ReaderScreen(
           library: library,
-          downloads: _downloads,
           work: work,
           chapters: chapters,
           downloads: _downloads,

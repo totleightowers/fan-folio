@@ -122,21 +122,21 @@ class YouScreenState extends State<YouScreen> {
             label: 'Bookmarked',
             count: _bookmarked,
             ground: ground,
-            onTap: () => widget.onNarrow(_bookmarked, 'Bookmarked'),
+            onTap: () => widget.onNarrow(_yourBookmarks, 'Bookmarked'),
           ),
           _Row(
             icon: Icons.schedule_outlined,
             label: 'Marked for later',
             count: _later,
             ground: ground,
-            onTap: () => widget.onNarrow(_later, 'Marked for later'),
+            onTap: () => widget.onNarrow(_yourLater, 'Marked for later'),
           ),
           _Row(
             icon: Icons.done_all,
             label: 'Finished',
             count: _read,
             ground: ground,
-            onTap: () => widget.onNarrow(_finished, 'Finished'),
+            onTap: () => widget.onNarrow(_yourFinished, 'Finished'),
           ),
           _Row(
             icon: Icons.person_off_outlined,
@@ -262,12 +262,15 @@ class _Row extends StatelessWidget {
 /// Held as constants rather than written at the call: the formatter splits a
 /// map literal passed inline, and a split argument list then wants a trailing
 /// comma the formatter takes away again.
-const Map<String, Object?> _bookmarked = {
+const Map<String, Object?> _yourBookmarks = {
   'state': 'bookmarked',
   'sort': 'added',
 };
-const Map<String, Object?> _later = {'state': 'later', 'sort': 'title'};
-const Map<String, Object?> _finished = {'state': 'finished', 'sort': 'added'};
+const Map<String, Object?> _yourLater = {'state': 'later', 'sort': 'title'};
+const Map<String, Object?> _yourFinished = {
+  'state': 'finished',
+  'sort': 'added',
+};
 
 /// Roughly when, which is all anybody wants from a last-run time.
 String _when(DateTime at) {

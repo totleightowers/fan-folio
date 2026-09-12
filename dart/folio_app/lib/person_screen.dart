@@ -45,11 +45,7 @@ class _PersonScreenState extends State<PersonScreen> {
   }
 
   Future<void> _load() async {
-    final held = await widget.library.works({
-      'author': [widget.byline],
-      'sort': 'added',
-      'limit': 200,
-    });
+    final held = await widget.library.works({..._theirs, 'limit': 200});
     final blocked = (await widget.library.blockedNames()).contains(
       widget.byline,
     );
@@ -60,6 +56,12 @@ class _PersonScreenState extends State<PersonScreen> {
       _loading = false;
     });
   }
+
+  /// Everything of theirs the library holds, as the Library would ask it.
+  Map<String, Object?> get _theirs => {
+    'author': [widget.byline],
+    'sort': 'added',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -112,10 +114,7 @@ class _PersonScreenState extends State<PersonScreen> {
               ground: ground,
               byline: widget.byline,
               onOpen: widget.onOpen,
-              onSeeAll: () => widget.onNarrow({
-                'author': [widget.byline],
-                'sort': 'added',
-              }, widget.byline),
+              onSeeAll: () => widget.onNarrow(_theirs, widget.byline),
             ),
             if (online != null)
               _FromTheArchive(
