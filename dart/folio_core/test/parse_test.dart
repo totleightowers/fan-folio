@@ -15,7 +15,13 @@ void main() {
       jsonDecode(File('test/conformance/parse.json').readAsStringSync())
           as Map<String, Object?>;
 
-  String page(String name) => File('test/conformance/$name').readAsStringSync();
+  /// The saved pages themselves, not copies of them.
+  ///
+  /// A second set of fixtures is a second set that can drift, and the whole
+  /// point of this file is that the two implementations read the same bytes.
+  /// These are the ones the JavaScript tests read.
+  String page(String name) =>
+      File('../../test/fixtures/$name').readAsStringSync();
 
   group('a listing says what 1.x says it says', () {
     for (final entry
