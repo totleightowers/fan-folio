@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:folio_core/folio_core.dart' as core;
 
+import 'downloads.dart';
 import 'library.dart';
 import 'theme.dart';
 
@@ -30,11 +32,66 @@ class _WorkActions extends StatelessWidget {
     required this.library,
     required this.work,
     required this.blocked,
+    this.downloads,
   });
 
   final Library library;
   final WorkRow work;
   final Set<String> blocked;
+  final Downloads? downloads;
+
+  /// Ask before committing an hour of somebody's evening.
+  ///
+  /// Under the threshold the whole listing is a handful of requests and waiting
+  /// for a tap only adds a tap. Over it, the reader is spending minutes of their
+  /// own time and of the archive's patience, and should get to say so — so the
+  /// size is found first, which costs exactly one request.
+  Future<void> _fetchAuthor(BuildContext context, String name) async {
+    final sheet = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final downloads = this.downloads;
+    if (downloads == null) return;
+
+    core.ListingCost cost;
+    try {
+      cost = await downloads.costOfAuthor(name);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      return;
+    }
+
+    if (!core.shouldWalkWholeListing(cost.pages)) {
+      final sure = await showDialog<bool>(
+        context: sheet.context,
+        builder: (context) => AlertDialog(
+          title: Text('All of $name?'),
+          content: Text(
+            'They have about ${cost.works} works across ${cost.pages} pages. '
+            'Fetched at a reader’s pace that is roughly '
+            '${_hours(cost.minutes)} — it carries on while the app is open, '
+            'and you can pause it in Activity.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Not now'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Go on then'),
+            ),
+          ],
+        ),
+      );
+      if (sure != true) return;
+    }
+
+    await downloads.addAuthor(name);
+    sheet.pop(true);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Walking $name’s works. Watch it in Activity.')),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,8 +129,19 @@ class _WorkActions extends StatelessWidget {
           Divider(height: 1, color: ground.lineSoft),
 
           /* One entry per author, because a work having more than one is
-             ordinary and blocking is about a person rather than a work. */
-          for (final name in work.authors)
+             ordinary and both of these are about a person rather than a
+             work. */
+          for (final name in work.authors) ...[
+            if (downloads != null && !blocked.contains(name))
+              ListTile(
+                leading: Icon(Icons.library_add_outlined, color: ground.inkMid),
+                title: Text('Everything by $name'),
+                subtitle: Text(
+                  'Walk their works and fetch what is not here yet.',
+                  style: TextStyle(fontSize: 12.5, color: ground.inkMute),
+                ),
+                onTap: () => _fetchAuthor(context, name),
+              ),
             ListTile(
               leading: Icon(
                 blocked.contains(name) ? Icons.person : Icons.person_off,
@@ -110,6 +178,7 @@ class _WorkActions extends StatelessWidget {
                 );
               },
             ),
+          ],
 
           ListTile(
             leading: Icon(Icons.delete_outline, color: ground.accent),
@@ -134,6 +203,13 @@ class _WorkActions extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Minutes, said the way somebody would say them.
+String _hours(int minutes) {
+  if (minutes < 90) return '$minutes minutes';
+  final hours = minutes / 60;
+  return '${hours.toStringAsFixed(hours < 10 ? 1 : 0)} hours';
 }
 
 /// There is no undo for this one, so it is asked rather than assumed.

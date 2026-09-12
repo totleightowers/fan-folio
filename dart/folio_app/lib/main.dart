@@ -188,6 +188,7 @@ class _ShellState extends State<Shell> {
       context,
       library: library,
       work: work,
+      downloads: _downloads,
     );
     if (!changed || !mounted) return;
     await _home.currentState?.reload();
