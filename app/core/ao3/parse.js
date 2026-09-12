@@ -97,7 +97,16 @@ export function parseBlurb(li) {
     relationships: group('relationships'),
     characters: group('characters'),
     freeform: group('freeforms'),
-    summary: htmlToText(li.match(/<blockquote class="userstuff summary">([\s\S]*?)<\/blockquote>/i)?.[1] ?? '') || null,
+    /* Depth-counted, not non-greedy.
+       A summary that quotes something puts a blockquote inside the summary's
+       own blockquote, and /([\s\S]*?)<\/blockquote>/ stops at the inner
+       closing tag — so any summary containing a quotation was silently cut
+       off at the quotation, in the library and in the metadata index. This
+       file already had innerHtmlOf for exactly this, written when the same
+       mistake truncated a chapter at its first nested div; the summary never
+       used it. Found by porting the parser to Dart, where a real HTML parser
+       returned more text than this did. */
+    summary: htmlToText(innerHtmlOf(li, /<blockquote class="userstuff summary">/i) ?? '') || null,
     language: htmlToText(stat('language') ?? '') || null,
     words: num(htmlToText(stat('words') ?? '')),
     chapters: num(done),

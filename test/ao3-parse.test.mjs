@@ -10,6 +10,27 @@ import { workPage, readings, bookmarks, PER_PAGE } from '../app/core/ao3/urls.js
 const listing = readFileSync(new URL('./fixtures/listing.html', import.meta.url), 'utf8');
 const workHtml = readFileSync(new URL('./fixtures/work-page.html', import.meta.url), 'utf8');
 
+/*
+ * A summary that quotes something puts a blockquote inside the summary's own
+ * blockquote, and a non-greedy match stops at the inner closing tag — so any
+ * summary containing a quotation was silently cut off at the quotation, in
+ * the library and in the metadata index. Found by porting this parser to
+ * Dart, where a real HTML parser returned more text than this did.
+ */
+test('a summary that quotes something is not cut off at the quotation', () => {
+  const li = `<li class="work blurb" id="work_9">
+    <blockquote class="userstuff summary">
+      <p>Before the quote.</p>
+      <blockquote><p>The quoted bit.</p></blockquote>
+      <p>After the quote.</p>
+    </blockquote></li>`;
+  const { summary } = parseBlurb(li);
+  assert.match(summary, /Before the quote/);
+  assert.match(summary, /The quoted bit/, 'the inner blockquote is part of the summary');
+  assert.match(summary, /After the quote/,
+    'and everything after it was being thrown away');
+});
+
 test('a listing splits into its works', () => {
   assert.equal(splitBlurbs(listing).length, 3);
 });
