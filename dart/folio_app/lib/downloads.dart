@@ -169,6 +169,31 @@ class Downloads extends ChangeNotifier {
     };
   }
 
+  /// What one person's pages say they have, without fetching any of it.
+  ///
+  /// Their works, or their bookmarks. A listing page describes twenty works
+  /// for one request, which is why this is worth having at all: it is the
+  /// difference between knowing what somebody has written and downloading it.
+  Future<List<core.Blurb>> peek(
+    String byline, {
+    bool bookmarks = false,
+    int page = 1,
+  }) async {
+    final url = bookmarks
+        ? core.authorBookmarks(byline, page)
+        : core.authorWorks(byline, page);
+    return core.parseListing((await _client.get(Uri.parse(url))).body).works;
+  }
+
+  /// Fetch a named handful, rather than a whole catalogue.
+  ///
+  /// Which is most of what somebody actually wants from a person's page:
+  /// three of these, not all sixty.
+  Future<int> addWorks(String label, List<String> workIds) async {
+    await _remember();
+    return _queue.add(author: label, part: 'picked', workIds: workIds);
+  }
+
   /// How much of an author's catalogue there is, before any of it is fetched.
   ///
   /// One listing page describes twenty works for one request, so walking a
@@ -285,17 +310,21 @@ class Downloads extends ChangeNotifier {
   bool remove(int id) => _queue.remove(id);
   bool rerun(int id) => _queue.rerun(id);
 
-  /// Sign in, and keep the session that comes back.
+  /// Take on the session somebody just signed in with.
   ///
-  /// The password is handed to the archive's own form and goes no further:
-  /// what is kept is the cookie, in app-private storage beside the library
-  /// rather than inside it, so it does not travel in a backup.
-  Future<String> signIn(String username, String password) async {
-    final who = await _client.signIn(username, password);
-    _session = Session(cookies: _client.cookies, username: who);
+  /// The cookies come from the webview the archive's own sign-in page was
+  /// shown in, which is the only place they can come from: the archive has no
+  /// endpoint for other people's apps to call, and a password typed into this
+  /// one would be the wrong shape even where it worked.
+  ///
+  /// Kept beside the library rather than inside it, so it does not travel in
+  /// a backup — a backup is made to be handed to a new phone, and a session
+  /// cookie inside one is an account somebody else can sign into.
+  Future<void> adoptSession(Map<String, String> cookies, String who) async {
+    _client.setCookies(cookies);
+    _session = Session(cookies: cookies, username: who);
     await _session.save();
     notifyListeners();
-    return who;
   }
 
   /// Sign out here, which is not signing out there.

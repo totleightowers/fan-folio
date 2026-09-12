@@ -18,6 +18,7 @@ class HomeScreen extends StatefulWidget {
     required this.onSeeAll,
     required this.onNarrow,
     required this.onOpenById,
+    required this.onResume,
     this.onHold,
     super.key,
   });
@@ -32,6 +33,9 @@ class HomeScreen extends StatefulWidget {
 
   /// Surprise me has a work id rather than a row to open with.
   final void Function(String workId) onOpenById;
+
+  /// Straight into the text, for the one shelf whose whole point is that.
+  final void Function(WorkRow) onResume;
 
   final void Function(WorkRow)? onHold;
 
@@ -98,7 +102,10 @@ class HomeScreenState extends State<HomeScreen> {
               title: shelf.title,
               works: works,
               total: total,
-              onOpen: widget.onOpen,
+              /* Continue reading means carry on. A shelf that says so and
+                 then shows a description is not carrying on — so that one
+                 shelf opens the text and the rest open the work. */
+              onOpen: shelf.key == 'reading' ? widget.onResume : widget.onOpen,
               onHold: widget.onHold,
               onSeeAll: () => widget.onSeeAll(shelf.view, shelf.title),
             );

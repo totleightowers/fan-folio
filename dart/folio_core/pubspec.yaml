@@ -23,6 +23,9 @@ dependencies:
   # is fiddly enough to be worth not writing again. Already under http; named
   # here because this imports it.
   http_parser: ^4.0.0
+  # A picture is stored under the hash of its bytes, so the same image
+  # referenced from two chapters is recognisably the same image.
+  crypto: ^3.0.0
 
 dev_dependencies:
   test: ^1.25.0

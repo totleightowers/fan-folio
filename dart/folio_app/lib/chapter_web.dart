@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:folio_core/folio_core.dart' show ReadingFace, ReadingPrefs;
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'theme.dart';
 
@@ -111,7 +111,7 @@ String cssFamily(ReadingFace face) => switch (face) {
 };
 
 class _SkinnedChapterViewState extends State<SkinnedChapterView> {
-  WebViewController? _controller;
+  String? _document;
   String? _trouble;
 
   @override
@@ -136,12 +136,9 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   Future<void> _prepare() async {
     try {
       final archiveCss = await rootBundle.loadString('assets/ao3-work.css');
-      final controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.disabled)
-        ..setBackgroundColor(widget.settings.ground.paper)
-        ..loadHtmlString(_document(archiveCss));
+      final page = _page(archiveCss);
       if (!mounted) return;
-      setState(() => _controller = controller);
+      setState(() => _document = page);
     } catch (e) {
       if (!mounted) return;
       setState(() => _trouble = '$e');
@@ -154,7 +151,7 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   /// the author's skin last so it wins — which is the whole point of a skin.
   /// JavaScript is off: this is a stranger's markup rendered next to somebody's
   /// library, and nothing in a work has any business running.
-  String _document(String archiveCss) {
+  String _page(String archiveCss) {
     final s = widget.settings;
     final ground = s.ground;
     String hex(Color c) =>
@@ -199,9 +196,25 @@ ${widget.chapterHtml}
         ),
       );
     }
-    if (_controller == null) {
+    final document = _document;
+    if (document == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return WebViewWidget(controller: _controller!);
+    return InAppWebView(
+      initialData: InAppWebViewInitialData(
+        data: document,
+        baseUrl: WebUri('https://archiveofourown.org/'),
+        mimeType: 'text/html',
+        encoding: 'utf-8',
+      ),
+      initialSettings: InAppWebViewSettings(
+        /* Off. This is a stranger's markup rendered next to somebody's
+           library, and nothing in a work has any business running. */
+        javaScriptEnabled: false,
+        transparentBackground: true,
+        supportZoom: false,
+        disableHorizontalScroll: true,
+      ),
+    );
   }
 }

@@ -18,6 +18,17 @@ class WorkRow {
     this.fandom,
     this.hasText = false,
     this.skinCss,
+    this.rating,
+    this.language,
+    this.complete,
+    this.published,
+    this.updated,
+    this.kudos,
+    this.hits,
+    this.bookmarkCount,
+    this.inBookmarks = false,
+    this.kudosGiven = false,
+    this.markedLater = false,
   });
 
   factory WorkRow.fromMap(Map<String, Object?> row) => WorkRow(
@@ -30,6 +41,22 @@ class WorkRow {
     fandom: row['fandom'] as String?,
     hasText: (row['has_text'] as int? ?? 0) == 1,
     skinCss: row['skin_css'] as String?,
+    /* Only present when the row was asked for in full. A list does not need
+       them and a work's own page does, so both read the same class and the
+       page asks the wider question. */
+    rating: row['rating'] as String?,
+    language: row['language'] as String?,
+    complete: row.containsKey('complete') && row['complete'] != null
+        ? row['complete'] == 1
+        : null,
+    published: row['published'] as String?,
+    updated: row['updated'] as String?,
+    kudos: row['kudos'] as int?,
+    hits: row['hits'] as int?,
+    bookmarkCount: row['bookmark_count'] as int?,
+    inBookmarks: (row['in_bookmarks'] as int? ?? 0) == 1,
+    kudosGiven: (row['kudos_given'] as int? ?? 0) == 1,
+    markedLater: (row['marked_later'] as int? ?? 0) == 1,
   );
 
   final String workId;
@@ -41,6 +68,22 @@ class WorkRow {
   final String? fandom;
   final bool hasText;
   final String? skinCss;
+
+  final String? rating;
+  final String? language;
+
+  /// Null when nobody asked. A work whose completeness is unknown is not a
+  /// work in progress, and saying so either way would be inventing it.
+  final bool? complete;
+
+  final String? published;
+  final String? updated;
+  final int? kudos;
+  final int? hits;
+  final int? bookmarkCount;
+  final bool inBookmarks;
+  final bool kudosGiven;
+  final bool markedLater;
 
   String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
 
@@ -177,14 +220,40 @@ class Library {
   }
 
   /// One work, with what the reader needs to open it.
+  /// One work, as much of it as its own page needs.
   Future<WorkRow?> work(String workId) async {
     final rows = await db.rawQuery(
-      'SELECT work_id, title, authors, summary, words, chapter_count, has_text, skin_css '
-      'FROM works WHERE work_id = ?',
+      '''
+      SELECT w.*, r.marked_later,
+             (SELECT name FROM tags t
+               WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1)
+               AS fandom
+      FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+      WHERE w.work_id = ?''',
       [workId],
     );
     return rows.isEmpty ? null : WorkRow.fromMap(rows.first);
   }
+
+  /// Every tag on a work, by kind, in the order the archive lists them.
+  Future<Map<String, List<String>>> tagsFor(String workId) async {
+    final rows = await db.rawQuery(
+      'SELECT kind, name FROM tags WHERE work_id = ? ORDER BY rowid',
+      [workId],
+    );
+    final out = <String, List<String>>{};
+    for (final row in rows) {
+      (out['${row['kind']}'] ??= []).add('${row['name']}');
+    }
+    return out;
+  }
+
+  /// Keep it for later, or stop keeping it.
+  Future<void> markLater(String workId, {required bool later}) => db.rawInsert(
+    'INSERT INTO reading (work_id, marked_later) VALUES (?, ?) '
+    'ON CONFLICT(work_id) DO UPDATE SET marked_later = excluded.marked_later',
+    [workId, later ? 1 : 0],
+  );
 
   Future<List<ChapterRow>> chapters(String workId) async {
     final rows = await db.rawQuery(
@@ -457,6 +526,24 @@ class Library {
   static String backupName([DateTime? at]) {
     final day = (at ?? DateTime.now()).toIso8601String().substring(0, 10);
     return 'fan-folio-$day.db';
+  }
+
+  /// The counts that are about you rather than about the library.
+  Future<({int bookmarked, int finished, int later})> yours() async {
+    final rows = await db.rawQuery('''
+      SELECT
+        (SELECT count(*) FROM works
+          WHERE COALESCE(in_bookmarks, 0) = 1 AND COALESCE(hidden, 0) = 0)
+          AS bookmarked,
+        (SELECT count(*) FROM reading WHERE COALESCE(marked_later, 0) = 1)
+          AS later
+    ''');
+    final read = await db.rawQuery(core.readStatsSql);
+    return (
+      bookmarked: rows.first['bookmarked'] as int? ?? 0,
+      later: rows.first['later'] as int? ?? 0,
+      finished: read.first['finished'] as int? ?? 0,
+    );
   }
 
   /// Which works are your bookmarks now — all of them, as one answer.

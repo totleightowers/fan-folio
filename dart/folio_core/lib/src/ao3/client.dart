@@ -11,6 +11,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart' show parseHttpDate;
@@ -54,6 +55,14 @@ String cookieHeader(Map<String, String> jar) => [
         if (keepCookie(entry.key) && entry.key.isNotEmpty)
           '${entry.key}=${entry.value}',
     ].join('; ');
+
+/// Something that is not a page: bytes, and what kind of bytes.
+class Bytes {
+  const Bytes({required this.bytes, this.mime});
+
+  final Uint8List bytes;
+  final String? mime;
+}
 
 /// What the archive said, and what it said it with.
 class Page {
@@ -165,6 +174,41 @@ class ArchiveClient {
   /// Ask for a page, in its turn.
   Future<Page> get(Uri url) => pacer.run(() => _get(url));
 
+  /// Ask for something that is not a page, in its turn.
+  ///
+  /// A picture, most likely. Kept apart from [get] because the body is bytes
+  /// rather than text, and because the headers a browser sends for an image
+  /// are not the ones it sends for a document — partial headers are their own
+  /// signature, and a client claiming to be Chrome while asking for a picture
+  /// the way it asks for a page is not what Chrome looks like.
+  Future<Bytes> getBytes(Uri url, {String? accept}) =>
+      pacer.run(() => _getBytes(url, accept));
+
+  Future<Bytes> _getBytes(Uri url, String? accept) async {
+    http.Response response;
+    try {
+      response = await _http.get(url, headers: {
+        ...headers(),
+        if (accept != null) 'Accept': accept,
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+      });
+    } catch (e) {
+      throw ArchiveError('The app could not reach it: $e');
+    }
+
+    if (!response.ok) {
+      throw ArchiveError(
+        'It answered ${response.statusCode}',
+        status: response.statusCode,
+      );
+    }
+    return Bytes(
+      bytes: response.bodyBytes,
+      mime: response.headers['content-type'],
+    );
+  }
+
   /// Submit a form, in its turn.
   ///
   /// Redirects are followed by hand rather than by the client, because every
@@ -213,54 +257,18 @@ class ArchiveClient {
     return Page(status: response.statusCode, body: body, url: at);
   }
 
-  /// Sign in, and say who as.
+  /// There is no sign-in here, and that is deliberate.
   ///
-  /// The form is read off the page rather than assembled from field names
-  /// this app happens to know, so the day the archive renames one, this
-  /// submits the new name instead of failing silently. The password is used
-  /// to fill that form and is never written down anywhere.
+  /// The archive has no endpoint for other people's apps to call, and posting
+  /// a password to their login form from a phone is the wrong shape twice
+  /// over: it teaches the habit phishing relies on, and it cannot answer a
+  /// captcha, a two-factor prompt or a Cloudflare challenge — all of which
+  /// the archive serves to a phone sooner or later.
   ///
-  /// The archive re-renders the form with an error rather than answering 4xx,
-  /// so a 200 is not a sign-in: who came back is.
-  Future<String> signIn(String username, String password) async {
-    final login = Uri.parse('$origin/users/login');
-    final page = await get(login);
-
-    final form =
-        parseForm(page.body, 'new_user') ?? parseForm(page.body, 'login');
-    final token = form?.fields['authenticity_token'] ?? csrfToken(page.body);
-    if (token == null) {
-      throw const ArchiveError(
-        'The sign-in page had no token on it — the archive’s form has '
-        'changed, or something answered in its place.',
-      );
-    }
-
-    final answer = await post(login, {
-      ...?form?.fields,
-      'authenticity_token': token,
-      'user[login]': username,
-      'user[password]': password,
-      // so the session outlives closing the app, which is the whole point
-      'user[remember_me]': '1',
-      'commit': 'Log In',
-    });
-
-    final who = signedInAs(answer.body);
-    if (who != null) return who;
-
-    if (RegExp(
-      r'password.{0,40}(incorrect|invalid)|user name or password',
-      caseSensitive: false,
-      dotAll: true,
-    ).hasMatch(answer.body)) {
-      throw const ArchiveError('The archive did not accept that sign-in.');
-    }
-    throw const ArchiveError(
-      'That did not take. The archive may be asking for something new — '
-      'try opening it in a browser and see what it wants.',
-    );
-  }
+  /// So signing in happens on the archive's own page, in a webview, and the
+  /// session cookie is read out of the platform's cookie store afterwards
+  /// and handed to [setCookies]. The password is between the reader and the
+  /// archive and never passes through this app.
 
   /// Who the archive thinks we are, or nobody.
   Future<String?> whoAmI() async {
