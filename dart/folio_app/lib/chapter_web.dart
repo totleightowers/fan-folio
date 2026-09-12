@@ -40,6 +40,7 @@ class SkinnedChapterView extends StatefulWidget {
     required this.skinCss,
     required this.settings,
     this.pictures = const {},
+    required this.plainly,
     super.key,
   });
 
@@ -47,6 +48,9 @@ class SkinnedChapterView extends StatefulWidget {
 
   /// The pictures this work carries, by the address its markup points at.
   final Map<String, ({String mime, Uint8List bytes})> pictures;
+
+  /// The same chapter as plain text, for when the skin will not render.
+  final Widget Function(String? why) plainly;
   final String? skinCss;
   final ReadingChrome settings;
 
@@ -140,6 +144,21 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   String? _document;
   String? _trouble;
 
+  /// A chapter is worth reading without its skin.
+  ///
+  /// Falling back rather than showing a black rectangle: the skin is the
+  /// work, but the words are more of it, and a reader staring at nothing has
+  /// no way to know whether the chapter is empty or the engine gave up.
+  bool _plainly = false;
+
+  void _wentWrong(String why) {
+    if (!mounted || _plainly) return;
+    setState(() {
+      _plainly = true;
+      _trouble = why;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -214,6 +233,7 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
 
   @override
   Widget build(BuildContext context) {
+    if (_plainly) return widget.plainly(_trouble);
     if (_trouble != null) {
       return Center(
         child: Padding(
@@ -237,10 +257,16 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
         /* Off. This is a stranger's markup rendered next to somebody's
            library, and nothing in a work has any business running. */
         javaScriptEnabled: false,
-        transparentBackground: true,
+        /* Painted rather than transparent. A transparent webview that has
+           failed to render looks exactly like the page behind it, which is
+           how a broken chapter reads as an empty one. */
+        transparentBackground: false,
         supportZoom: false,
         disableHorizontalScroll: true,
       ),
+      onReceivedError: (_, __, error) => _wentWrong(error.description),
+      onReceivedHttpError: (_, __, response) =>
+          _wentWrong('the page answered ${response.statusCode}'),
     );
   }
 }

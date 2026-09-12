@@ -72,6 +72,34 @@ class _ShellState extends State<Shell> {
   /// database rather than from the page of works it happens to be holding.
   int _libraryEpoch = 0;
 
+  /// The tabs behind this one.
+  ///
+  /// Tabs are not routes, so back at the root leaves the app — which is the
+  /// right answer for somebody who opened it on Home and pressed back, and
+  /// the wrong one for somebody who went Home, Library, You and expected to
+  /// walk back out the way they came. Capped, because a trail is a way back
+  /// and not a history.
+  final List<int> _trail = [];
+
+  void _goToTab(int to) {
+    if (to == _tab) return;
+    setState(() {
+      _trail.add(_tab);
+      if (_trail.length > 20) _trail.removeAt(0);
+      _tab = to;
+      if (to == 1 && _viewTitle == 'Library') {
+        _view = const {'sort': 'added'};
+      }
+    });
+  }
+
+  /// Back: the tab before this one, or out of the app if there is none.
+  bool _back() {
+    if (_trail.isEmpty) return false;
+    setState(() => _tab = _trail.removeLast());
+    return true;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -334,11 +362,17 @@ class _ShellState extends State<Shell> {
   }
 
   /// A shelf's See all lands on the same question the shelf asked.
-  void _seeAll(Map<String, Object?> view, String title) => setState(() {
-    _view = view;
-    _viewTitle = title;
-    _tab = 1;
-  });
+  void _seeAll(Map<String, Object?> view, String title) {
+    if (_tab != 1) {
+      _trail.add(_tab);
+      if (_trail.length > 20) _trail.removeAt(0);
+    }
+    setState(() {
+      _view = view;
+      _viewTitle = title;
+      _tab = 1;
+    });
+  }
 
   /// What the bar says it is showing.
   String get _title => switch (_tab) {
@@ -366,6 +400,16 @@ class _ShellState extends State<Shell> {
       );
     }
 
+    return PopScope(
+      canPop: _trail.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: _shell(library, ground),
+    );
+  }
+
+  Widget _shell(Library library, Ground ground) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_title),
@@ -436,12 +480,7 @@ class _ShellState extends State<Shell> {
             ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() {
-          _tab = i;
-          if (i == 1 && _viewTitle == 'Library') {
-            _view = const {'sort': 'added'};
-          }
-        }),
+        onDestinationSelected: _goToTab,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
           NavigationDestination(

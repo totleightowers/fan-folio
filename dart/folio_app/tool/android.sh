@@ -106,6 +106,17 @@ import sys
 path = sys.argv[1]
 xml = open(path).read()
 
+# Reaching the archive at all.
+#
+# `flutter create` writes INTERNET into the debug and profile manifests only,
+# because that is what the hot-reload channel needs — the main manifest gets
+# nothing. A debug build therefore has the network and a release build does
+# not, so every check that builds debug passes while the app somebody installs
+# cannot make a single request. It failed silently and looked like eight
+# different bugs: sign-in that did nothing, downloads that never arrived, a
+# webview showing a blank page.
+internet = '    <uses-permission android:name="android.permission.INTERNET" />\n'
+
 permission = (
     '    <uses-permission '
     'android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />\n'
@@ -119,6 +130,8 @@ service = (
     '            android:exported="false" />\n'
 )
 
+if 'android.permission.INTERNET' not in xml:
+    xml = xml.replace('    <application', internet + '    <application', 1)
 if 'FOREGROUND_SERVICE_DATA_SYNC' not in xml:
     xml = xml.replace('    <application', permission + '    <application', 1)
 if 'ForegroundService' not in xml:
@@ -128,4 +141,8 @@ if 'ForegroundService' not in xml:
 open(path, 'w').write(xml)
 PYEOF
 
-grep -n "FOREGROUND_SERVICE_DATA_SYNC\|ForegroundService" "$manifest"
+grep -n "INTERNET\|FOREGROUND_SERVICE_DATA_SYNC\|ForegroundService" "$manifest"
+
+# Said out loud, because the whole point of this is that its absence is silent.
+grep -q 'android.permission.INTERNET' "$manifest" \
+  || { echo "no INTERNET permission in the manifest" >&2; exit 1; }
