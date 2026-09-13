@@ -3100,3 +3100,43 @@ test('the badge is on the way to what it is about', () => {
   assert.match(js, /const here = \$\('#activity-here'\)/);
 });
 
+/**
+ * The three things that leave the phone, from the chapter they are about.
+ *
+ * Kudos had a button on the chapter bar. Bookmarking and commenting had
+ * nowhere at all: both meant leaving the chapter, finding the work's page,
+ * and coming back — for a decision made at the end of a chapter, in the
+ * moment, about the thing on screen.
+ */
+test('a chapter can be given kudos, bookmarked and commented on', () => {
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const body = menu.slice(0, menu.indexOf('</dialog>'));
+  for (const act of ['reader-kudos', 'reader-bookmark', 'reader-comment']) {
+    assert.ok(body.includes(`id="${act}"`), `${act} is reachable from a chapter`);
+  }
+
+  /* Each opens the form the work page opens, rather than a second one that
+     would have to be kept in step with it. */
+  assert.match(js, /\$\('#reader-bookmark'\)\.onclick[\s\S]{0,700}openSheet\(\$\('#bookmark-dialog'\)\)/);
+  assert.match(js, /\$\('#reader-comment'\)\.onclick[\s\S]{0,500}openSheet\(\$\('#comment-dialog'\)\)/);
+});
+
+test('the reader asks which work it is showing rather than assuming', () => {
+  /* Arriving from Continue reading opens a chapter without ever opening the
+     work, so the last work anybody looked at may be a different one. */
+  const fn = js.slice(js.indexOf('async function workBeingRead()'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /String\(currentWork\.work_id\) === id/,
+    'the one in hand is only used when it is the one being read');
+  assert.match(body, /await api\(`\/api\/works\/\$\{id\}`\)/, 'otherwise it is asked for');
+});
+
+test('bookmarked is a state, not an instruction, in the reader too', () => {
+  /* The label saying a work is already bookmarked used to be wired to the
+     make-a-bookmark route. Changing one is done on the archive, where the
+     notes and tags being changed actually live. */
+  const fn = js.slice(js.indexOf("$('#reader-bookmark').onclick"));
+  const body = fn.slice(0, fn.indexOf('\n};'));
+  assert.match(body, /if \(w\.in_bookmarks\) \{ openOnArchive/);
+});
+

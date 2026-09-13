@@ -5102,6 +5102,72 @@ async function showChapterDrawer(workId, at) {
 $('#to-work').onclick = () => upToWork(current.workId);
 $('#kudos-here').onclick = () => giveKudos(current.workId, $('#kudos-here'));
 
+/**
+ * The work being read, as a record rather than an id.
+ *
+ * The reader knows which work it is showing and not much else: arriving from
+ * Continue reading opens a chapter without ever opening the work, so the last
+ * work anybody looked at may be a different one entirely. Asked for when it
+ * is needed, which is only when somebody is about to act on it.
+ */
+async function workBeingRead() {
+  const id = String(current.workId ?? '');
+  if (!id) return null;
+  if (currentWork && String(currentWork.work_id) === id) return currentWork;
+  try {
+    return await api(`/api/works/${id}`);
+  } catch {
+    return null;
+  }
+}
+
+/*
+ * Kudos, a bookmark and a comment, from the chapter they are about.
+ *
+ * Kudos had a button on the chapter bar and the other two had nowhere at all:
+ * bookmarking or commenting meant leaving the chapter, finding the work's
+ * page, and coming back. They are one decision made in one moment — the end
+ * of a chapter — so they belong in one place, and that place is the sheet
+ * that already holds the rest of the way out of a chapter.
+ */
+$('#reader-kudos').onclick = async () => {
+  closeSheet($('#reader-menu'));
+  giveKudos(current.workId, $('#kudos-here'));
+};
+
+$('#reader-bookmark').onclick = async () => {
+  const w = await workBeingRead();
+  if (!w) { toast('That work is not here'); return; }
+  closeSheet($('#reader-menu'));
+  /* Bookmarked is a state, and making one is not the same as changing one.
+     Changing it is done on the archive, where the notes and tags live. */
+  if (w.in_bookmarks) { openOnArchive(String(w.work_id)); return; }
+  $('#bm-notes').value = '';
+  $('#bm-tags').value = '';
+  $('#bm-private').checked = false;
+  $('#bm-rec').checked = false;
+  $('#bm-status').hidden = true;
+  bookmarkTarget = w;
+  openSheet($('#bookmark-dialog'));
+};
+
+$('#reader-comment').onclick = async () => {
+  const w = await workBeingRead();
+  if (!w) { toast('That work is not here'); return; }
+  closeSheet($('#reader-menu'));
+  $('#cm-text').value = '';
+  $('#cm-status').hidden = true;
+  commentTarget = w;
+  openSheet($('#comment-dialog'));
+};
+
+/* The work's own page, which the chapter bar reaches too — but somebody who
+   opened this sheet looking for a way out should find all of them in it. */
+$('#reader-work').onclick = () => {
+  closeSheet($('#reader-menu'));
+  if (current.workId) openWork(current.workId);
+};
+
 $('#on-archive').onclick = () => {
   if (!current.workId) return;
   openOnArchive(`/works/${current.workId}?view_full_work=true#chapter-${current.chapter}`);
