@@ -547,6 +547,41 @@ export function importDatabase() {
   if (isNative) native.importDatabase();
 }
 
+/** Choose a shelf of EPUBs. The shell calls back with how many. */
+export function pickEpubs() {
+  if (!isNative) throw new Error('Bringing in books needs the app');
+  native.pickEpubs();
+}
+
+/** One chosen book, as bytes. Read on demand rather than all at once. */
+export function readPickedEpub(at) {
+  if (!isNative) return null;
+  const base64 = native.readPickedEpub(Number(at));
+  if (!base64) return null;
+  const raw = atob(base64);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+  return bytes;
+}
+
+export function pickedEpubName(at) {
+  if (!isNative) return '';
+  try { return native.pickedEpubName(Number(at)) || ''; } catch { return ''; }
+}
+
+/**
+ * A book read off a file, handed to the library to place.
+ *
+ * The library decides whether it is the work or a version of one: it knows
+ * whether the archive's copy is already here, and this does not.
+ */
+export function saveEpub(payload) {
+  if (!isNative) throw new Error('Bringing in books needs the app');
+  const out = JSON.parse(native.saveEpub(JSON.stringify(payload)));
+  if (out.error) throw new Error(out.error);
+  return out;
+}
+
 /** A link the shell was opened with, if it arrived before the page was ready. */
 /** Where an intent asked the app to land, if it arrived before the page did. */
 export function pendingOpen() {

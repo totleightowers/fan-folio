@@ -51,6 +51,17 @@ public class MainActivity extends Activity {
     private static final String ORIGIN = "https://" + HOST;
     private static final int PICK_DATABASE = 1;
     private static final int SAVE_DATABASE = 2;
+    private static final int PICK_EPUBS = 3;
+
+    /**
+     * The books somebody chose, held between the picker and the reading.
+     *
+     * A content URI from the picker is readable for as long as this activity
+     * lives and no longer, so the bytes cannot be fetched later from a note
+     * written down somewhere. They are read one at a time, on demand, which
+     * also keeps a shelf of two hundred EPUBs from arriving in memory at once.
+     */
+    private final java.util.List<Uri> pickedEpubs = new java.util.ArrayList<>();
     private static final int MAX_ROWS = 2000;
 
     /* Statements that read nothing useful and reach outside this archive. */
@@ -1874,6 +1885,63 @@ public class MainActivity extends Activity {
         }
 
         /**
+         * A book read off a file, and what to do with it.
+         *
+         * Two answers, and the library decides which. If it already holds
+         * this work from the archive, the archive's copy is the one to read —
+         * it has the chaptering, the tags and the notes the exporter dropped
+         * — and the EPUB is written down beside it as a version, which is
+         * where every other superseded copy of a chapter goes. If it does not
+         * hold it, or holds only a description of it, the EPUB is the work.
+         *
+         * Nothing is asked of the archive here. A shelf of two hundred books
+         * would be two hundred requests to find out something a later sync
+         * answers for free: refetching a work archives what it replaces
+         * already, so an EPUB that becomes the work becomes a version of the
+         * archive's copy the first time that work is fetched.
+         */
+        @JavascriptInterface
+        public String saveEpub(String json) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                org.json.JSONObject w = new org.json.JSONObject(json);
+                String id = w.getString("workId");
+                if (wasDeleted(id)) return errorJson("that work was deleted");
+
+                boolean fromArchive = false;
+                try (Cursor c = db.rawQuery(
+                        "SELECT COALESCE(has_text, 0), COALESCE(source, '') FROM works "
+                      + "WHERE work_id = ?", new String[]{ id })) {
+                    if (c.moveToFirst()) {
+                        fromArchive = c.getInt(0) == 1 && !"epub".equals(c.getString(1));
+                    }
+                }
+
+                db.beginTransaction();
+                try {
+                    if (fromArchive) {
+                        keepAsVersion(id, w.optJSONArray("chapters"));
+                        db.setTransactionSuccessful();
+                        return "{\"ok\":true,\"kept\":\"version\"}";
+                    }
+                    writeWork(w, id);
+                    /* Where it came from, so a later sync can tell a book read
+                       off a file from a work the archive gave us. */
+                    android.content.ContentValues from = new android.content.ContentValues();
+                    from.put("source", "epub");
+                    db.update("works", from, "work_id = ?", new String[]{ id });
+                    db.setTransactionSuccessful();
+                    return "{\"ok\":true,\"kept\":\"work\"}";
+                } finally {
+                    db.endTransaction();
+                }
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
+            }
+        }
+
+        /**
          * Where the reader has got to in a work.
          *
          * Reading position used to live in the page's localStorage while every
@@ -2239,6 +2307,61 @@ public class MainActivity extends Activity {
          * over months with no way to back it up is a library waiting to be
          * lost.
          */
+        /**
+         * Choose a shelf of EPUBs to bring in.
+         *
+         * Several at once, because nobody has one. The type is left open:
+         * application/epub+zip is what they are, and what a given file
+         * manager reports them as is anybody's guess — a picker that hides
+         * the files somebody is looking straight at is worse than one that
+         * shows too much.
+         */
+        @JavascriptInterface
+        public void pickEpubs() {
+            mustBeOurPage();
+            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            pick.addCategory(Intent.CATEGORY_OPENABLE);
+            pick.setType("*/*");
+            pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            try { startActivityForResult(pick, PICK_EPUBS); } catch (Exception ignored) {}
+        }
+
+        /** The name of one chosen book, so a job can say what it is reading. */
+        @JavascriptInterface
+        public String pickedEpubName(int at) {
+            mustBeOurPage();
+            if (at < 0 || at >= pickedEpubs.size()) return "";
+            String name = displayName(pickedEpubs.get(at));
+            return name == null ? "" : name;
+        }
+
+        /**
+         * One chosen book, as bytes the page can unzip.
+         *
+         * Base64 because the bridge carries strings. One at a time, so a
+         * shelf of two hundred is two hundred small trips rather than one
+         * that runs the app out of memory.
+         */
+        @JavascriptInterface
+        public String readPickedEpub(int at) {
+            mustBeOurPage();
+            if (at < 0 || at >= pickedEpubs.size()) return "";
+            try (InputStream in = getContentResolver().openInputStream(pickedEpubs.get(at))) {
+                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+                byte[] chunk = new byte[1 << 16];
+                int read;
+                while ((read = in.read(chunk)) > 0) {
+                    buf.write(chunk, 0, read);
+                    // a book is a few megabytes; anything this large is not one
+                    if (buf.size() > 64 * 1024 * 1024) return "";
+                }
+                return android.util.Base64.encodeToString(buf.toByteArray(),
+                        android.util.Base64.NO_WRAP);
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
         @JavascriptInterface
         public void exportDatabase() {
             mustBeOurPage();
@@ -2360,6 +2483,31 @@ public class MainActivity extends Activity {
         db.insertWithOnConflict("work_fts", null, meta, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
+    /**
+     * Keep a copy of a chapter that is not the one being read.
+     *
+     * The same shelf superseded chapters go on, with a reason saying where
+     * this one came from — so "Earlier versions" on a work page shows the
+     * EPUB beside whatever the archive has said over the years, rather than
+     * the EPUB being lost for being second.
+     */
+    private void keepAsVersion(String workId, org.json.JSONArray chapters) throws org.json.JSONException {
+        String now = nowIso();
+        for (int i = 0; chapters != null && i < chapters.length(); i++) {
+            org.json.JSONObject ch = chapters.getJSONObject(i);
+            android.content.ContentValues v = new android.content.ContentValues();
+            v.put("work_id", workId);
+            v.put("number", i + 1);
+            if (ch.isNull("title")) v.putNull("title"); else v.put("title", ch.getString("title"));
+            v.put("html", ch.optString("html"));
+            v.put("text", ch.optString("text"));
+            v.put("words", ch.optInt("words"));
+            v.put("reason", "epub");
+            v.put("archived_at", now);
+            try { db.insert("chapter_versions", null, v); } catch (Exception ignored) { }
+        }
+    }
+
     private static String nowIso() {
         return new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.UK)
             .format(new java.util.Date());
@@ -2402,8 +2550,35 @@ public class MainActivity extends Activity {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
         if (request == SAVE_DATABASE) { saveDatabaseTo(data.getData()); return; }
+        if (request == PICK_EPUBS) { tookEpubs(data); return; }
         if (request != PICK_DATABASE) return;
         importFrom(data.getData());
+    }
+
+    /** What the picker came back with, and how many, so the page can begin. */
+    private void tookEpubs(Intent data) {
+        pickedEpubs.clear();
+        android.content.ClipData many = data.getClipData();
+        if (many != null) {
+            for (int i = 0; i < many.getItemCount(); i++) {
+                Uri one = many.getItemAt(i).getUri();
+                if (one != null) pickedEpubs.add(one);
+            }
+        } else if (data.getData() != null) {
+            pickedEpubs.add(data.getData());
+        }
+        toPage("window.__epubsPicked && window.__epubsPicked(" + pickedEpubs.size() + ")");
+    }
+
+    /** What a file calls itself, for a job that has to name what it is doing. */
+    private String displayName(Uri uri) {
+        try (Cursor c = getContentResolver().query(uri, null, null, null, null)) {
+            if (c == null || !c.moveToFirst()) return null;
+            int at = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+            return at < 0 ? null : c.getString(at);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

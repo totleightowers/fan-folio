@@ -3222,3 +3222,64 @@ test('a sheet of destinations has no row that is not one', () => {
   assert.ok(html.includes('id="to-work"'), 'because the bar still says it');
 });
 
+/**
+ * A shelf of EPUBs, read into the library's own shape.
+ *
+ * They read badly as files: an exporter flattens the chaptering, drops the
+ * tags and the notes, and leaves the reader outside everything the library
+ * can do. Brought in, they are works like any other.
+ */
+test('EPUBs come in from Settings and show up as work being done', () => {
+  const settings = html.slice(html.indexOf('<section id="settings"'),
+    html.indexOf('</section>', html.indexOf('<section id="settings"')));
+  assert.ok(settings.includes('id="import-epubs"'), 'where the library lives');
+
+  /* Reading two hundred books takes long enough that a button which simply
+     goes quiet is a button nobody trusts. */
+  const fn = js.slice(js.indexOf('async function bringInEpubs(count)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /jobs\.add\(\{ \.\.\.EPUB_JOB/, 'it is a job');
+  assert.match(body, /goToTab\('activity'\)/, 'shown where jobs are shown');
+  assert.match(body, /jobs\.isStopped\(job\)/, 'and it can be stopped like one');
+  assert.match(body, /jobs\.seal\(job\)/);
+});
+
+test('nothing is asked of the archive to bring a book in', () => {
+  /* A shelf of two hundred would be two hundred requests to find out
+     something a later sync answers for free. */
+  const fn = js.slice(js.indexOf('async function bringInEpubs(count)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  for (const reaching of ['archivePage(', 'addWork(', 'catchUpOn(']) {
+    assert.ok(!body.includes(reaching), `${reaching} has no business here`);
+  }
+});
+
+test('the library decides whether a book is the work or a version of it', () => {
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('public String saveEpub(String json)'));
+  const body = fn.slice(0, fn.indexOf('\n        }\n'));
+
+  /* It knows whether the archive's copy is already here and the page does
+     not, so the page does not guess. */
+  assert.match(body, /COALESCE\(has_text, 0\), COALESCE\(source, ''\)/);
+  assert.match(body, /keepAsVersion\(id, w\.optJSONArray\("chapters"\)\)/,
+    'the archive copy stays the one being read');
+  assert.match(body, /from\.put\("source", "epub"\)/,
+    'and a book that becomes the work says where it came from');
+
+  /* A work deleted on purpose does not come back through a shelf of files
+     any more than through a bookmark sync. */
+  assert.match(body, /if \(wasDeleted\(id\)\)/);
+});
+
+test('a book the archive never had still gets an id of its own', () => {
+  /* A gift, something written elsewhere: no work id in the file. Derived
+     from the name rather than counted, so bringing the same shelf in twice
+     updates the same works instead of doubling the library. */
+  const fn = js.slice(js.indexOf('function payloadFromEpub(book, name)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /book\.workId \?\? `epub-\$\{localIdFor\(name\)\}`/);
+  assert.match(js, /function localIdFor\(name\)/);
+});
+

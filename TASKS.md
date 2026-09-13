@@ -81,7 +81,8 @@ list was closed was premature. A release per feature, PR and release linked.
 
 ## Asked on 13 September
 
-- **Back-port EPUBs into the library's own format.** A shelf of EPUBs read
+- ~~**Back-port EPUBs into the library's own format.**~~ In hand: chosen from
+  Settings, read in as a job on Activity. A shelf of EPUBs read
   badly; they should become works and chapters like everything else. Where the
   archive has the same work, the archive's copy is the one to read and the
   EPUB is kept as a version of it. Where it does not — a work since deleted,

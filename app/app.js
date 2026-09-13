@@ -8,6 +8,7 @@
  */
 
 import { History, openingOffset } from './core/nav.js';
+import { parseEpub } from './core/epub.js';
 import { reachedTheEnd, chromeHidden } from './core/reading.js';
 import { isHidden, worksByPattern } from './core/store/blocked.js';
 import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
@@ -22,7 +23,8 @@ import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
-  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen } from './api.js';
+  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen,
+  pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => [...document.querySelectorAll(sel)];
@@ -1706,6 +1708,16 @@ $('#import-replace').onclick = () => {
   if (!isNative) { toast('Import is only available in the app'); return; }
   importDatabase();
 };
+
+$('#import-epubs').onclick = () => {
+  if (!isNative) { toast('Bringing in books needs the app'); return; }
+  if (importingEpubs()) { goToTab('activity'); return; }
+  try { pickEpubs(); } catch (e) { toast(e.message); }
+};
+
+/* The shell calls back once the picker has closed, with how many were
+   chosen — the reading itself happens here, where the parser is. */
+window.__epubsPicked = (count) => { bringInEpubs(Number(count) || 0); };
 
 $('#backup').onclick = () => {
   const state = $('#backup-state');
@@ -3394,6 +3406,125 @@ const asStubs = (works) => works.map((w) => ({
  * Two jobs, because they are two different undertakings: catching up with
  * what is new, and reading the whole list to find what is gone.
  */
+/**
+ * A shelf of books read off files, as a job like any other.
+ *
+ * It is work with a beginning and an end that somebody wants to watch, which
+ * is what the Activity screen is for — and reading two hundred EPUBs takes
+ * long enough that a button which simply goes quiet is a button nobody trusts.
+ */
+const EPUB_JOB = { author: 'Your EPUBs', part: 'reading them in' };
+
+const importingEpubs = () => jobs.list().find(
+  (j) => j.author === EPUB_JOB.author
+    && j.state !== 'done' && j.state !== 'cancelled');
+
+/**
+ * Bring in a shelf of EPUBs.
+ *
+ * Nothing is asked of the archive. Where the library already holds the work
+ * from the archive, the book is kept as a version of it — the archive's copy
+ * has the chaptering, the tags and the notes an exporter drops. Where it does
+ * not, the book is the work, marked as having come from a file, and the first
+ * time that work is fetched the ordinary refetch archives the EPUB as a
+ * version without being asked to.
+ */
+async function bringInEpubs(count) {
+  if (!count) { toast('No books chosen'); return; }
+  if (importingEpubs()) { toast('Already reading books in'); return; }
+
+  const job = jobs.add({ ...EPUB_JOB, workIds: [], open: true });
+  goToTab('activity');
+
+  let added = 0;
+  let versioned = 0;
+  const failed = [];
+
+  for (let at = 0; at < count; at++) {
+    if (jobs.isStopped(job)) break;
+    const name = pickedEpubName(at) || `book ${at + 1}`;
+    jobs.note(job, { say: `${at + 1} of ${count}: ${name}` });
+    try {
+      const bytes = readPickedEpub(at);
+      if (!bytes) throw new Error('could not be read');
+      const book = await parseEpub(bytes);
+      const out = saveEpub(payloadFromEpub(book, name));
+      if (out.kept === 'version') versioned++; else added++;
+    } catch (e) {
+      failed.push(`${name}: ${e.message ?? e}`);
+    }
+    /* Between books, so a long shelf does not hold the page still. The
+       archive is not involved, so there is nothing to pace — this is only
+       room for the screen to draw. */
+    await wait(0);
+  }
+
+  jobs.note(job, {
+    say: `${added} added, ${versioned} kept as versions`
+      + (failed.length ? `, ${failed.length} could not be read` : ''),
+  });
+  jobs.seal(job);
+  if (failed.length) jobError = failed[0];
+  await refresh({ works: true, force: true });
+  paintJobs();
+}
+
+/**
+ * What an EPUB becomes on its way into the library.
+ *
+ * The same shape a fetched work takes, so the library writes it with the same
+ * statements. A book with no work id in it was not exported from the archive
+ * — a gift, something written elsewhere — and is given one of its own, marked
+ * so nothing later mistakes it for an archive work that has gone missing.
+ */
+function payloadFromEpub(book, name) {
+  const tags = {};
+  if (book.fandoms?.length) tags.fandom = book.fandoms;
+  if (book.relationships?.length) tags.relationship = book.relationships;
+  if (book.characters?.length) tags.character = book.characters;
+  if (book.freeform?.length) tags.freeform = book.freeform;
+  if (book.warnings?.length) tags.warning = book.warnings;
+  if (book.categories?.length) tags.category = book.categories;
+  if (!Object.keys(tags).length && book.subjects?.length) tags.freeform = book.subjects;
+
+  return {
+    workId: String(book.workId ?? `epub-${localIdFor(name)}`),
+    title: book.title ?? name.replace(/\.epub$/i, ''),
+    authors: JSON.stringify(book.authors ?? []),
+    summary: book.summary ?? null,
+    rating: book.rating ?? null,
+    language: book.language ?? null,
+    published: book.published ?? null,
+    updated: book.updated ?? null,
+    complete: Boolean(book.complete),
+    words: book.words ?? 0,
+    chaptersPlanned: book.chaptersPlanned ?? null,
+    skin_css: null,
+    kudos: book.kudos ?? null,
+    bookmarkCount: book.bookmarkCount ?? null,
+    hits: book.hits ?? null,
+    tags,
+    chapters: (book.chapters ?? []).map((c) => ({
+      title: c.title ?? null,
+      html: c.html ?? '',
+      text: c.text ?? '',
+      words: c.words ?? 0,
+    })),
+  };
+}
+
+/**
+ * An id for a book the archive never had.
+ *
+ * Derived from the file's name rather than counted, so bringing the same
+ * shelf in twice updates the same works instead of doubling the library.
+ */
+function localIdFor(name) {
+  let hash = 0;
+  for (const ch of String(name)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return hash.toString(36);
+}
+
 const BOOKMARKS_NEW = { author: 'Your bookmarks', part: 'new ones' };
 const BOOKMARKS_ALL = { author: 'Your bookmarks', part: 'the whole list' };
 
