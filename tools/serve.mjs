@@ -428,7 +428,7 @@ createServer(async (req, res) => {
     if (p === '/api/surprise') return json(res, surprise());
 
     let m;
-    if ((m = p.match(/^\/api\/works\/(\d+)$/))) {
+    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))$/))) {
       const work = Q.work.get(m[1]);
       if (!work) return json(res, { error: 'no such work' }, 404);
       const tags = {};
@@ -452,7 +452,7 @@ createServer(async (req, res) => {
       });
     }
 
-    if ((m = p.match(/^\/api\/works\/(\d+)\/chapters\/(\d+)$/))) {
+    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/chapters\/(\d+)$/))) {
       const row = Q.chapter.get(m[1], Number(m[2]));
       if (!row) return json(res, { error: 'no such chapter' }, 404);
       const work = Q.work.get(m[1]);
@@ -483,14 +483,14 @@ createServer(async (req, res) => {
       } catch { return json(res, { prefs: null }); }
     }
 
-    if ((m = p.match(/^\/api\/works\/(\d+)\/versions$/))) {
+    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/versions$/))) {
       return json(res, { versions: db.prepare(`
         SELECT id, number, title, words, reason, archived_at
           FROM chapter_versions WHERE work_id = ?
          ORDER BY archived_at DESC, number ASC`).all(m[1]) });
     }
 
-    if ((m = p.match(/^\/api\/works\/(\d+)\/versions\/(\d+)$/))) {
+    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/versions\/(\d+)$/))) {
       const row = db.prepare(`SELECT id, number, title, html, words, reason, archived_at
                                 FROM chapter_versions WHERE work_id = ? AND id = ?`).get(m[1], Number(m[2]));
       if (!row) { res.writeHead(404); return res.end(); }
