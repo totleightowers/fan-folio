@@ -93,7 +93,7 @@ jobs:
           files: |
             android/fanfolio.apk
           body_path: NOTES.md
-          generate_release_notes: true
+          generate_release_notes: false
 
       - name: Never leave a key on the runner
         if: always()

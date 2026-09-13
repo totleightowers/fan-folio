@@ -902,6 +902,17 @@ public class MainActivity extends Activity {
         return html == null ? "" : html.replaceAll("\\s+", " ").trim();
     }
 
+    /** Keep the previous skin before replacing the work, including removal.
+     * Compare CSS exactly: whitespace inside strings can be visible content.
+     * A failed archive write must abort the enclosing save transaction.
+     */
+    private void archiveSkin(String workId, String incoming) {
+        db.execSQL("INSERT INTO skin_versions (work_id, skin_css, skin_hash, archived_at) "
+            + "SELECT work_id, skin_css, skin_hash, ? FROM works "
+            + "WHERE work_id = ? AND COALESCE(skin_css, '') <> '' AND skin_css <> ?",
+            new Object[]{ nowIso(), workId, incoming });
+    }
+
     /**
      * Copy any chapter about to be replaced into chapter_versions.
      *
@@ -2429,6 +2440,7 @@ public class MainActivity extends Activity {
            at all. */
         work.put("downloaded_at", nowIso().substring(0, 10));
         work.put("has_text", 1);   // chapters follow, below
+        archiveSkin(id, w.isNull("skin_css") ? "" : w.getString("skin_css"));
         db.insertWithOnConflict("works", null, work, SQLiteDatabase.CONFLICT_REPLACE);
 
         db.delete("tags", "work_id = ?", new String[]{ id });

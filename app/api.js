@@ -292,10 +292,10 @@ export async function api(path) {
   if (p === '/api/surprise') return LOCAL.surprise();
 
   let m;
-  if ((m = p.match(/^\/api\/works\/(\d+)$/))) return LOCAL.work(m[1]);
-  if ((m = p.match(/^\/api\/works\/(\d+)\/chapters\/(\d+)$/))) return LOCAL.chapter(m[1], Number(m[2]));
-  if ((m = p.match(/^\/api\/works\/(\d+)\/versions$/))) return { versions: LOCAL.versions(m[1]) };
-  if ((m = p.match(/^\/api\/works\/(\d+)\/versions\/(\d+)$/))) return LOCAL.version(m[1], Number(m[2]));
+  if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))$/))) return LOCAL.work(m[1]);
+  if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/chapters\/(\d+)$/))) return LOCAL.chapter(m[1], Number(m[2]));
+  if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/versions$/))) return { versions: LOCAL.versions(m[1]) };
+  if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/versions\/(\d+)$/))) return LOCAL.version(m[1], Number(m[2]));
   if (p === '/api/search') {
     return LOCAL.search(q.q ?? '', q.scope || 'text',
       { limit: q.limit, workId: q.workId, filters: q });
