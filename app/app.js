@@ -1756,7 +1756,15 @@ $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
 
 /* Activity is a screen inside Settings rather than a tab. */
 $('#open-activity').onclick = () => { go('activity'); buildActivity(); };
-$('#open-typo').onclick = () => openSheet($('#typography'));
+function openReadingSettings() {
+  const dialog = $('#typography');
+  dialog.classList.toggle('from-reader', showing() === 'reader');
+  openSheet(dialog);
+  dialog.scrollTop = 0;
+}
+$('#open-typo').onclick = openReadingSettings;
+$('#reader-type').onclick = openReadingSettings;
+$('#reader-archive').onclick = () => { closeSheet($('#reader-menu')); $('#on-archive').click(); };
 
 /* The setup screen has its own import button; this is the same action reached
    from a library that already exists, so it warns rather than simply doing it. */
@@ -2170,6 +2178,7 @@ function chapterName(title, number) {
  * would be worse than not offering it at all.
  */
 async function openVersion(workId, versionId) {
+  $('#chapter-ending').hidden = true;
   const token = ++pending;
   go('reader');
   $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line'));
@@ -2191,6 +2200,7 @@ async function openVersion(workId, versionId) {
   transientForever = true;
   current = { workId, chapter: v.number, count: v.number };
 
+  $('#workskin').classList.toggle('plain-prose', !v.css);
   $('#workskin-css').textContent = v.css || '';
   $('#workskin').innerHTML = `<div class="userstuff">${v.html}</div>`;
   $('#endnotes').hidden = true;
@@ -5275,6 +5285,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
   viewingArchive = false;
   $('#archive-banner').hidden = true;
   const token = ++pending;
+  $('#chapter-ending').hidden = true;
 
   /* Entering the reader is acknowledged before the chapter is read. Turning a
      page is not: the swipe is already carrying the old page off, and a
@@ -5315,6 +5326,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
 
   // the skin is already scoped to #workskin; this element holds one work's CSS,
   // replaced wholesale on every navigation
+  $('#workskin').classList.toggle('plain-prose', !ch.css);
   $('#workskin-css').textContent = ch.css || '';
   $('#workskin').innerHTML = `<div class="userstuff">${ch.html}</div>`;
 
@@ -5353,6 +5365,16 @@ async function openChapter(workId, number, { transient = false } = {}) {
   $('#prev').disabled = number <= 1;
   $('#next').disabled = number >= w.chapter_count;
 
+  const nextChapter = w.chapters?.find(c => Number(c.number) === Number(number) + 1);
+  const hasNext = Number(number) < chapterTotal(w);
+  $('#chapter-ending-label').textContent = hasNext ? `End of chapter ${number}`
+    : (w.complete ? 'You’ve reached the end' : 'You’re caught up');
+  $('#read-next').hidden = !hasNext;
+  $('#next-title').textContent = nextChapter
+    ? chapterName(nextChapter.title, Number(number) + 1) || `Chapter ${Number(number) + 1}`
+    : `Chapter ${Number(number) + 1}`;
+  $('#chapter-ending').hidden = false;
+
   keepAwake(true);
 
   /* Replacing the chapter changes the height of the document, and the browser
@@ -5390,6 +5412,10 @@ async function openChapter(workId, number, { transient = false } = {}) {
 // moving by hand is deliberate, so the bookmark starts following again
 $('#prev').onclick = () => openChapter(current.workId, current.chapter - 1);
 $('#next').onclick = () => openChapter(current.workId, current.chapter + 1);
+$('#read-next').onclick = () => {
+  if (!viewingArchive && current.chapter < current.count) openChapter(current.workId, current.chapter + 1);
+};
+$('#ending-contents').onclick = () => showChapterDrawer(current.workId, current.chapter);
 
 /**
  * The chapter drawer, shared by the work page and the reader.

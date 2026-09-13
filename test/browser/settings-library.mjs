@@ -24,6 +24,9 @@ for (const [id, title, held] of [
   if (held) db.prepare('INSERT INTO chapters (work_id,number,html,text,words) VALUES (?,1,?,?,3500)')
     .run(id, '<p>Afternoon light filled the room.</p>'.repeat(60), 'Afternoon light filled the room.');
 }
+db.exec("UPDATE works SET chapter_count=2 WHERE work_id='1'");
+db.prepare('INSERT INTO chapters (work_id,number,title,html,text,words) VALUES (?,?,?,?,?,?)')
+  .run('1', 2, 'Chapter 2: The way back', '<p>The harbour was quiet.</p>'.repeat(40), 'The harbour was quiet.', 1000);
 db.close();
 const server = spawn(process.execPath, [new URL('../../tools/serve.mjs', import.meta.url).pathname], {
   cwd: dir, env: { ...process.env, FANFOLIO_DB: dbPath, PORT: '18766' }, stdio: ['ignore', 'pipe', 'inherit'],
@@ -96,6 +99,28 @@ try {
   await page.locator('#typography [data-close]').first().click();
   await page.locator('#back').click();
   await screenshot('library-light');
+  await page.locator('#works .work-card').filter({ hasText: 'The long way home' }).locator('[data-act="open"]').click();
+  await page.locator('#reader-head').waitFor({ state: 'visible' });
+  await screenshot('reader-phone', { fullPage: false });
+  await page.locator('#reader-type').click();
+  assert.ok(await page.locator('#typography').evaluate(el => el.classList.contains('from-reader')));
+  await page.locator('[data-face-choice="Literata"]').click();
+  assert.ok((await page.locator('#workskin').evaluate(el => getComputedStyle(el).fontFamily)).includes('Literata'));
+  await screenshot('reader-controls', { reading: true, fullPage: false });
+  await page.locator('#typography [data-close]').first().click();
+  await page.locator('#read-next').scrollIntoViewIfNeeded();
+  assert.equal(await page.locator('#next-title').textContent(), 'The way back');
+  await page.screenshot({ path: 'ui-screenshots/reader-ending.png' });
+  await page.locator('#read-next').click();
+  await page.locator('#rh-chapter').filter({ hasText: 'Chapter 2' }).waitFor();
+  assert.equal(await page.locator('#read-next').isVisible(), false);
+  assert.equal(await page.locator('#chapter-ending-label').textContent(), 'You’ve reached the end');
+  await page.locator('#ending-contents').click();
+  await page.locator('#chapter-list button').first().click();
+  await page.locator('#rh-chapter').filter({ hasText: 'Chapter 1' }).waitFor();
+  await page.setViewportSize({ width: 320, height: 720 });
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'reader fits narrow phones');
+  await screenshot('reader-narrow', { fullPage: false });
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
