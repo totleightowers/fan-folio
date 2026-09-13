@@ -15,12 +15,21 @@
 export const SORTS = {
   title: 'w.title COLLATE NOCASE ASC',
   author: 'w.authors COLLATE NOCASE ASC',
+  /* When the work changed, on the archive. Nothing about this library. */
   updated: 'COALESCE(w.updated, w.published) DESC',
   published: 'w.published DESC',
-  /* When we got it. A fetched work sets fetched_at, and only the EPUB import
-     ever set downloaded_at — so ordering by that alone put everything newly
-     added at the very bottom of "recently added". */
-  added: 'COALESCE(w.downloaded_at, w.fetched_at) DESC',
+  /*
+   * When it turned up here, which is a different date from when the copy was
+   * taken and a different one again from when the work last changed.
+   *
+   * fetched_at is written the moment this library writes the work down.
+   * downloaded_at is when the copy was taken from the archive — for a fetch
+   * those are the same minute, and for a book read off a file they are a year
+   * apart: an export made last March is new to this library today. Reading
+   * downloaded_at first put a shelf of imported EPUBs at the bottom of
+   * "recently added", which is where they are least likely to be looked for.
+   */
+  added: 'COALESCE(w.fetched_at, w.downloaded_at) DESC',
   words: 'w.words DESC',
   shortest: 'w.words ASC',
   chapters: 'w.chapter_count DESC',
