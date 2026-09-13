@@ -828,8 +828,8 @@ test('the reader bar sits above anything sharing the bottom edge', () => {
  */
 test('the chapter bar keeps to the reading measure', () => {
   const rule = css.slice(css.indexOf('#chapnav {'), css.indexOf('}', css.indexOf('#chapnav {')));
-  assert.match(rule, /padding-inline:\s*max\([^)]*calc\(\(100% - \d+rem\)/,
-    'the controls are held to a measure rather than flung to the window edges');
+  assert.match(rule, /padding-inline:\s*max\([^)]*calc\(\(100% - var\(--read-width\)\)/,
+    'the controls are held to the same measure as the prose above them');
   assert.ok(!/justify-content:\s*space-between/.test(rule),
     'space-between across a tablet is what put an ocean between the controls');
 });
@@ -1618,12 +1618,78 @@ test('an unfolded screen stands the tabs on their edge', () => {
   /* Everything starts where the rail ends, the header included — a rail that
      stops under a full-width bar is two ideas about where the app begins. */
   assert.match(block, /body:has\(#tabs:not\(\[hidden\]\)\) #bar,\s*\n\s*body:has\(#tabs:not\(\[hidden\]\)\) #main \{ margin-left/);
-  assert.match(block, /\.view \{ padding-bottom: 1\.5rem/,
+  assert.match(block, /\.view:not\(#reader\) \{ padding-bottom: 1\.5rem/,
     'and the room kept clear for a bar that is no longer there is given back');
 
-  /* Reading is the one screen with no tabs, so none of this reaches it. */
-  const tabs = js.slice(js.indexOf('const KEEPS_TABS'));
-  assert.ok(!/'reader'/.test(tabs.slice(0, tabs.indexOf(');'))));
+  /* Except in the reader, which still has a bar of its own down there. */
+  assert.match(block, /#chapnav,\s*\n\s*body:has\(#tabs:not\(\[hidden\]\)\) #progress \{ left: 5\.5rem/,
+    'the chapter bar starts where the rail ends rather than running under it');
+});
+
+/**
+ * Leaving a work for a chapter of it is going further in, not somewhere else.
+ *
+ * Reading is the one immersive screen and drops the tabs, which is right on a
+ * phone: a bar across the foot of a chapter is the app talking over the
+ * story. On a tablet the tabs are a rail down the side, and dropping it threw
+ * the whole app 5.5rem left on the way into a chapter and back again on the
+ * way out — the harshest transition in the app, for a strip of width the
+ * prose does not use.
+ */
+test('on a wide screen the rail stays up in the reader', () => {
+  assert.ok(!/'reader'/.test(js.slice(js.indexOf('const KEEPS_TABS'),
+    js.indexOf(');', js.indexOf('const KEEPS_TABS')))),
+    'the reader still does not keep the tabs by itself');
+
+  const paint = js.slice(js.indexOf('function paintTabs'));
+  const body = paint.slice(0, paint.indexOf('\n}'));
+  assert.match(body, /KEEPS_TABS\.has\(name\)/);
+  assert.match(body, /name === 'reader' && wideScreen\(\)/,
+    'and keeps them at a width where they cost nothing');
+
+  assert.match(js, /const WIDE = '\(min-width: 44\.01rem\)'/,
+    'the same breakpoint the stylesheet stands the tabs up at');
+  assert.match(js, /matchMedia\?\.\(WIDE\)\.addEventListener\('change', \(\) => paintTabs\(\)\)/,
+    'unfolding a phone mid-chapter is the one way this changes on its own');
+  assert.ok(!/addEventListener\('change', \(\) => show\(/.test(js),
+    'repainting the tabs, not re-showing the view: show() scrolls to the top');
+});
+
+/**
+ * One column, and everything in the reader keeps to it.
+ *
+ * The header, the endnotes, the archive banner and the bar each had their own
+ * idea of the measure, and the prose had none at all — so on a tablet the
+ * text ran the full width of the screen while its own title sat in a narrow
+ * column up the middle of it.
+ */
+test('the reader is one column wide', () => {
+  assert.match(css, /--read-column: calc\(40 \* var\(--read-size\)\)/,
+    'measured in the size the prose is actually set in');
+  assert.match(css, /--read-width: calc\(var\(--read-column\) \+ 2 \* var\(--read-margin\)\)/);
+
+  for (const sel of ['#workskin', '#endnotes', '#reader-head', '#archive-banner']) {
+    const rule = css.slice(css.indexOf(`${sel} {`), css.indexOf('}', css.indexOf(`${sel} {`)));
+    assert.match(rule, /max-width: var\(--read-width\)/, `${sel} keeps to the column`);
+  }
+});
+
+/**
+ * The archive's own chapter heading, said twice.
+ *
+ * A chapter is stored as the whole block, so the prose opened with an
+ * `<h3 class="title">` holding a link to a page that is not here: the largest
+ * thing on the screen, in the link colour, repeating the line above it.
+ */
+test('the chapter heading is not said twice', () => {
+  assert.match(css, /#workskin \.preface h3\.title \{ display: none/);
+
+  // and the header keeps the part of it that is a name rather than a number
+  const fn = js.slice(js.indexOf('function chapterName'));
+  const body = fn.slice(0, fn.indexOf('\n}'));
+  assert.match(body, /\^\\\\s\*chapter\\\\s\*\$\{number\}/,
+    'the number is already on screen wherever this is used');
+  assert.match(js, /Chapter \$\{number\} of \$\{w\.chapter_count\}/);
 });
 
 test('nothing in a chapter can make the page scroll sideways', () => {

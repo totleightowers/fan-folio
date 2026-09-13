@@ -219,6 +219,29 @@ const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author']);
 /** The tab whose part of the app you are in, lit even a screen or two down. */
 let inTab = 'home';
 
+/**
+ * Where there is room for the app to keep its shape.
+ *
+ * The same breakpoint the stylesheet uses to stand the tabs up as a rail. It
+ * is asked here because one screen answers differently depending on it:
+ * reading is immersive on a phone, where the tab bar would take the foot of
+ * the screen, and is not on a tablet, where the rail costs a strip nothing
+ * else wanted and leaving a work for a chapter of it otherwise threw the
+ * whole app sideways.
+ */
+const WIDE = '(min-width: 44.01rem)';
+const wideScreen = () => window.matchMedia?.(WIDE).matches ?? false;
+
+/** Whether the navigation stays up, on this screen, at this width. */
+function paintTabs(name = showing()) {
+  $('#tabs').hidden = !KEEPS_TABS.has(name) && !(name === 'reader' && wideScreen());
+}
+
+/* Unfolding a phone mid-chapter is the one way this changes without anybody
+   navigating. Only the tabs are repainted: re-running show() here would send
+   the reader back to the top of the chapter for having opened the device. */
+window.matchMedia?.(WIDE).addEventListener('change', () => paintTabs());
+
 /** The view currently on screen. */
 const showing = () => VIEWS.find((v) => !$(`#${v}`).hidden) ?? 'home';
 
@@ -255,7 +278,7 @@ function show(name, motion = 'none') {
       () => entering.classList.remove(MOTION[motion]), { once: true });
   }
   $('#back').hidden = stack.depth === 0;
-  $('#tabs').hidden = !KEEPS_TABS.has(name);
+  paintTabs(name);
 
   /*
    * Arriving at Home rebuilds it.
@@ -2088,6 +2111,21 @@ const dateLabel = (day) => {
   return Number.isNaN(d.valueOf()) ? day
     : d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 };
+
+/**
+ * What a chapter is called, once its number has been taken out of it.
+ *
+ * AO3's chapter heading carries both: "Chapter 4" on its own when the author
+ * named nothing, "Chapter 4: The Wedding" when they did, and — because some
+ * authors write the number into the name as well — "Chapter 4: Chapter 4,
+ * Part 1". The number is already on screen wherever this is used.
+ */
+function chapterName(title, number) {
+  if (!title) return '';
+  const rest = String(title)
+    .replace(new RegExp(`^\\s*chapter\\s*${number}\\s*[:.\u2013\u2014-]?\\s*`, 'i'), '');
+  return rest.trim();
+}
 
 /**
  * Read an archived chapter.
@@ -5259,8 +5297,13 @@ async function openChapter(workId, number, { transient = false } = {}) {
   head.hidden = false;
   $('#rh-title').textContent = w.title ?? '(untitled)';
   $('#rh-by').textContent = authorsOf(w.authors)[0] ?? 'Anonymous';
-  const chapterTitle = ch.title && ch.title !== `Chapter ${number}` ? `: ${ch.title}` : '';
-  $('#rh-chapter').textContent = `Chapter ${number} of ${w.chapter_count}${chapterTitle}`;
+  /* The archive's heading is "Chapter 1" or "Chapter 1: The Wedding", and it
+     is stored whole. Said after "Chapter 1 of 9" the first half is the number
+     for the third time in two lines, so only the part that is a name is kept
+     — and a chapter with no name says nothing rather than saying it twice. */
+  const named = chapterName(ch.title, number);
+  $('#rh-chapter').textContent =
+    `Chapter ${number} of ${w.chapter_count}${named ? ` \u00b7 ${named}` : ''}`;
 
   const pos = $('#chappos');
   pos.textContent = '';
