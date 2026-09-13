@@ -3077,3 +3077,26 @@ test('and every view the app knows about is on the page', () => {
   }
 });
 
+/**
+ * The dot follows the work, not the slot the work used to be in.
+ *
+ * It lived on the Activity tab. Activity moved under the cog and the dot
+ * stayed behind on the tab that took its place — so You wore a badge for a
+ * download that has nothing to do with anything on that screen.
+ */
+test('the badge is on the way to what it is about', () => {
+  const tabsAt = html.indexOf('<nav id="tabs"');
+  const tabs = html.slice(tabsAt, html.indexOf('</nav>', tabsAt));
+  assert.ok(!tabs.includes('activity-dot'),
+    'a tab that shows none of this does not wear its badge');
+
+  const cog = html.slice(html.indexOf('<button id="open-settings"'));
+  assert.ok(cog.slice(0, cog.indexOf('</button>') + 9).includes('id="activity-dot"'),
+    'the cog leads to Activity, so the cog carries the news');
+
+  /* And the row inside Settings says it too, so the last step of the way
+     there is signposted like the first. */
+  assert.ok(html.includes('id="activity-here"'));
+  assert.match(js, /const here = \$\('#activity-here'\)/);
+});
+

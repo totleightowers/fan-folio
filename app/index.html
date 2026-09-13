@@ -107,7 +107,12 @@
   <span id="bar-gap" hidden></span>
   <button id="add" class="icon" aria-label="Add a work from a link"><svg class="ic" aria-hidden="true"><use href="#i-add"/></svg></button>
   <button id="typo" class="icon" aria-label="Reading settings"><svg class="ic" aria-hidden="true"><use href="#i-text"/></svg></button>
-  <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
+  <!--
+      The dot follows the work. Activity moved under the cog, and the dot
+      stayed on the tab it used to share — so You wore a badge for a download
+      that has nothing to do with anything on it.
+  -->
+  <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span id="activity-dot" hidden></span></button>
 </header>
 
 <main id="main">
@@ -436,10 +441,11 @@
       to know how to build.
 
       Activity had this slot. A queue is something the app is doing, and it
-      belongs with the rest of the app's own affairs, under Settings — with
-      the dot brought along so an hour of downloading still says so.
+      belongs with the rest of the app's own affairs, under Settings — and the
+      dot that says an hour of downloading is happening went with it, to the
+      cog, rather than staying here on a screen it says nothing about.
   -->
-  <button data-tab="you"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-person"/></svg>You<span id="activity-dot" hidden></span></button>
+  <button data-tab="you"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-person"/></svg>You</button>
 </nav>
 
 <dialog id="chapters-dialog">
