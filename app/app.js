@@ -2252,7 +2252,17 @@ const jobs = createQueue({
       freshenSoon();
     }
     if (e.type === 'finished') {
-      toast(`${e.job.author} · ${e.job.part}: finished, ${e.job.added} added`);
+      /*
+       * What the job says about itself, where it has said anything.
+       *
+       * "added" counts works pulled through the queue's own runner, which is
+       * the right number for a download and no number at all for work that
+       * does not go through it. A shelf of EPUBs that had quietly filed
+       * every book as a version of one already held reported "finished, 0
+       * added", which reads as nothing having happened.
+       */
+      toast(`${e.job.author} · ${e.job.part}: `
+        + (e.job.say ?? `finished, ${e.job.added} added`));
       if (e.job.failed && e.job.lastError) {
         jobError = `${e.job.author} · ${e.job.part}: ${e.job.failed} skipped — ${e.job.lastError}`;
       }
@@ -3459,12 +3469,18 @@ async function bringInEpubs(count) {
     await wait(0);
   }
 
-  jobs.note(job, {
-    say: `${added} added, ${versioned} kept as versions`
-      + (failed.length ? `, ${failed.length} could not be read` : ''),
-  });
+  /* Said as a sentence rather than as three numbers, because two of them are
+     nearly always nought and "0 added" on its own reads as failure when what
+     happened was the library already having every one of them. */
+  const said = [];
+  if (added) said.push(`${added} added`);
+  if (versioned) {
+    said.push(`${versioned} kept as ${versioned === 1 ? 'a version' : 'versions'}`);
+  }
+  if (failed.length) said.push(`${failed.length} could not be read`);
+  jobs.note(job, { say: said.length ? said.join(', ') : 'nothing to bring in' });
   jobs.seal(job);
-  if (failed.length) jobError = failed[0];
+  if (failed.length) jobError = `${EPUB_JOB.author}: ${failed[0]}`;
   await refresh({ works: true, force: true });
   paintJobs();
 }

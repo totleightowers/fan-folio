@@ -3283,3 +3283,45 @@ test('a book the archive never had still gets an id of its own', () => {
   assert.match(js, /function localIdFor\(name\)/);
 });
 
+/**
+ * Choosing several books is the whole point of choosing books.
+ *
+ * A multiple selection comes back as a ClipData carrying no Uri of its own,
+ * so a guard that asks for one and gives up throws the entire shelf away —
+ * silently, and looking exactly like choosing a single file.
+ */
+test('a shelf of books is not thrown away for having no single file in it', () => {
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const fn = java.slice(java.indexOf('protected void onActivityResult('));
+  const body = fn.slice(0, fn.indexOf('\n    }\n'));
+
+  const epubs = body.indexOf('if (request == PICK_EPUBS)');
+  const single = body.indexOf('if (data.getData() == null) return;');
+  assert.ok(epubs !== -1 && single !== -1);
+  assert.ok(epubs < single, 'the shelf is taken before a single file is insisted on');
+
+  const took = java.slice(java.indexOf('private void tookEpubs(Intent data)'));
+  assert.match(took.slice(0, took.indexOf('\n    }\n')), /getClipData\(\)/,
+    'and several are read out of the clip data');
+});
+
+/**
+ * A count of downloads is the wrong number for work that was not a download.
+ *
+ * A shelf of EPUBs that had filed every book as a version of one already held
+ * reported "finished, 0 added" — which reads as nothing having happened, when
+ * what happened was the library already having all of them.
+ */
+test('a job that has something to say says it rather than a count', () => {
+  const hook = js.slice(js.indexOf("if (e.type === 'finished')"));
+  const body = hook.slice(0, hook.indexOf('\n    }'));
+  assert.match(body, /e\.job\.say \?\? `finished, \$\{e\.job\.added\} added`/);
+
+  const fn = js.slice(js.indexOf('async function bringInEpubs(count)'));
+  const said = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(said, /kept as \$\{versioned === 1 \? 'a version' : 'versions'\}/);
+  assert.match(said, /said\.length \? said\.join\(', '\) : 'nothing to bring in'/,
+    'and nought of everything is said in words, not as three zeroes');
+});
+

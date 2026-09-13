@@ -2548,9 +2548,19 @@ public class MainActivity extends Activity {
 
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (result != RESULT_OK || data == null || data.getData() == null) return;
-        if (request == SAVE_DATABASE) { saveDatabaseTo(data.getData()); return; }
+        if (result != RESULT_OK || data == null) return;
+        /*
+         * Asked before the single-file guard below, deliberately.
+         *
+         * A multiple selection comes back as a ClipData and carries no Uri of
+         * its own, so a check for one throws the whole thing away — which is
+         * how choosing a shelf of two hundred books came back as nothing at
+         * all, silently, having looked exactly like choosing one.
+         */
         if (request == PICK_EPUBS) { tookEpubs(data); return; }
+
+        if (data.getData() == null) return;
+        if (request == SAVE_DATABASE) { saveDatabaseTo(data.getData()); return; }
         if (request != PICK_DATABASE) return;
         importFrom(data.getData());
     }
