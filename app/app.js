@@ -2646,7 +2646,12 @@ function paintJobs() {
      * skipped count, the state and the time down with it — a finished job
      * became the words "36 downloaded" and nothing else.
      */
-    const counting = job.state === 'listing' && !job.total;
+    /* Unless it has said something of its own. A walk of an index has only a
+       page number to report, so the generic line is the best there is; a job
+       naming the book it is reading has something better, and being told
+       "reading their bookmarks…" over the top of it is the screen guessing
+       against evidence. */
+    const counting = job.state === 'listing' && !job.total && !job.say;
     /* Where a walk has got to. A job reading an index has no works to count
        yet, and a bookmark reconciliation never has any at all — it reads the
        list and changes what is marked. "0 of 0" was what that looked like. */
@@ -3453,15 +3458,34 @@ async function bringInEpubs(count) {
   for (let at = 0; at < count; at++) {
     if (jobs.isStopped(job)) break;
     const name = pickedEpubName(at) || `book ${at + 1}`;
-    jobs.note(job, { say: `${at + 1} of ${count}: ${name}` });
+    const where = `${at + 1} of ${count}`;
+
+    /* A file name first, because that is all there is to go on until the
+       book has been opened — and on a cloud drive it is "Copy of
+       Afterthought.epub", which says very little. */
+    jobs.note(job, { say: `${where} · reading ${name}` });
+    /* A breath, so the line is on the screen before the book is opened.
+       Reading a long one is a second or two of held page otherwise, and the
+       indicator would always be a book behind. */
+    await wait(0);
     try {
       const bytes = readPickedEpub(at);
       if (!bytes) throw new Error('could not be read');
       const book = await parseEpub(bytes);
+
+      /* And what the book turns out to be, as soon as it is known. Watching
+         a shelf go in should say which work is going in, not which file. */
+      jobs.note(job, { say: `${where} · ${saidOf(book, name)}` });
+
       const out = saveEpub(payloadFromEpub(book, name));
       if (out.kept === 'version') versioned++; else added++;
+      jobs.note(job, {
+        say: `${where} · ${saidOf(book, name)} — `
+          + (out.kept === 'version' ? 'kept as a version' : 'added'),
+      });
     } catch (e) {
       failed.push(`${name}: ${e.message ?? e}`);
+      jobs.note(job, { say: `${where} · ${name} — could not be read` });
     }
     /* Between books, so a long shelf does not hold the page still. The
        archive is not involved, so there is nothing to pace — this is only
@@ -3483,6 +3507,13 @@ async function bringInEpubs(count) {
   if (failed.length) jobError = `${EPUB_JOB.author}: ${failed[0]}`;
   await refresh({ works: true, force: true });
   paintJobs();
+}
+
+/** A book, as a person would name it: what it is called and who wrote it. */
+function saidOf(book, name) {
+  const title = book.title || String(name).replace(/\.epub$/i, '');
+  const by = (book.authors ?? []).join(', ');
+  return by ? `${title} — ${by}` : title;
 }
 
 /**

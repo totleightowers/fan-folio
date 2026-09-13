@@ -3371,3 +3371,35 @@ test('a job that has something to say says it rather than a count', () => {
     'and nought of everything is said in words, not as three zeroes');
 });
 
+/**
+ * Watching a shelf go in should say which work is going in.
+ *
+ * The file name is all there is to go on until a book has been opened, and on
+ * a cloud drive that is "Copy of Afterthought.epub" — which says very little
+ * about what is being imported.
+ */
+test('the import says what it is importing, once it knows', () => {
+  const fn = js.slice(js.indexOf('async function bringInEpubs(count)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+
+  assert.match(body, /say: `\$\{where\} · reading \$\{name\}`/,
+    'the file first, because that is all there is to go on');
+  assert.match(body, /say: `\$\{where\} · \$\{saidOf\(book, name\)\}`/,
+    'then the work, as soon as the book has been read');
+  assert.match(body, /'kept as a version' : 'added'/,
+    'and what became of it');
+
+  const said = js.slice(js.indexOf('function saidOf(book, name)'));
+  assert.match(said.slice(0, said.indexOf('\n}\n')), /\$\{title\} — \$\{by\}/,
+    'named the way a person would name it');
+});
+
+test('a job that names what it is doing is not talked over', () => {
+  /* A walk of an index has only a page number to report, so the generic line
+     is the best there is. A job naming the book it is reading has something
+     better, and "reading their bookmarks…" over the top of it is the screen
+     guessing against evidence. */
+  const paint = js.slice(js.indexOf('const counting = job.state ==='));
+  assert.match(paint.slice(0, 120), /&& !job\.say;/);
+});
+
