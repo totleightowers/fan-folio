@@ -3440,3 +3440,41 @@ test('and Home asks both questions', () => {
     /updated: \{ state: 'all', sort: 'updated' \}/);
 });
 
+/**
+ * A shelf of books cannot be picked up where it was put down.
+ *
+ * The loop that reads them lives in the page and dies with it, and the files
+ * were chosen through a picker whose permission died with it too. A job left
+ * behind by a previous run therefore looks live for ever — which turned the
+ * button that opens the picker into a button that goes to Activity and does
+ * nothing else.
+ */
+test('the picker opens unless books are being read in right now', () => {
+  const fn = js.slice(js.indexOf("$('#import-epubs').onclick"));
+  const body = fn.slice(0, fn.indexOf('\n};'));
+  assert.match(body, /if \(readingEpubs\) \{ goToTab\('activity'\)/,
+    'this run of the app, not a job that looks live');
+  assert.ok(!body.includes('jobs.list()'), 'the queue does not decide this');
+
+  /* And a flag left true is a picker that can never be opened again until
+     the app is restarted. */
+  const run = js.slice(js.indexOf('async function bringInEpubs(count)'));
+  assert.match(run.slice(0, run.indexOf('\n}\n')), /\} finally \{\n\s*readingEpubs = false;/);
+});
+
+test('a leftover import comes back as a record, not as work in hand', () => {
+  const restore = js.slice(js.indexOf('    if (isEpubJob(job)) {'));
+  const body = restore.slice(0, restore.indexOf('\n    }'));
+  assert.match(body, /open: false, state: 'done'/,
+    'nothing can resume it, so nothing should think it is running');
+
+  /* Being open and not a bookmark walk, it would otherwise be handed to
+     walkAuthor — which would go and ask the archive for the works of
+     somebody called Your EPUBs. */
+  const after = js.slice(js.indexOf('    if (isEpubJob(job)) {'));
+  const epubs = after.indexOf('continue;');
+  const walker = after.indexOf('walkAuthor(job.author');
+  assert.ok(epubs !== -1 && walker !== -1 && epubs < walker,
+    'and it never reaches the walker');
+});
+

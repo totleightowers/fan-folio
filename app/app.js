@@ -1711,7 +1711,7 @@ $('#import-replace').onclick = () => {
 
 $('#import-epubs').onclick = () => {
   if (!isNative) { toast('Bringing in books needs the app'); return; }
-  if (importingEpubs()) { goToTab('activity'); return; }
+  if (readingEpubs) { goToTab('activity'); return; }
   try { pickEpubs(); } catch (e) { toast(e.message); }
 };
 
@@ -2803,6 +2803,24 @@ function resumeJobs() {
       /* Asking is an optimisation; failing to ask is not a reason to abandon
          somebody's queue. The worst it costs is fetching something twice. */
     }
+    /*
+     * A shelf of books cannot be picked up where it was put down.
+     *
+     * The loop that reads them lives in the page and dies with it, and the
+     * files were chosen through a picker whose permission died with it too.
+     * Restored as a live job it would sit there for ever looking busy — and,
+     * being open and not a bookmark walk, would be handed to walkAuthor,
+     * which would go and ask the archive for the works of somebody called
+     * Your EPUBs. It comes back as a record of what it did, and nothing else.
+     */
+    if (isEpubJob(job)) {
+      const says = (Number(job.added) || 0) + (Number(job.failed) || 0);
+      if (says > 0 || job.say) {
+        jobs.restore({ ...job, workIds: [], open: false, state: 'done' });
+      }
+      continue;
+    }
+
     /* A job with nothing left is a record of one that finished. It goes back
        on the list so the app can still say what it did, rather than opening
        with Nothing waiting and no account of yesterday. */
@@ -3430,9 +3448,18 @@ const asStubs = (works) => works.map((w) => ({
  */
 const EPUB_JOB = { author: 'Your EPUBs', part: 'reading them in' };
 
-const importingEpubs = () => jobs.list().find(
-  (j) => j.author === EPUB_JOB.author
-    && j.state !== 'done' && j.state !== 'cancelled');
+const isEpubJob = (j) => j.author === EPUB_JOB.author;
+
+/**
+ * Whether books are being read in *now*, in this run of the app.
+ *
+ * Not whether a job looks live. The queue drives downloads, and this is not
+ * one — the loop that reads the files is here, in the page, and dies with it.
+ * A job left behind by a previous run therefore looks live for ever, which is
+ * how the button that opens the picker turned into a button that goes to
+ * Activity and nothing else.
+ */
+let readingEpubs = false;
 
 /**
  * Bring in a shelf of EPUBs.
@@ -3446,67 +3473,75 @@ const importingEpubs = () => jobs.list().find(
  */
 async function bringInEpubs(count) {
   if (!count) { toast('No books chosen'); return; }
-  if (importingEpubs()) { toast('Already reading books in'); return; }
+  if (readingEpubs) { toast('Already reading books in'); return; }
 
-  const job = jobs.add({ ...EPUB_JOB, workIds: [], open: true });
-  goToTab('activity');
+  readingEpubs = true;
+  /* Whatever happens in here, this run of the app stops thinking books are
+     being read in. A flag left true is a picker that can never be opened
+     again until the app is restarted. */
+  try {
+    const job = jobs.add({ ...EPUB_JOB, workIds: [], open: true });
+    goToTab('activity');
 
-  let added = 0;
-  let versioned = 0;
-  const failed = [];
+    let added = 0;
+    let versioned = 0;
+    const failed = [];
 
-  for (let at = 0; at < count; at++) {
-    if (jobs.isStopped(job)) break;
-    const name = pickedEpubName(at) || `book ${at + 1}`;
-    const where = `${at + 1} of ${count}`;
+    for (let at = 0; at < count; at++) {
+      if (jobs.isStopped(job)) break;
+      const name = pickedEpubName(at) || `book ${at + 1}`;
+      const where = `${at + 1} of ${count}`;
 
-    /* A file name first, because that is all there is to go on until the
-       book has been opened — and on a cloud drive it is "Copy of
-       Afterthought.epub", which says very little. */
-    jobs.note(job, { say: `${where} · reading ${name}` });
-    /* A breath, so the line is on the screen before the book is opened.
-       Reading a long one is a second or two of held page otherwise, and the
-       indicator would always be a book behind. */
-    await wait(0);
-    try {
-      const bytes = readPickedEpub(at);
-      if (!bytes) throw new Error('could not be read');
-      const book = await parseEpub(bytes);
+      /* A file name first, because that is all there is to go on until the
+         book has been opened — and on a cloud drive it is "Copy of
+         Afterthought.epub", which says very little. */
+      jobs.note(job, { say: `${where} · reading ${name}` });
+      /* A breath, so the line is on the screen before the book is opened.
+         Reading a long one is a second or two of held page otherwise, and the
+         indicator would always be a book behind. */
+      await wait(0);
+      try {
+        const bytes = readPickedEpub(at);
+        if (!bytes) throw new Error('could not be read');
+        const book = await parseEpub(bytes);
 
-      /* And what the book turns out to be, as soon as it is known. Watching
-         a shelf go in should say which work is going in, not which file. */
-      jobs.note(job, { say: `${where} · ${saidOf(book, name)}` });
+        /* And what the book turns out to be, as soon as it is known. Watching
+           a shelf go in should say which work is going in, not which file. */
+        jobs.note(job, { say: `${where} · ${saidOf(book, name)}` });
 
-      const out = saveEpub(payloadFromEpub(book, name));
-      if (out.kept === 'version') versioned++; else added++;
-      jobs.note(job, {
-        say: `${where} · ${saidOf(book, name)} — `
-          + (out.kept === 'version' ? 'kept as a version' : 'added'),
-      });
-    } catch (e) {
-      failed.push(`${name}: ${e.message ?? e}`);
-      jobs.note(job, { say: `${where} · ${name} — could not be read` });
+        const out = saveEpub(payloadFromEpub(book, name));
+        if (out.kept === 'version') versioned++; else added++;
+        jobs.note(job, {
+          say: `${where} · ${saidOf(book, name)} — `
+            + (out.kept === 'version' ? 'kept as a version' : 'added'),
+        });
+      } catch (e) {
+        failed.push(`${name}: ${e.message ?? e}`);
+        jobs.note(job, { say: `${where} · ${name} — could not be read` });
+      }
+      /* Between books, so a long shelf does not hold the page still. The
+         archive is not involved, so there is nothing to pace — this is only
+         room for the screen to draw. */
+      await wait(0);
     }
-    /* Between books, so a long shelf does not hold the page still. The
-       archive is not involved, so there is nothing to pace — this is only
-       room for the screen to draw. */
-    await wait(0);
-  }
 
-  /* Said as a sentence rather than as three numbers, because two of them are
-     nearly always nought and "0 added" on its own reads as failure when what
-     happened was the library already having every one of them. */
-  const said = [];
-  if (added) said.push(`${added} added`);
-  if (versioned) {
-    said.push(`${versioned} kept as ${versioned === 1 ? 'a version' : 'versions'}`);
+    /* Said as a sentence rather than as three numbers, because two of them are
+       nearly always nought and "0 added" on its own reads as failure when what
+       happened was the library already having every one of them. */
+    const said = [];
+    if (added) said.push(`${added} added`);
+    if (versioned) {
+      said.push(`${versioned} kept as ${versioned === 1 ? 'a version' : 'versions'}`);
+    }
+    if (failed.length) said.push(`${failed.length} could not be read`);
+    jobs.note(job, { say: said.length ? said.join(', ') : 'nothing to bring in' });
+    jobs.seal(job);
+    if (failed.length) jobError = `${EPUB_JOB.author}: ${failed[0]}`;
+    await refresh({ works: true, force: true });
+    paintJobs();
+  } finally {
+    readingEpubs = false;
   }
-  if (failed.length) said.push(`${failed.length} could not be read`);
-  jobs.note(job, { say: said.length ? said.join(', ') : 'nothing to bring in' });
-  jobs.seal(job);
-  if (failed.length) jobError = `${EPUB_JOB.author}: ${failed[0]}`;
-  await refresh({ works: true, force: true });
-  paintJobs();
 }
 
 /** A book, as a person would name it: what it is called and who wrote it. */
