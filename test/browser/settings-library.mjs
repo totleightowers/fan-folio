@@ -84,6 +84,8 @@ try {
   await page.locator('#open-settings').click();
   await page.locator('#open-typo').click();
   await page.emulateMedia({ colorScheme: 'dark' });
+  await page.locator('[data-theme-choice="black"]').click();
+  assert.equal(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)', 'Black stays black when the system is dark');
   await page.locator('[data-theme-choice="light"]').click();
   assert.equal(await page.locator('html').getAttribute('data-dark'), null, 'Light overrides the system dark theme');
   await page.locator('[data-theme-choice="system"]').click();

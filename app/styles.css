@@ -136,7 +136,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']):not([data-theme='sepia']) {
+  :root:not([data-theme]) {
     color-scheme: dark;
     --paper: #1a1c1e; --surface: #212426; --sunken: #171a1c;
     --line: #2e3134; --line-soft: #26292b;
