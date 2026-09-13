@@ -3403,3 +3403,40 @@ test('a job that names what it is doing is not talked over', () => {
   assert.match(paint.slice(0, 120), /&& !job\.say;/);
 });
 
+/**
+ * Three dates, and they are not the same date.
+ *
+ * When the work last changed on the archive, when this copy of it was taken,
+ * and when it turned up here. For a work fetched from the archive the last
+ * two are the same minute; for a book read off a file they are a year apart,
+ * and an export made last March is new to this library today.
+ */
+test('recently added means new here, not newly exported', () => {
+  const query = readFileSync(new URL('../app/core/query.js', import.meta.url), 'utf8');
+  const sorts = query.slice(query.indexOf('export const SORTS = {'));
+  const body = sorts.slice(0, sorts.indexOf('\n};'));
+
+  assert.match(body, /added: 'COALESCE\(w\.fetched_at, w\.downloaded_at\) DESC'/,
+    'fetched_at is when this library wrote it down');
+  assert.match(body, /updated: 'COALESCE\(w\.updated, w\.published\) DESC'/,
+    'and updated is the archive\u2019s business, not ours');
+});
+
+test('and Home asks both questions', () => {
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  const serve = readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8');
+
+  for (const [where, src] of [['the app', api], ['the dev server', serve]]) {
+    assert.match(src, /key: 'added'[\s\S]{0,400}COALESCE\(w\.fetched_at, w\.downloaded_at\)/,
+      `${where} orders Recently added by when it arrived here`);
+    assert.match(src, /key: 'updated'[\s\S]{0,400}'w\.updated IS NOT NULL', 'w\.updated DESC'/,
+      `${where} has a shelf for what the author changed lately`);
+  }
+
+  /* And See all lands on the same question the shelf asked, like every other
+     shelf here. */
+  const views = js.slice(js.indexOf('const SHELF_VIEW = {'));
+  assert.match(views.slice(0, views.indexOf('\n};')),
+    /updated: \{ state: 'all', sort: 'updated' \}/);
+});
+

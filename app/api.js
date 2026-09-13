@@ -119,7 +119,16 @@ const LOCAL = {
             'COALESCE(r.opened_at, r.updated_at) DESC') },
         { key: 'later', title: 'Marked for later',
           ...shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
-        { key: 'added', title: 'Recently added', ...shelf('1=1', 'COALESCE(w.downloaded_at, w.fetched_at) DESC') },
+        { key: 'added', title: 'Recently added',
+          /* New to this library, whenever the work itself was written. A book
+             read off a file is new here today even if the export is a year
+             old, which is the whole reason these are two dates. */
+          ...shelf('1=1', 'COALESCE(w.fetched_at, w.downloaded_at) DESC') },
+        { key: 'updated', title: 'Updated on the archive',
+          /* And the other question: what has the author changed lately. A
+             work with no updated date has not been changed since it was
+             posted, so it has no business on a shelf about changes. */
+          ...shelf('w.updated IS NOT NULL', 'w.updated DESC') },
         { key: 'long', title: 'Settle in',
           ...shelf(`w.complete = 1 AND ${STATES.unread}`, 'w.words DESC') },
         { key: 'short', title: 'One sitting',

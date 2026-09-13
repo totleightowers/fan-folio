@@ -4449,6 +4449,7 @@ const SHELF_VIEW = {
   reading: { state: 'reading' },
   later: { state: 'later' },
   added: { state: 'all', sort: 'added' },
+  updated: { state: 'all', sort: 'updated' },
   long: { state: 'unread', complete: '1', sort: 'words' },
   short: { state: 'unread', complete: '1', wordsMax: 5000, sort: 'shortest' },
 };
