@@ -85,6 +85,21 @@
   --read-vmargin: 24px;     /* readerVerticalMargin */
   --read-align: start;      /* textAlign */
   --read-bg: '';            /* set only when a custom colour is chosen */
+
+  /*
+   * The column everything in the reader keeps to.
+   *
+   * The header, the endnotes, the archive banner and the navigation bar each
+   * had their own idea of how wide the reading column was — 40em of the
+   * interface font here, 40em of the reading font there, 44rem on the bar —
+   * and the prose itself had none at all, so on anything wider than a phone
+   * the text ran the whole width of the screen while its own title sat in a
+   * narrow column up the middle. One measure, stated once, in the size the
+   * prose is actually set in, so it grows with the reader's chosen text size
+   * and everything in here lines up down both edges.
+   */
+  --read-column: calc(40 * var(--read-size));
+  --read-width: calc(var(--read-column) + 2 * var(--read-margin));
 }
 
 /*
@@ -237,6 +252,7 @@ body {
 
 #reader { padding-bottom: 6rem; }
 #workskin {
+  max-width: var(--read-width);
   margin: 0 auto;
   padding: var(--read-vmargin) var(--read-margin);
   font-family: var(--read-face);
@@ -248,7 +264,7 @@ body {
   hyphens: auto;
 }
 #endnotes {
-  max-width: 40em; margin: 2rem auto 0; padding: 1rem var(--read-margin) 0;
+  max-width: var(--read-width); margin: 2rem auto 0; padding: 1rem var(--read-margin) 0;
   border-top: 1px solid var(--rule); color: var(--muted);
   font-family: var(--read-face); font-size: calc(var(--read-size) * .92);
   line-height: var(--read-lh);
@@ -311,7 +327,7 @@ body {
      while the prose sat in a 40em measure up the centre. They keep to that
      measure now, and a phone is unaffected because the window is narrower
      than it. */
-  padding-inline: max(.8rem, calc((100% - 44rem) / 2));
+  padding-inline: max(.8rem, calc((100% - var(--read-width)) / 2));
   transition: translate var(--dur) var(--ease-out);
 }
 /* Out of the way while the page moves forwards, back the moment it moves
@@ -1076,6 +1092,19 @@ dialog h2 {
 }
 .ao3page .hidden { display: none; }
 
+/*
+ * The chapter's own heading, which this app has already said.
+ *
+ * A chapter is stored as the archive's whole block, title and notes and all,
+ * so the prose opened with `<h3 class="title"><a>Chapter 1</a></h3>` — a link
+ * to a page that is not here, in the link colour, set in the archive's serif
+ * at 1.286em. It was the largest and loudest thing on the screen, it was
+ * blue, it went nowhere, and it repeated the line directly above it. The
+ * header carries the number, the work and the chapter's name; this is the
+ * same words again in somebody else's voice.
+ */
+#workskin .preface h3.title { display: none; }
+
 /* ------------------------------------------------------------ add a work */
 
 #addwork[open] { display: block; width: min(94vw, 28rem); }
@@ -1590,8 +1619,12 @@ button:disabled, .opt:disabled {
  * destinations, nearer the thumb that is already holding the thing, and it
  * gives the rest of the width back.
  *
- * The reader keeps the whole screen: it hides the tabs, so nothing here
- * applies to it, which is the point of reading being the immersive one.
+ * The reader keeps the rail here, and only here. On a phone reading is the
+ * one immersive screen and the tabs go, which is right: a chapter should be a
+ * chapter, and the bar would be eating the foot of the screen. On a tablet
+ * the same rule made leaving a work for a chapter of it shunt the whole app
+ * 5.5rem to the left and take the navigation off the screen — a jump the
+ * width of the rail, to gain a strip of width nothing was waiting for.
  */
 @media (min-width: 44.01rem) {
   #tabs {
@@ -1609,9 +1642,14 @@ button:disabled, .opt:disabled {
      about where the edge of the app is. */
   body:has(#tabs:not([hidden])) #bar,
   body:has(#tabs:not([hidden])) #main { margin-left: 5.5rem; }
-  /* And the room kept clear at the foot for a bar that is no longer there. */
-  body:has(#tabs:not([hidden])) .view { padding-bottom: 1.5rem; }
+  /* And the room kept clear at the foot for a bar that is no longer there —
+     except in the reader, which still has its own bar down there. */
+  body:has(#tabs:not([hidden])) .view:not(#reader) { padding-bottom: 1.5rem; }
   body:has(#tabs:not([hidden])) #toast { left: calc(50% + 2.75rem); }
+  /* The reader's own furniture starts where the rail ends, or it runs under
+     it and the reading column is measured against the wrong edge. */
+  body:has(#tabs:not([hidden])) #chapnav,
+  body:has(#tabs:not([hidden])) #progress { left: 5.5rem; }
 }
 @media (min-width: 70rem) {
   #home, #library, #results, #detail { max-width: 72rem; }
@@ -1824,23 +1862,33 @@ button:disabled, .opt:disabled {
 #reader-head {
   display: block;
   width: 100%;
-  max-width: 40em;
+  max-width: var(--read-width);
   margin: .4rem auto 1.6rem;
   padding: 0 var(--read-margin) 1.1rem;
   border-bottom: 1px solid var(--rule);
   font-family: var(--read-face);
 }
+/* The same three lines the work page opens with, in the same type: leaving a
+   work for a chapter of it should read as going further in, and a title that
+   changes size and weight on the way says you have gone somewhere else. */
 #rh-title {
   display: block;
-  font-size: calc(var(--read-size) * 1.25);
-  line-height: 1.25;
-  font-weight: 600;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  font-weight: 650;
 }
-#rh-by, #rh-chapter {
+#rh-by {
   display: block;
-  font-size: calc(var(--read-size) * .82);
+  font-size: 1rem;
   color: var(--muted);
-  margin-top: .25rem;
+  margin-top: .35rem;
+}
+#rh-chapter {
+  display: block;
+  font-size: .84rem;
+  color: var(--ink-faint);
+  margin-top: .45rem;
+  font-variant-numeric: tabular-nums;
 }
 
 
@@ -1887,7 +1935,7 @@ button:disabled, .opt:disabled {
  */
 #archive-banner {
   display: flex; flex-wrap: wrap; align-items: center; gap: .6rem;
-  max-width: 40em; margin: .4rem auto 1.2rem;
+  max-width: var(--read-width); margin: .4rem auto 1.2rem;
   padding: .7rem .9rem;
   border: 1px dashed var(--rule); border-radius: var(--r-card);
   background: color-mix(in srgb, var(--accent) 7%, transparent);
@@ -2211,7 +2259,7 @@ button:disabled, .opt:disabled {
 .work-details dd { margin: 0; font-variant-numeric: tabular-nums; }
 
 @media (min-width: 44.01rem) {
-  .work-title { font-size: 1.9rem; }
+  .work-title, #rh-title { font-size: 1.9rem; }
 }
 
 /*
