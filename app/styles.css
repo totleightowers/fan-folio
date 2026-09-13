@@ -2456,9 +2456,12 @@ button:disabled, .opt:disabled {
 .settings-panel > * + * { border-top: 1px solid var(--line-soft); }
 .settings-symbol { display: grid; place-items: center; flex: 0 0 2.5rem; height: 2.5rem; border-radius: var(--r-field); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent); font-weight: 650; }
 .settings-chevron { flex: 0 0 auto !important; color: var(--accent); font-size: 1.4rem; }
-.settings-disclosure > summary { cursor: pointer; padding: 1rem; font-size: .95rem; min-height: 3rem; }
+.settings-disclosure > summary { display: grid; grid-template-columns: 1fr auto; align-items: center; cursor: pointer; padding: 1rem; font-size: .95rem; min-height: 3rem; list-style: none; }
+.settings-disclosure > summary::-webkit-details-marker { display: none; }
+.settings-disclosure > summary::after { content: ''; grid-column: 2; grid-row: 1 / span 2; width: .45rem; height: .45rem; margin-left: 1rem; border-right: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
+.settings-disclosure[open] > summary::after { transform: rotate(45deg); }
 .settings-disclosure > summary::marker { color: var(--accent); }
-.settings-disclosure > summary strong, .settings-disclosure > summary small { margin-left: .5rem; }
+.settings-disclosure > summary strong, .settings-disclosure > summary small { grid-column: 1; }
 .settings-content { padding: 0 1rem 1rem; }
 .settings-content .facts { margin: .4rem 0 1rem; }
 .settings-content .settings-row { padding-inline: 0; }

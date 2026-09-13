@@ -37,6 +37,15 @@ try {
   }
   mkdirSync('ui-screenshots', { recursive: true });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const screenshot = async (name, { reading = false, fullPage = true } = {}) => {
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
+      window.scrollTo(0, 0);
+    });
+    if (reading) await page.locator('#typography').evaluate(el => { el.scrollTop = 0; });
+    await page.screenshot({ path: `ui-screenshots/${name}.png`, fullPage });
+  };
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
@@ -45,7 +54,7 @@ try {
   await page.locator('#open-settings').click();
   await page.locator('#reading-summary').filter({ hasText: 'Georgia' }).waitFor();
   await page.locator('#haptics').uncheck();
-  await page.screenshot({ path: 'ui-screenshots/settings-phone.png', fullPage: true });
+  await screenshot('settings-phone');
   await page.locator('#open-typo').click();
   await page.locator('[data-theme-choice="sepia"]').click();
   await page.locator('[data-face-choice="Literata"]').click();
@@ -53,7 +62,7 @@ try {
   for (let i = 0; i < 5; i++) await page.locator('#size').press('ArrowRight');
   assert.equal(await page.locator('#size-value').textContent(), '24px');
   assert.equal(await page.locator('.sample').evaluate(el => getComputedStyle(el).fontSize), '24px');
-  await page.screenshot({ path: 'ui-screenshots/reading-phone.png' });
+  await screenshot('reading-phone', { reading: true, fullPage: false });
   await page.locator('#reset-reading').click();
   assert.equal(await page.locator('#size').inputValue(), '19');
   assert.equal(await page.locator('#haptics').isChecked(), false, 'reading reset preserves haptics');
@@ -69,7 +78,7 @@ try {
   for (const [width, height, name] of [[390,844,'phone'], [320,720,'narrow'], [900,900,'tablet']]) {
     await page.setViewportSize({ width, height });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal page overflow');
-    await page.screenshot({ path: `ui-screenshots/library-${name}.png`, fullPage: true });
+    await screenshot(`library-${name}`);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#open-settings').click();
@@ -77,7 +86,7 @@ try {
   await page.locator('[data-theme-choice="light"]').click();
   await page.locator('#typography [data-close]').first().click();
   await page.locator('#back').click();
-  await page.screenshot({ path: 'ui-screenshots/library-light.png', fullPage: true });
+  await screenshot('library-light');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
