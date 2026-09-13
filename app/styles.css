@@ -2117,7 +2117,7 @@ button:disabled, .opt:disabled {
  *   prose in the reading face, chrome in the interface face
  *   chips get the whole width to wrap into
  */
-.work-head { margin: .2rem 0 1.1rem; }
+.work-head { margin: .2rem 0 1rem; }
 .work-title {
   margin: 0;
   font-family: var(--read-face);
@@ -2132,11 +2132,17 @@ button:disabled, .opt:disabled {
   color: var(--muted);
 }
 .work-facts {
-  margin: .5rem 0 0;
-  font-size: .82rem;
+  /* Under the summary now rather than under the byline: what a work is comes
+     before how long it is, and a rating sitting in the middle of a word count
+     read as a fact rather than as a way into the library. */
+  margin: 0 0 1.1rem;
+  font-size: .84rem;
   color: var(--ink-faint);
   font-variant-numeric: tabular-nums;
 }
+
+/* The parts of that line that are questions the library can answer. */
+.work-facts .metapill { font-size: inherit; }
 
 #detail .actions { display: flex; align-items: center; gap: .9rem; margin: 0 0 1.2rem; }
 
@@ -2146,7 +2152,7 @@ button:disabled, .opt:disabled {
   font-size: calc(var(--read-size) * .95);
   line-height: 1.55;
   max-width: 38em;
-  margin: 0 0 1.4rem;
+  margin: 0 0 .9rem;
   padding-left: .9rem;
   border-left: 2px solid var(--rule);
   color: var(--fg);
@@ -2290,3 +2296,53 @@ button:disabled, .opt:disabled {
   gap: 4px 14px;
   margin-top: .6rem;
 }
+
+/*
+ * The chapters, on the page.
+ *
+ * They were one control opening a drawer, because thirty-one of them buried
+ * the summary and the tags. That is true of thirty-one and was never true of
+ * four — so a few sit here, around where the reader actually is, and the rest
+ * stay behind the drawer.
+ */
+.work-chapters { margin: 1.4rem .1rem 0; }
+
+.chapter-rows {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  overflow: hidden;
+  margin-bottom: .5rem;
+}
+
+.chapter-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chapter-row:last-child { border-bottom: 0; }
+.chapter-row:active { background: var(--sunken); }
+.chapter-row .n {
+  min-width: 1.6rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.chapter-row .ct {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chapter-row .mark { color: var(--accent); font-size: .8rem; }
+.chapter-row.here .n { color: var(--accent); font-weight: 700; }
+.chapter-row.here .ct { font-weight: 600; }
