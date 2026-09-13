@@ -67,12 +67,13 @@ const STORED_PREFS = (() => {
 
 /* Mirrors Archive Reader's settings model key for key, so a theme imported
    from its backup lands here unchanged. */
-const prefs = load(PREFS_KEY, {
+const READING_DEFAULTS = {
   theme: 'system', bg: '#fbf9f5', fg: '#1b1a17',
   face: 'Georgia', weight: 400, size: 19, lh: 170,
   margin: 20, vmargin: 24, align: 'start',
   haptics: true,
-});
+};
+const prefs = load(PREFS_KEY, READING_DEFAULTS);
 /* The full filter set, kept together so it can be sent, saved and shown as one. */
 const view = load(VIEW_KEY, {
   sort: 'title', state: 'all',
@@ -145,7 +146,7 @@ const faceStack = (family) => SYSTEM_FACES[family] ?? `'${String(family).replace
  */
 function themeIsDark() {
   if (prefs.theme === 'dark' || prefs.theme === 'black') return true;
-  if (prefs.theme === 'sepia') return false;
+  if (prefs.theme === 'light' || prefs.theme === 'sepia') return false;
   if (prefs.theme === 'custom') return isDark(prefs.bg);
   return Boolean(window.matchMedia?.('(prefers-color-scheme: dark)').matches);
 }
@@ -180,6 +181,27 @@ function applyPrefs() {
   r.style.setProperty('--read-vmargin', `${prefs.vmargin}px`);
   r.style.setProperty('--read-align', prefs.align);
   save(PREFS_KEY, prefs);
+  paintReadingControls();
+}
+
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (prefs.theme === 'system') applyPrefs();
+});
+
+function paintReadingControls() {
+  const labels = { system: 'System theme', light: 'Light', sepia: 'Sepia', dark: 'Dark', black: 'Black', custom: 'Custom colours' };
+  const summary = $('#reading-summary');
+  if (summary) summary.textContent = `${labels[prefs.theme] ?? 'System theme'} · ${prefs.face} · ${prefs.size}px`;
+  for (const key of ['theme', 'face', 'weight', 'size', 'lh', 'margin', 'vmargin', 'align', 'bg', 'fg']) {
+    const input = $(`#${key}`);
+    if (input && input.value !== String(prefs[key])) input.value = prefs[key];
+  }
+  for (const key of ['size', 'lh', 'margin', 'vmargin']) {
+    const output = $(`#${key}-value`);
+    if (output) output.textContent = key === 'lh' ? `${(prefs.lh / 100).toFixed(2)}×` : `${prefs[key]}px`;
+  }
+  for (const button of $$('[data-theme-choice]')) button.setAttribute('aria-pressed', String(button.dataset.themeChoice === prefs.theme));
+  for (const button of $$('[data-face-choice]')) button.setAttribute('aria-pressed', String(button.dataset.faceChoice === prefs.face));
 }
 
 /* ------------------------------------------------------------------ views */
@@ -668,23 +690,25 @@ function workRow(w) {
   ].filter(Boolean).join('  ·  ');
 
   node.innerHTML = `
-    <div class="work-when"></div>
-    <h3></h3>
+    <h3><button class="work-title-link"></button></h3>
     <div class="by"></div>
+    ${w.summary ? '<p class="sum"></p>' : ''}
     <div class="tagrow"></div>
     <div class="statline"></div>
-    ${w.summary ? '<p class="sum"></p>' : ''}
+    <div class="work-when"></div>
     ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>
            <div class="progress-note">${p.read} of ${p.total} chapters read</div>` : ''}
     <div class="rowactions">
-      <button data-act="open">${p ? 'Continue' : 'Read'}</button>
-      <button data-act="ao3">AO3</button>
+      <button data-act="open">${!w.has_text ? 'Download' : p ? 'Continue' : 'Read'}</button>
+      ${/^\d+$/.test(String(w.work_id)) ? '<button data-act="ao3">On AO3 ↗</button>' : ''}
     </div>`;
 
   // textContent, never innerHTML: titles, summaries and tags are author-written
-  const heading = node.querySelector('h3');
+  const heading = node.querySelector('.work-title-link');
+  heading.onclick = (event) => { event.stopPropagation(); openWork(w.work_id); };
   heading.textContent = w.title ?? '(untitled)';
   heading.prepend(...marks(w));
+  node.querySelector('.statline').textContent = stats;
   /* Known, but not here. Saying so on the row matters more than it looks:
      otherwise a work opens into an empty reader and the reader assumes the app
      has lost it. */
@@ -698,7 +722,6 @@ function workRow(w) {
 
   const when = whenOf(w);
   if (when) node.querySelector('.work-when').append(...whenParts(when));
-  node.querySelector('.statline').textContent = stats;
   if (w.summary) node.querySelector('.sum').textContent = w.summary;
 
   const tagrow = node.querySelector('.tagrow');
@@ -711,7 +734,9 @@ function workRow(w) {
   }
 
   const act = {
-    open: () => openChapter(w.work_id, p ? (w.at_chapter ?? 1) : 1),
+    open: () => w.has_text
+      ? openChapter(w.work_id, p ? (w.at_chapter ?? 1) : 1)
+      : openWork(w.work_id),
     // the one place the app leaves itself: the work as AO3 has it now
     ao3: () => window.open(`https://archiveofourown.org/works/${w.work_id}`, '_blank', 'noopener'),
   };
@@ -1603,6 +1628,7 @@ async function buildSettings() {
   try {
     const home = await api('/api/home');
     const s = home.stats ?? {};
+    $('#library-summary').textContent = `${fmt(s.works ?? 0)} works on this device`;
     add('Works', fmt(s.works ?? 0));
     add('Words', fmt(s.words ?? 0));
     add('Finished', fmt(s.finished ?? 0));
@@ -1628,6 +1654,13 @@ async function buildSettings() {
     if (haptics.checked) tick('commit');    // show what was just turned on
   };
 
+  paintReadingControls();
+  paintActivityBadge();
+  const backup = load('archive.backup', {});
+  if (backup.at) {
+    $('#backup-state').hidden = false;
+    $('#backup-state').textContent = `Last backed up ${new Date(backup.at).toLocaleString()}`;
+  }
   $('#version').textContent = `Fan Folio ${VERSION}`;
   paintAccount();
 }
@@ -1761,6 +1794,7 @@ window.__noBrowser = () => toast('No browser available to open the archive');
 window.__importFailed = (why) => toast(`That library could not be merged: ${why}`);
 
 window.__backupDone = () => {
+  save('archive.backup', { at: Date.now() });
   $('#backup').classList.remove('is-busy');
   const state = $('#backup-state');
   state.hidden = false;
@@ -2347,6 +2381,13 @@ function paintActivityBadge() {
   const held = list.some((j) => ['paused', 'pausing'].includes(j.state));
   const failed = list.some((j) => j.state === 'done' && (j.unfinished?.length || j.lastError));
   const state = busy ? 'busy' : held ? 'held' : failed ? 'failed' : '';
+  const summary = $('#downloads-summary');
+  if (summary) {
+    const active = list.filter(j => ['running', 'queued', 'listing', 'paused', 'pausing'].includes(j.state)).length;
+    summary.textContent = busy ? `${active} download job${active === 1 ? '' : 's'} in progress`
+      : held ? `${active} download job${active === 1 ? '' : 's'} paused`
+      : failed ? 'Some downloads need attention' : 'Nothing waiting';
+  }
   dot.hidden = !state;
   dot.dataset.state = state;
   dot.setAttribute('aria-label', state === 'busy' ? 'Downloading'
@@ -5798,6 +5839,19 @@ addEventListener('keydown', (e) => {
 });
 
 /* ------------------------------------------------------------- dialogues */
+
+for (const button of $$('[data-theme-choice]')) {
+  button.onclick = () => { prefs.theme = button.dataset.themeChoice; applyPrefs(); };
+}
+for (const button of $$('[data-face-choice]')) {
+  button.onclick = () => { prefs.face = button.dataset.faceChoice; applyPrefs(); };
+}
+$('#reset-reading').onclick = () => {
+  const haptics = prefs.haptics;
+  Object.assign(prefs, READING_DEFAULTS, { haptics });
+  applyPrefs();
+  toast('Reading settings reset');
+};
 
 $('#typo').onclick = () => openSheet($('#typography'));
 for (const b of $$('[data-close]')) b.onclick = () => closeSheet($(`#${b.dataset.close}`));
