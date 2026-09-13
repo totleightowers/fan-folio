@@ -1340,7 +1340,8 @@ const TAPPABLE = [
   '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
   '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
   '.linkish', 'button.ghost', '.seg button', '#chapnav button', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here', '#reader-more', '.menu-list button',
+  '#to-work', '#on-archive', '#kudos-here', '#bookmark-here', '#comment-here',
+  '#reader-more', '.menu-list button',
   '.version-row', '#ab-current', '.job-act',
 ].join(',');
 
@@ -5130,8 +5131,6 @@ async function showChapterDrawer(workId, at) {
  * happens to be behind us.
  */
 $('#to-work').onclick = () => upToWork(current.workId);
-$('#kudos-here').onclick = () => giveKudos(current.workId, $('#kudos-here'));
-
 /**
  * The work being read, as a record rather than an id.
  *
@@ -5160,12 +5159,14 @@ async function workBeingRead() {
  * of a chapter — so they belong in one place, and that place is the sheet
  * that already holds the rest of the way out of a chapter.
  */
-$('#reader-kudos').onclick = async () => {
+/* One behaviour each, whichever control asked — the bar on a tablet, the
+   sheet on a phone. Two copies of this would be two things to keep in step. */
+async function kudosOnThisChapter() {
   closeSheet($('#reader-menu'));
   giveKudos(current.workId, $('#kudos-here'));
-};
+}
 
-$('#reader-bookmark').onclick = async () => {
+async function bookmarkThisChapter() {
   const w = await workBeingRead();
   if (!w) { toast('That work is not here'); return; }
   closeSheet($('#reader-menu'));
@@ -5179,9 +5180,9 @@ $('#reader-bookmark').onclick = async () => {
   $('#bm-status').hidden = true;
   bookmarkTarget = w;
   openSheet($('#bookmark-dialog'));
-};
+}
 
-$('#reader-comment').onclick = async () => {
+async function commentOnThisChapter() {
   const w = await workBeingRead();
   if (!w) { toast('That work is not here'); return; }
   closeSheet($('#reader-menu'));
@@ -5189,14 +5190,15 @@ $('#reader-comment').onclick = async () => {
   $('#cm-status').hidden = true;
   commentTarget = w;
   openSheet($('#comment-dialog'));
-};
+}
 
-/* The work's own page, which the chapter bar reaches too — but somebody who
-   opened this sheet looking for a way out should find all of them in it. */
-$('#reader-work').onclick = () => {
-  closeSheet($('#reader-menu'));
-  if (current.workId) openWork(current.workId);
-};
+for (const [id, act] of [
+  ['#kudos-here', kudosOnThisChapter], ['#reader-kudos', kudosOnThisChapter],
+  ['#bookmark-here', bookmarkThisChapter], ['#reader-bookmark', bookmarkThisChapter],
+  ['#comment-here', commentOnThisChapter], ['#reader-comment', commentOnThisChapter],
+]) {
+  $(id).onclick = act;
+}
 
 $('#on-archive').onclick = () => {
   if (!current.workId) return;
