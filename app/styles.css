@@ -2533,3 +2533,5 @@ button:disabled, .opt:disabled {
   #chappos { flex: 1; justify-content: center; white-space: nowrap; }
   #on-archive { display: none; }
 }
+
+body:has(#reader:not([hidden])) #typo { display: none; }

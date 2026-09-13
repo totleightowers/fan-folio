@@ -5892,7 +5892,7 @@ $('#reset-reading').onclick = () => {
   toast('Reading settings reset');
 };
 
-$('#typo').onclick = () => openSheet($('#typography'));
+$('#typo').onclick = openReadingSettings;
 for (const b of $$('[data-close]')) b.onclick = () => closeSheet($(`#${b.dataset.close}`));
 
 for (const [id, key, transform] of [
