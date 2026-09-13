@@ -2703,8 +2703,12 @@ test('opening an author shows the author', () => {
      the usual want, and neither is hours of archive you did not ask for. */
   assert.match(bbody, /\$\('#author-sync-this'\), \[which\]/);
   assert.match(bbody, /\$\('#author-sync-both'\), \['works', 'bookmarks'\]/);
-  assert.match(bbody, /for \(const \[other\] of asking\) other\.disabled = true/,
-    'and asking for one half is not an invitation to ask for the other at the same time');
+  /* Asking for one half must not leave the other on offer. That used to be
+     one button reaching over and disabling the other; it is the queue now —
+     Sync both covers works, so a works walk already going disables it, and
+     no handler has to remember to. */
+  assert.match(bbody, /const going = parts\.map\(\(part\) => authorJob\(name, part\)\)/);
+  assert.match(bbody, /button\.disabled = going\.length > 0/);
 });
 
 test('a half asked for is the only half fetched', () => {
@@ -3115,10 +3119,20 @@ test('a chapter can be given kudos, bookmarked and commented on', () => {
     assert.ok(body.includes(`id="${act}"`), `${act} is reachable from a chapter`);
   }
 
+  /* And on the bar, for the screens with room for them. Whichever is
+     pressed, the same thing happens: two copies would be two things to keep
+     in step. */
+  const bar = html.slice(html.indexOf('<nav id="chapnav">'));
+  const bbody = bar.slice(0, bar.indexOf('</nav>'));
+  for (const act of ['kudos-here', 'bookmark-here', 'comment-here']) {
+    assert.ok(bbody.includes(`id="${act}"`), `${act} is on the bar`);
+  }
+  assert.match(js, /\['#kudos-here', kudosOnThisChapter\], \['#reader-kudos', kudosOnThisChapter\]/);
+
   /* Each opens the form the work page opens, rather than a second one that
      would have to be kept in step with it. */
-  assert.match(js, /\$\('#reader-bookmark'\)\.onclick[\s\S]{0,700}openSheet\(\$\('#bookmark-dialog'\)\)/);
-  assert.match(js, /\$\('#reader-comment'\)\.onclick[\s\S]{0,500}openSheet\(\$\('#comment-dialog'\)\)/);
+  assert.match(js, /async function bookmarkThisChapter\(\)[\s\S]{0,800}openSheet\(\$\('#bookmark-dialog'\)\)/);
+  assert.match(js, /async function commentOnThisChapter\(\)[\s\S]{0,600}openSheet\(\$\('#comment-dialog'\)\)/);
 });
 
 test('the reader asks which work it is showing rather than assuming', () => {
@@ -3135,8 +3149,76 @@ test('bookmarked is a state, not an instruction, in the reader too', () => {
   /* The label saying a work is already bookmarked used to be wired to the
      make-a-bookmark route. Changing one is done on the archive, where the
      notes and tags being changed actually live. */
-  const fn = js.slice(js.indexOf("$('#reader-bookmark').onclick"));
-  const body = fn.slice(0, fn.indexOf('\n};'));
+  const fn = js.slice(js.indexOf('async function bookmarkThisChapter()'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /if \(w\.in_bookmarks\) \{ openOnArchive/);
+});
+
+/**
+ * A sync already queued does not offer itself again.
+ *
+ * The buttons disabled themselves in their own click handler, which meant the
+ * state lived nowhere: switching to the other tab and back repainted the
+ * screen, the handler had not run that time, and a walk already in the queue
+ * came back looking like a walk nobody had asked for.
+ */
+test('the sync buttons follow the job, not a flag', () => {
+  const paint = js.slice(js.indexOf('function paintAuthor()'));
+  const body = paint.slice(0, paint.indexOf('\n}\n'));
+  assert.match(body, /const going = parts\.map\(\(part\) => authorJob\(name, part\)\)/);
+  assert.match(body, /button\.disabled = going\.length > 0/);
+  assert.ok(!/button\.disabled = false/.test(body),
+    'nothing re-enables a button behind the queue\u2019s back');
+
+  /* Done and cancelled do not count: a finished job is a receipt rather than
+     work in hand, and refusing to read an index again because it was read
+     once is not a queue, it is a lock. */
+  const find = js.slice(js.indexOf('const authorJob ='));
+  assert.match(find.slice(0, 300), /j\.state !== 'done' && j\.state !== 'cancelled'/);
+});
+
+test('and a job changing anywhere else reaches the person it is about', () => {
+  /* Paused from the notification, stopped from Activity, cleared from the
+     list: none of it is something this screen would otherwise hear. */
+  const hook = js.slice(js.indexOf('onEvent: (e) => {'));
+  assert.match(hook.slice(0, hook.indexOf('\n  },')),
+    /if \(!\$\('#author'\)\.hidden\) paintAuthor\(\)/);
+});
+
+/**
+ * Rolled up, or on the bar, never half of each.
+ *
+ * Kudos had a button on the chapter bar while bookmarking and commenting had
+ * none — one third of one decision in one place and the rest somewhere else.
+ */
+test('the archive actions are all in one place at any one width', () => {
+  const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
+
+  /* A phone has no room on that bar for three more controls, so all three
+     roll up. A tablet has room, so all three sit on it and the sheet does
+     not draw them at all. */
+  assert.match(css, /\.on-the-bar \{ display: none; \}/);
+  const wide = css.slice(css.lastIndexOf('@media (min-width: 44.01rem)'));
+  assert.match(wide, /\.on-the-bar \{ display: inline-flex; \}/);
+  assert.match(wide, /\.rolled-up \{ display: none; \}/);
+
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const body = menu.slice(0, menu.indexOf('</dialog>'));
+  assert.match(body, /<h2 class="rolled-up">On this work<\/h2>/);
+  assert.match(body, /<div class="menu-list rolled-up">/);
+});
+
+test('a sheet of destinations has no row that is not one', () => {
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const body = menu.slice(0, menu.indexOf('</dialog>'));
+
+  /* Pressing outside closes it, and so does Back. A button saying "stay
+     here" is a row of the list that goes nowhere, in a list of places. */
+  assert.ok(!body.includes('data-close="reader-menu"'));
+
+  /* And the work itself is on the chapter bar already, two buttons away. */
+  assert.ok(!body.includes('id="reader-work"'),
+    'saying it twice in two shapes is worse than saying it once');
+  assert.ok(html.includes('id="to-work"'), 'because the bar still says it');
 });
 

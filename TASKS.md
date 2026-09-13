@@ -79,6 +79,19 @@ next. When the list is empty, go back to the standing goal.
 Standing, underneath all of it: parity with 1.x is not met, and my saying the
 list was closed was premature. A release per feature, PR and release linked.
 
+## Asked on 13 September
+
+- **Back-port EPUBs into the library's own format.** A shelf of EPUBs read
+  badly; they should become works and chapters like everything else. Where the
+  archive has the same work, the archive's copy is the one to read and the
+  EPUB is kept as a version of it. Where it does not — a work since deleted,
+  a gift never posted — the EPUB is the work.
+
+  Most of this exists already and none of it is in the app: `app/core/epub.js`
+  and `app/core/zip.js` read one, and `tools/ingest-epubs.mjs` puts a folder of
+  them into a library from a laptop. What is missing is doing it from the
+  phone, and deciding between a copy and the archive's.
+
 ## Now
 
 - **Person screen: Works and Bookmarks, both populated.** The two

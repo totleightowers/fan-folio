@@ -411,7 +411,9 @@
       <button id="prev" aria-label="Previous chapter"><svg class="ic" aria-hidden="true"><use href="#i-prev"/></svg></button>
       <button id="chappos" aria-label="Jump to chapter"></button>
       <button id="next" aria-label="Next chapter"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
-      <button id="kudos-here" aria-label="Leave kudos on this work"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
+      <button id="kudos-here" class="on-the-bar" aria-label="Leave kudos on this work"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
+      <button id="bookmark-here" class="on-the-bar" aria-label="Bookmark this work"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg></button>
+      <button id="comment-here" class="on-the-bar" aria-label="Comment on this work"><svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg></button>
       <button id="on-archive" aria-label="Open this chapter on the archive"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></button>
       <!--
           The way out of the reader that is not the way you came in.
@@ -464,12 +466,20 @@
       the end of a chapter — so they are together, here, where the rest of the
       way out of a chapter already is.
   -->
-  <h2>On this work</h2>
-  <div class="menu-list">
+  <!--
+      Rolled up or on the bar, never half of each.
+
+      Kudos had a button on the chapter bar while bookmarking and commenting
+      had none, which put one third of one decision in one place and the rest
+      somewhere else. On a phone there is no room for three more controls, so
+      all three roll up here. On a tablet there is, so all three sit on the
+      bar and this group is not drawn at all.
+  -->
+  <h2 class="rolled-up">On this work</h2>
+  <div class="menu-list rolled-up">
     <button id="reader-kudos"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Leave kudos</button>
     <button id="reader-bookmark"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg>Bookmark it</button>
     <button id="reader-comment"><svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg>Leave a comment</button>
-    <button id="reader-work"><svg class="ic" aria-hidden="true"><use href="#i-work"/></svg>The work itself</button>
   </div>
 
   <h2>Go to</h2>
@@ -479,7 +489,11 @@
     <button data-go="you"><svg class="ic" aria-hidden="true"><use href="#i-person"/></svg>You</button>
     <button data-go="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
   </div>
-  <button class="close" data-close="reader-menu">Stay here</button>
+  <!--
+      No way out at the foot. Pressing outside a sheet closes it, and so does
+      Back; a button that says "stay here" is a row of the list that is not a
+      destination, in a list of destinations.
+  -->
 </dialog>
 
 <dialog id="addwork">
