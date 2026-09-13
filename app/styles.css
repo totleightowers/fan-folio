@@ -2481,7 +2481,7 @@ button:disabled, .opt:disabled {
 .reading-preview { position: sticky; top: 0; z-index: 2; padding: .8rem 1rem 0; background: var(--surface); border-bottom: 1px solid var(--line); }
 .reading-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 #typography h2 { font-family: var(--title); font-size: 1.1rem; text-transform: none; letter-spacing: 0; color: var(--ink); }
-#typography .sample { background: var(--bg); color: var(--fg); margin: .6rem 0 .8rem; border: 0; border-radius: var(--r-field); padding: min(var(--read-vmargin), 24px) var(--read-margin); max-height: 24dvh; overflow-y: auto; }
+#typography .sample { background: var(--bg); color: var(--fg); margin: .6rem 0 .8rem; border: 0; border-radius: var(--r-field); padding: var(--read-vmargin) var(--read-margin); max-height: 24dvh; overflow-y: auto; }
 .reading-controls { padding: 1rem; }
 .theme-choices { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .35rem; margin-bottom: 1.2rem; }
 .theme-choices button { min-width: 0; padding: .25rem; border: 2px solid transparent; border-radius: var(--r-field); background: none; color: var(--ink); font: inherit; font-size: .7rem; cursor: pointer; }

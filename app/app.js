@@ -146,7 +146,7 @@ const faceStack = (family) => SYSTEM_FACES[family] ?? `'${String(family).replace
  */
 function themeIsDark() {
   if (prefs.theme === 'dark' || prefs.theme === 'black') return true;
-  if (prefs.theme === 'sepia') return false;
+  if (prefs.theme === 'light' || prefs.theme === 'sepia') return false;
   if (prefs.theme === 'custom') return isDark(prefs.bg);
   return Boolean(window.matchMedia?.('(prefers-color-scheme: dark)').matches);
 }
@@ -183,6 +183,10 @@ function applyPrefs() {
   save(PREFS_KEY, prefs);
   paintReadingControls();
 }
+
+window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (prefs.theme === 'system') applyPrefs();
+});
 
 function paintReadingControls() {
   const labels = { system: 'System theme', light: 'Light', sepia: 'Sepia', dark: 'Dark', black: 'Black', custom: 'Custom colours' };

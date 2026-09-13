@@ -83,6 +83,13 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#open-settings').click();
   await page.locator('#open-typo').click();
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.locator('[data-theme-choice="light"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-dark'), null, 'Light overrides the system dark theme');
+  await page.locator('[data-theme-choice="system"]').click();
+  assert.equal(await page.locator('html').getAttribute('data-dark'), '');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('data-dark'));
   await page.locator('[data-theme-choice="light"]').click();
   await page.locator('#typography [data-close]').first().click();
   await page.locator('#back').click();
