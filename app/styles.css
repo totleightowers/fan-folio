@@ -46,6 +46,7 @@
 
   --accent: #8c3b2e;
   --on-accent: #fff;
+  --shelf-heading: color-mix(in srgb, var(--accent) 75%, var(--ink-mid));
   --link: #1f5fa9;
 
   /*
@@ -551,7 +552,7 @@ dialog button.close {
   background: none; border: 0; color: var(--muted); cursor: pointer;
   padding: .5rem 0 .55rem; display: flex; flex-direction: column; align-items: center; gap: .15rem;
 }
-#tabs button.on { color: var(--accent); }
+#tabs button.on { color: var(--accent); font-weight: 650; }
 /* Work going on behind a tab nobody is looking at. Colour alone would be the
    only thing saying which of the three states it is, so each has a label the
    screen reader can say, and paused is a ring rather than a disc. */
@@ -585,11 +586,10 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 
 .shelf { margin: 0 0 1.5rem; }
 .shelf-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: .55rem; }
-/* Section headings match the tag-group label on the work page: small, set
-   in caps, quiet — a sign, not a headline competing with the titles below. */
+/* Shelf headings borrow a little warmth from the accent colour. */
 .shelf-head h2 {
   margin: 0; font-size: .74rem; font-weight: 650;
-  letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--shelf-heading);
 }
 /* How many there are altogether, in the heading's own voice — the shelf shows
    twelve at most and used to let the rest look lost. */
@@ -610,10 +610,11 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 .rail::-webkit-scrollbar { display: none; }
 
 .card {
+  --muted: color-mix(in srgb, var(--ink-mute) 85%, var(--ink));
   scroll-snap-align: start; text-align: left; font: inherit; cursor: pointer;
-  /* On a paper ground a card with no ground of its own is an outline, not an
-     object. The border does the shape; the surface does the presence. */
-  background: var(--surface); border: 1px solid var(--line-soft);
+  /* The spine colour carries softly across the card in every theme. */
+  background: color-mix(in srgb, var(--spine, var(--accent)) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--spine, var(--accent)) 16%, var(--line-soft));
   border-radius: var(--r-card);
   padding: .7rem .7rem .6rem .85rem; color: inherit; display: flex; flex-direction: column;
   min-height: 11.5rem; position: relative; overflow: hidden;
@@ -629,7 +630,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .card .card-by {
-  font-size: .78rem; color: var(--ink-mute); margin-bottom: .4rem;
+  font-size: .78rem; color: var(--muted); margin-bottom: .4rem;
 }
 /* The card had a gap in the middle of it holding nothing, and a title and an
    author are not much to go on for a work you have never opened. The summary
@@ -663,7 +664,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 
 .fandom-block h2 {
   font-size: .74rem; font-weight: 650; margin: 0 0 .55rem;
-  letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--shelf-heading);
 }
 /*
  * Browse sits above the shelves now rather than under all five of them,
@@ -735,16 +736,11 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 
 /* -------------------------------------------------------------- work card */
 
-/*
- * A shelf of works is a list, and a list of boxes is not a list — it is
- * fifty competing frames, each announcing its own edge before the eye gets
- * to the title inside it. The card loses its fill and its border and keeps
- * the one mark that carries meaning: the fandom's colour down the spine,
- * which is what tells you where you are when you are scrolling fast.
- * Separation is the spine and the space, not a rectangle.
- */
+/* Library rows carry a faint spine tint and keep their existing separators. */
 .work-card {
+  --muted: color-mix(in srgb, var(--ink-mute) 85%, var(--ink));
   position: relative; cursor: pointer;
+  background: color-mix(in srgb, var(--spine, var(--accent)) 3%, var(--paper));
   padding: .9rem 0 1rem 1rem; margin: 0;
 }
 .work-card + .work-card { border-top: 1px solid var(--rule); }
@@ -1729,8 +1725,8 @@ button:disabled, .opt:disabled {
  * carries a state layer behind its icon — the same shape the platform uses —
  * and the accent colour. One icon, two states, nothing to keep in sync.
  */
-#tabs button { position: relative; }
-#tabs .ic-tab { transition: color var(--dur-quick) ease-out; }
+#tabs button { position: relative; isolation: isolate; }
+#tabs .ic-tab { position: relative; z-index: 1; transition: color var(--dur-quick) ease-out; }
 #tabs button.on::before {
   content: '';
   position: absolute;
@@ -1738,8 +1734,12 @@ button:disabled, .opt:disabled {
   translate: -50% 0;
   width: 3.6rem; height: 1.95rem;
   border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 26%, var(--surface));
   pointer-events: none;
+}
+
+@media (min-width: 44.01rem) {
+  #tabs button.on::before { top: .53rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

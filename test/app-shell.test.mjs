@@ -2398,7 +2398,7 @@ test('a work\'s tags are not fenced', () => {
 test('a list of works is a list, not a stack of boxes', () => {
   const rule = css.slice(css.indexOf('.work-card {'));
   const body = rule.slice(0, rule.indexOf('}'));
-  assert.ok(!/background: var\(--pane\)/.test(body), 'a row in a list has no fill');
+  assert.ok(!/background: var\(--pane\)/.test(body), 'rows retain their subtle tint rather than an opaque panel');
   assert.ok(!/border: 1px solid/.test(body), 'and no frame of its own');
   assert.match(css, /\.work-card \+ \.work-card \{ border-top/,
     'what separates two rows is the line between them');
@@ -2409,7 +2409,8 @@ test('section headings all speak at the same volume', () => {
     const rule = css.slice(css.indexOf(sel));
     const body = rule.slice(0, rule.indexOf('}'));
     assert.match(body, /text-transform: uppercase/, sel + ' is a sign, not a headline');
-    assert.match(body, /color: var\(--muted\)/, sel + ' does not compete with the titles under it');
+    assert.match(body, sel === '.group {' ? /color: var\(--muted\)/ : /color: var\(--shelf-heading\)/,
+      sel + ' uses its theme colour');
   }
 });
 
