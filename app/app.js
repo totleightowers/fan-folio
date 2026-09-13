@@ -152,6 +152,9 @@ function themeIsDark() {
 }
 
 function applyPrefs() {
+  const readingPage = $('#reader');
+  const readingText = $('#workskin')?.firstElementChild;
+  const anchor = readingPage && !readingPage.hidden && window.scrollY > 0 ? blockAtTop() : null;
   const r = document.documentElement;
   if (prefs.theme === 'system' || prefs.theme === 'custom') r.removeAttribute('data-theme');
   else r.setAttribute('data-theme', prefs.theme);
@@ -182,6 +185,16 @@ function applyPrefs() {
   r.style.setProperty('--read-align', prefs.align);
   save(PREFS_KEY, prefs);
   paintReadingControls();
+  if (anchor) {
+    const restore = () => {
+      if (!readingPage.hidden && $('#workskin').firstElementChild === readingText) {
+        returnToAnchor(anchor);
+        updateProgress();
+      }
+    };
+    requestAnimationFrame(restore);
+    document.fonts.ready.then(restore);
+  }
 }
 
 window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
