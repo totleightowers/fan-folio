@@ -103,7 +103,11 @@ try {
   await page.locator('#reader-head').waitFor({ state: 'visible' });
   await screenshot('reader-phone', { fullPage: false });
   await page.evaluate(() => window.scrollTo(0, 800));
+  // Wait for the downward scroll to be handled before reversing direction.
+  // Otherwise the browser can coalesce both scrolls and keep the bar hidden.
+  await page.waitForFunction(() => document.querySelector('#chapnav').classList.contains('away'));
   await page.evaluate(() => window.scrollBy(0, -60));
+  await page.waitForFunction(() => !document.querySelector('#chapnav').classList.contains('away'));
   await page.locator('#reader-type').click();
   assert.ok(await page.locator('#typography').evaluate(el => el.classList.contains('from-reader')));
   await page.locator('[data-face-choice="Literata"]').click();
