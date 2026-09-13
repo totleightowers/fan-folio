@@ -4590,16 +4590,42 @@ function tagGroup(label, names, filter = 'tag') {
 }
 
 /** The line that decides whether somebody reads a work at all. */
-function factsOf(w) {
+/**
+ * What a work is, with the parts of it that are ways into the library live.
+ *
+ * A rating and a language are questions the library can answer — "what else
+ * is Teen", "what else is in French" — and they were being printed as grey
+ * text in the middle of a word count, which is a dead end wearing the same
+ * clothes as a fact. The counts stay text, because there is nothing to ask
+ * about forty-two thousand words.
+ */
+function workFacts(w) {
+  const line = document.createElement('p');
+  line.className = 'work-facts';
+
   const chapters = w.chapters_planned && w.chapters_planned === w.chapter_count
     ? `${w.chapter_count} chapters`
     : `${w.chapter_count}/${w.chapters_planned ?? '?'} chapters`;
-  return [
-    w.rating,
-    `${fmt(w.words)} words`,
-    w.chapter_count === 1 ? 'one chapter' : chapters,
-    w.complete ? 'Complete' : 'In progress',
-  ].filter(Boolean).join(' · ');
+
+  const said = [];
+  if (w.rating) said.push(['rating', w.rating, w.rating]);
+  said.push([null, `${fmt(w.words)} words`]);
+  said.push([null, w.chapter_count === 1 ? 'one chapter' : chapters]);
+  said.push([null, w.complete ? 'Complete' : 'In progress']);
+  if (w.language) said.push(['language', w.language, languageName(w.language)]);
+  if (!w.has_text) said.push([null, 'not downloaded']);
+
+  said.forEach(([filter, value, label], i) => {
+    if (i) line.append(' · ');
+    if (!filter) { line.append(label ?? value); return; }
+    const pill = document.createElement('button');
+    pill.className = 'metapill';
+    pill.dataset.filter = filter;
+    pill.dataset.value = value;
+    pill.textContent = label ?? value;
+    line.append(pill);
+  });
+  return line;
 }
 
 async function openWork(workId) {
@@ -4654,12 +4680,25 @@ async function openWork(workId) {
     by.textContent = 'by Anonymous';
   }
 
-  const facts = document.createElement('p');
-  facts.className = 'work-facts';
-  facts.textContent = factsOf(w);
-
-  head.append(title, by, facts);
+  head.append(title, by);
   box.append(head);
+
+  if (w.summary) {
+    const summary = document.createElement('div');
+    summary.className = 'work-summary';
+    for (const para of String(w.summary).split(/\n+/)) {
+      if (!para.trim()) continue;
+      const p = document.createElement('p');
+      p.textContent = para;      // author's words: text, never markup
+      summary.append(p);
+    }
+    box.append(summary);
+  }
+
+  /* The facts, as things rather than as a sentence.
+     A rating is a way into the library; printed as grey text it is a dead
+     end, and it was sitting in the same line as a word count. */
+  box.append(workFacts(w));
 
   const saved = positions[workId];
   const actions = document.createElement('div');
@@ -4701,18 +4740,6 @@ async function openWork(workId) {
   }
   box.append(actions);
 
-  if (w.summary) {
-    const summary = document.createElement('div');
-    summary.className = 'work-summary';
-    for (const para of String(w.summary).split(/\n+/)) {
-      if (!para.trim()) continue;
-      const p = document.createElement('p');
-      p.textContent = para;      // author's words: text, never markup
-      summary.append(p);
-    }
-    box.append(summary);
-  }
-
   box.append(archiveActions(w));
 
   /* Tags, each group labelled above its own chips rather than beside them.
@@ -4744,7 +4771,6 @@ async function openWork(workId) {
   detail('Kudos', w.kudos == null ? null : fmt(w.kudos));
   detail('Bookmarks', w.bookmark_count == null ? null : fmt(w.bookmark_count));
   detail('Hits', w.hits == null ? null : fmt(w.hits));
-  detail('Language', w.language ? languageName(w.language) : null);
   detail('Published', w.published);
   detail('Updated', w.updated && w.updated !== w.published ? w.updated : null);
   if (details.children.length) {
@@ -4769,15 +4795,7 @@ async function openWork(workId) {
    * navigation, so they live behind the same drawer the reader uses.
    */
   if (w.chapters.length > 1) {
-    const open = document.createElement('button');
-    open.className = 'chapters-open';
-    open.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg>'
-      + '<span class="label"></span>'
-      + '<svg class="ic ic-chev chev" aria-hidden="true"><use href="#i-chevron"/></svg>';
-    open.querySelector('.label').textContent =
-      `${w.chapters.length} chapters` + (saved?.chapter ? ` · you are on ${saved.chapter}` : '');
-    open.onclick = () => showChapterDrawer(workId, saved?.chapter ?? 1);
-    box.append(open);
+    box.append(chapterList(w, workId, saved?.chapter ?? 1));
   }
 
   const hint = document.createElement('p');
@@ -4786,6 +4804,62 @@ async function openWork(workId) {
   box.append(hint);
 
   if (!w.has_text) await fetchOnArrival(workId, token);
+}
+
+/**
+ * The chapters, on the page rather than only behind a control.
+ *
+ * They used to be one button opening a drawer, because a thirty-one chapter
+ * work turned this page into a wall of "Chapter N · 2,728 words" that buried
+ * the summary and the tags. That is still true of thirty-one; it was never
+ * true of four. So a few are on the page, where the reader can see what they
+ * are in the middle of and reach the next one, and the rest stay behind the
+ * same drawer the reader uses.
+ */
+const CHAPTERS_SHOWN = 8;
+
+function chapterList(w, workId, at) {
+  const section = document.createElement('section');
+  section.className = 'work-chapters';
+
+  const head = document.createElement('h3');
+  head.className = 'group';
+  head.textContent = 'Chapters';
+  section.append(head);
+
+  /* Around where they are rather than always from the start: on chapter
+     twenty-six the first eight are the least useful eight there are. */
+  const all = w.chapters;
+  let from = 0;
+  if (all.length > CHAPTERS_SHOWN) {
+    from = Math.min(Math.max(at - 1 - 2, 0), all.length - CHAPTERS_SHOWN);
+  }
+  const showing = all.slice(from, from + CHAPTERS_SHOWN);
+
+  const list = document.createElement('div');
+  list.className = 'chapter-rows';
+  for (const ch of showing) {
+    const row = document.createElement('button');
+    row.className = 'chapter-row';
+    row.classList.toggle('here', ch.number === at);
+    row.innerHTML = '<span class="n"></span><span class="ct"></span><span class="mark"></span>';
+    row.querySelector('.n').textContent = ch.number;
+    row.querySelector('.ct').textContent = ch.title || `Chapter ${ch.number}`;
+    // where you got to, so the list is a place rather than an index
+    if (ch.number === at) row.querySelector('.mark').textContent = 'here';
+    row.onclick = () => openChapter(workId, ch.number);
+    list.append(row);
+  }
+  section.append(list);
+
+  if (all.length > showing.length) {
+    const open = document.createElement('button');
+    open.className = 'linkish';
+    open.textContent = `All ${all.length} chapters`;
+    open.onclick = () => showChapterDrawer(workId, at);
+    section.append(open);
+  }
+  return section;
 }
 
 /**

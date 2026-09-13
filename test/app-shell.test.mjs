@@ -2981,3 +2981,67 @@ test('nothing outside the queue fetches a batch of works', () => {
       `${what} does not fetch works itself, at a rate only it knows about`);
   }
 });
+/*
+ * Everything on a work page is a way somewhere.
+ *
+ * A work is a set of connections to the rest of a library — its author, its
+ * fandom, its pairings, its rating, the language it is in — and printing any
+ * of them as grey text throws that away. The byline goes to the person; the
+ * rest narrow the library to what shares it.
+ */
+test('a rating and a language are ways into the library, not grey text', () => {
+  const fn = js.slice(js.indexOf('function workFacts(w)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /said\.push\(\['rating', w\.rating/, 'a rating is askable');
+  assert.match(body, /said\.push\(\['language', w\.language/, 'so is a language');
+  assert.match(body, /pill\.dataset\.filter = filter/);
+
+  /* A word count is not. There is nothing to ask about forty-two thousand
+     words, and making it look tappable would be a lie. */
+  assert.match(body, /said\.push\(\[null, `\$\{fmt\(w\.words\)\} words`\]\)/);
+
+  /* And the one that used to print it as text is gone rather than left
+     lying about beside the one that does it properly. */
+  assert.ok(!/function factsOf\(/.test(js), 'one of them, not two');
+});
+
+test('the language is not said twice', () => {
+  const open = js.slice(js.indexOf('async function openWork(workId)'));
+  const body = open.slice(0, open.indexOf('\n  if (!w.has_text) await fetchOnArrival'));
+  assert.ok(!/detail\('Language'/.test(body),
+    'it moved into the facts, where it can be pressed');
+});
+
+test('the byline goes to the person, and everything else to the library', () => {
+  const listener = js.slice(js.indexOf("$('#detail').addEventListener('click'"));
+  const body = listener.slice(0, listener.indexOf('\n});'));
+  assert.match(body, /dataset\.filter === 'author'\) openAuthor/,
+    'a person is a place of their own');
+  assert.match(body, /else filterBy\(pill\.dataset\.filter, pill\.dataset\.value\)/,
+    'and everything else narrows the library');
+});
+
+test('the chapters are on the page, and the wall of them is not', () => {
+  /* Thirty-one chapters buried the summary and the tags, which is why they
+     went behind a drawer. That was true of thirty-one and never of four. */
+  const fn = js.slice(js.indexOf('function chapterList(w, workId, at)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(js, /const CHAPTERS_SHOWN = \d+;/);
+  assert.match(body, /showChapterDrawer\(workId, at\)/, 'the rest keep the drawer');
+  assert.match(body, /Math\.max\(at - 1 - 2, 0\)/,
+    'shown around where the reader is: on chapter twenty-six the first eight '
+    + 'are the least useful eight there are');
+  assert.match(body, /classList\.toggle\('here'/, 'and it says where that is');
+});
+
+test('what a work is comes before how long it is', () => {
+  const open = js.slice(js.indexOf('async function openWork(workId)'));
+  const body = open.slice(0, open.indexOf('\n  if (!w.has_text) await fetchOnArrival'));
+  const summary = body.indexOf("summary.className = 'work-summary'");
+  const facts = body.indexOf('box.append(workFacts(w))');
+  const chapters = body.indexOf('box.append(chapterList(');
+  assert.ok(summary !== -1 && facts !== -1 && chapters !== -1);
+  assert.ok(summary < facts, 'the summary is above the numbers');
+  assert.ok(facts < chapters, 'and the numbers above the chapters');
+});
+
