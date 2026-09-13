@@ -283,6 +283,18 @@
       <button id="backup" class="primary">Back it up</button>
       <p id="backup-state" class="setting-note" hidden></p>
       <button id="import-replace" class="linkish">Bring in another library from a file…</button>
+      <!--
+          A shelf of EPUBs, read into the library's own shape.
+
+          They read badly as EPUBs: an exporter flattens the chaptering, drops
+          the tags and the notes, and leaves the reader outside everything the
+          library can do — searching every word held, continuing where you
+          were, the shelves. Brought in here they are works like any other.
+      -->
+      <button id="import-epubs" class="linkish">Bring in a shelf of EPUBs…</button>
+      <p class="setting-note">Read in as works, not as files. Where the archive's copy of one is
+        already here, the book is kept beside it under Earlier versions — the archive's has the
+        chaptering and the tags an exporter drops. Where it is not, the book is the work.</p>
       <p class="setting-note">Works and chapters come from the file. Your reading positions,
         the kudos you have left, and anything only on this phone stay as they are.</p>
     </div>
