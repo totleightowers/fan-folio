@@ -2703,8 +2703,12 @@ test('opening an author shows the author', () => {
      the usual want, and neither is hours of archive you did not ask for. */
   assert.match(bbody, /\$\('#author-sync-this'\), \[which\]/);
   assert.match(bbody, /\$\('#author-sync-both'\), \['works', 'bookmarks'\]/);
-  assert.match(bbody, /for \(const \[other\] of asking\) other\.disabled = true/,
-    'and asking for one half is not an invitation to ask for the other at the same time');
+  /* Asking for one half must not leave the other on offer. That used to be
+     one button reaching over and disabling the other; it is the queue now —
+     Sync both covers works, so a works walk already going disables it, and
+     no handler has to remember to. */
+  assert.match(bbody, /const going = parts\.map\(\(part\) => authorJob\(name, part\)\)/);
+  assert.match(bbody, /button\.disabled = going\.length > 0/);
 });
 
 test('a half asked for is the only half fetched', () => {
@@ -3138,5 +3142,36 @@ test('bookmarked is a state, not an instruction, in the reader too', () => {
   const fn = js.slice(js.indexOf("$('#reader-bookmark').onclick"));
   const body = fn.slice(0, fn.indexOf('\n};'));
   assert.match(body, /if \(w\.in_bookmarks\) \{ openOnArchive/);
+});
+
+/**
+ * A sync already queued does not offer itself again.
+ *
+ * The buttons disabled themselves in their own click handler, which meant the
+ * state lived nowhere: switching to the other tab and back repainted the
+ * screen, the handler had not run that time, and a walk already in the queue
+ * came back looking like a walk nobody had asked for.
+ */
+test('the sync buttons follow the job, not a flag', () => {
+  const paint = js.slice(js.indexOf('function paintAuthor()'));
+  const body = paint.slice(0, paint.indexOf('\n}\n'));
+  assert.match(body, /const going = parts\.map\(\(part\) => authorJob\(name, part\)\)/);
+  assert.match(body, /button\.disabled = going\.length > 0/);
+  assert.ok(!/button\.disabled = false/.test(body),
+    'nothing re-enables a button behind the queue\u2019s back');
+
+  /* Done and cancelled do not count: a finished job is a receipt rather than
+     work in hand, and refusing to read an index again because it was read
+     once is not a queue, it is a lock. */
+  const find = js.slice(js.indexOf('const authorJob ='));
+  assert.match(find.slice(0, 300), /j\.state !== 'done' && j\.state !== 'cancelled'/);
+});
+
+test('and a job changing anywhere else reaches the person it is about', () => {
+  /* Paused from the notification, stopped from Activity, cleared from the
+     list: none of it is something this screen would otherwise hear. */
+  const hook = js.slice(js.indexOf('onEvent: (e) => {'));
+  assert.match(hook.slice(0, hook.indexOf('\n  },')),
+    /if \(!\$\('#author'\)\.hidden\) paintAuthor\(\)/);
 });
 

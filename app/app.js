@@ -2252,6 +2252,9 @@ const jobs = createQueue({
        the notification, is not something the settings screen would otherwise
        hear about — and it is where the buttons that started it live. */
     paintSyncButtons();
+    /* Same reason: the buttons on a person's page are about jobs, and a job
+       started, paused, finished or cleared anywhere else is news to them. */
+    if (!$('#author').hidden) paintAuthor();
     if (!$('#activity').hidden) { paintJobs(); paintStubs(); }
   },
 });
@@ -2977,20 +2980,26 @@ function paintAuthor() {
    */
   const asking = [
     [$('#author-sync-this'), [which],
-      onBookmarks ? 'Sync their bookmarks' : 'Sync their works',
-      `Reading ${name}'s ${which}`],
-    [$('#author-sync-both'), ['works', 'bookmarks'], 'Sync both',
-      `Reading ${name}'s works and bookmarks`],
+      onBookmarks ? 'Sync their bookmarks' : 'Sync their works'],
+    [$('#author-sync-both'), ['works', 'bookmarks'], 'Sync both'],
   ];
-  for (const [button, parts, label, said] of asking) {
-    button.disabled = false;
-    button.textContent = label;
+  for (const [button, parts, label] of asking) {
+    /*
+     * The button follows the job, not a flag set when it was pressed.
+     *
+     * It used to disable itself in its own click handler, which meant the
+     * state lived nowhere: switching to the other tab and back repainted the
+     * screen, the handler had not run this time, and a sync already queued
+     * offered itself again as though nothing had happened.
+     */
+    const going = parts.map((part) => authorJob(name, part)).filter(Boolean);
+    button.disabled = going.length > 0;
+    button.textContent = going.length ? sayJob(going) : label;
     button.onclick = () => {
       if (!signedIn()) { toast('Sign in to the archive first'); return; }
-      for (const [other] of asking) other.disabled = true;
-      button.textContent = 'Reading their index…';
       catchUpOn(name, parts);
-      toast(said);
+      toast(`Reading ${name}'s ${parts.join(' and ')}`);
+      paintAuthor();
     };
   }
 
@@ -2999,6 +3008,27 @@ function paintAuthor() {
   rid.disabled = false;
   rid.textContent = `Delete their works and block ${name}`;
   rid.onclick = () => askToBlock(name);
+}
+
+/**
+ * A walk of this person's pages that is already in the queue.
+ *
+ * Done and cancelled do not count: a job that has finished is a receipt
+ * rather than work in hand, and refusing to read somebody's index again
+ * because it was read once is not a queue, it is a lock.
+ */
+const authorJob = (name, part) => jobs.list().find(
+  (j) => j.author === name && j.part === part
+    && j.state !== 'done' && j.state !== 'cancelled');
+
+/** What a queued walk is doing, in the words the Activity screen uses. */
+function sayJob(going) {
+  const job = going[0];
+  if (going.length > 1) return 'Both are queued';
+  if (job.state === 'paused' || job.state === 'pausing') return 'Paused';
+  if (job.open) return 'Reading their index…';
+  if (job.total) return `Downloading ${job.added ?? 0} of ${job.total}`;
+  return 'Queued';
 }
 
 /**
