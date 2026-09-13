@@ -3274,13 +3274,59 @@ test('the library decides whether a book is the work or a version of it', () => 
 });
 
 test('a book the archive never had still gets an id of its own', () => {
-  /* A gift, something written elsewhere: no work id in the file. Derived
-     from the name rather than counted, so bringing the same shelf in twice
-     updates the same works instead of doubling the library. */
+  /* A gift, something written elsewhere: no work id in the file. */
   const fn = js.slice(js.indexOf('function payloadFromEpub(book, name)'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /book\.workId \?\? `epub-\$\{localIdFor\(name\)\}`/);
-  assert.match(js, /function localIdFor\(name\)/);
+  assert.match(body, /book\.workId \?\? `epub-\$\{localIdFor\(book, name\)\}`/);
+
+  /* From what the book says it is, not what the file is called. A shelf
+     downloaded from a cloud drive arrives as "Copy of Afterthought.epub",
+     and the same shelf downloaded again as "Copy of Afterthought (1)" —
+     two works by their names and one by any other reading. */
+  const id = js.slice(js.indexOf('function localIdFor(book, name)'));
+  assert.match(id.slice(0, id.indexOf('\n}\n')),
+    /\$\{book\.title \?\? name\}\|\$\{\(book\.authors \?\? \[\]\)\.join\(','\)\}/);
+});
+
+/**
+ * A work id lives in the book, not in the file name.
+ *
+ * An export carries "Posted originally on the Archive of Our Own at
+ * .../works/64378057" in its preface, and that is what says which work this
+ * is. Calibre replaces the archive's own identifier with a UUID of its own
+ * when it re-saves a file, so the metadata cannot be relied on — the preface
+ * can.
+ */
+test('a book says which work it is, whatever the file is called', () => {
+  const epub = readFileSync(new URL('../app/core/epub.js', import.meta.url), 'utf8');
+  const fn = epub.slice(epub.indexOf('export function findWorkId(html)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.ok(body.includes('Posted originally on the'),
+    'read off the line the export carries, not off the metadata');
+  assert.ok(body.includes('archiveofourown'), 'and the archive link in it');
+
+  /* Not the identifier in the OPF: Calibre replaces the archive's own with a
+     UUID of its own when it re-saves a file, so a book that has been through
+     a conversion has no archive id in its metadata at all. */
+  assert.ok(!body.includes('dc:identifier'));
+});
+
+test('an export brought in says when it was taken, not today', () => {
+  /* The planner compares that date against the one the archive gives for the
+     work. Today's date on a year-old copy says it is current, and the work is
+     never fetched again. */
+  const fn = js.slice(js.indexOf('function payloadFromEpub(book, name)'));
+  const body = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.match(body, /downloadedAt: book\.downloadedAt \?\? null/);
+  assert.match(body, /endNotesHtml: book\.endNotesHtml \?\? null/,
+    'and the author\u2019s last word, which has a column and never had a writer');
+
+  const java = readFileSync(
+    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const save = java.slice(java.indexOf('public String saveEpub(String json)'));
+  const body_ = save.slice(0, save.indexOf('\n        }\n'));
+  assert.match(body_, /from\.put\("downloaded_at", w\.optString\("downloadedAt"\)\)/);
+  assert.match(body_, /from\.put\("end_notes_html", w\.optString\("endNotesHtml"\)\)/);
 });
 
 /**

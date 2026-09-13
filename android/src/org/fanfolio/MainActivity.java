@@ -1926,10 +1926,30 @@ public class MainActivity extends Activity {
                         return "{\"ok\":true,\"kept\":\"version\"}";
                     }
                     writeWork(w, id);
+
+                    android.content.ContentValues from = new android.content.ContentValues();
                     /* Where it came from, so a later sync can tell a book read
                        off a file from a work the archive gave us. */
-                    android.content.ContentValues from = new android.content.ContentValues();
                     from.put("source", "epub");
+                    /*
+                     * And when this copy was taken, which the book knows and
+                     * today does not.
+                     *
+                     * writeWork stamps downloaded_at with today, which is the
+                     * truth for a work just fetched and a lie for an export
+                     * made last March. The planner compares that date against
+                     * the one the archive gives for the work, so today's date
+                     * on a year-old copy says it is current — and the work is
+                     * never fetched again.
+                     */
+                    if (!w.isNull("downloadedAt")) {
+                        from.put("downloaded_at", w.optString("downloadedAt"));
+                    }
+                    /* The author's last word. There is a column for it and
+                       nothing has ever put anything in it. */
+                    if (!w.isNull("endNotesHtml")) {
+                        from.put("end_notes_html", w.optString("endNotesHtml"));
+                    }
                     db.update("works", from, "work_id = ?", new String[]{ id });
                     db.setTransactionSuccessful();
                     return "{\"ok\":true,\"kept\":\"work\"}";
