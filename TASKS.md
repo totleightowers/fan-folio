@@ -93,6 +93,13 @@ list was closed was premature. A release per feature, PR and release linked.
   them into a library from a laptop. What is missing is doing it from the
   phone, and deciding between a copy and the archive's.
 
+## Asked on 13 September, later the same day
+
+- ~~**The work page and the reader looked like two different apps.**~~ v2.8.0
+  — one column for the whole reader, the rail kept up while reading on a
+  screen wide enough to have one, the header opening in the work page's own
+  type, and the archive's "CHAPTER 1" heading gone from the top of the prose.
+
 ## Now
 
 - **Person screen: Works and Bookmarks, both populated.** The two
