@@ -229,25 +229,6 @@
     </div>
 
     <div class="setting-group">
-      <h3 class="group">Blocked</h3>
-      <p class="setting-note">Authors whose work is not fetched and not shown. A work with
-        another author on it is left alone.</p>
-      <div id="blocked-list"></div>
-    </div>
-
-    <div class="setting-group">
-      <h3 class="group">Removed</h3>
-      <!--
-          What was deleted on purpose, and the way to take that back.
-          Deleting is the one thing in this app that cannot be undone by
-          pressing it again, so there has to be somewhere it is written down.
-      -->
-      <p class="setting-note">Works you deleted. Fan Folio will not fetch these again — not
-        from a bookmark sync, not from an author's index — until you allow them.</p>
-      <div id="removed-list"></div>
-    </div>
-
-    <div class="setting-group">
       <h3 class="group">Not downloaded</h3>
       <!--
           Works read off somebody's index and never fetched. They cost nothing
@@ -269,59 +250,40 @@
 
   <section id="settings" class="view" hidden>
     <h2 class="settings-title">Settings</h2>
-
-    <!--
-        The library first, because backing it up is the one action here that
-        protects everything else — and it has no business being below a list
-        of typographic preferences.
-    -->
-    <div class="setting-group">
-      <h3 class="group">The library</h3>
-      <dl id="library-facts" class="facts"></dl>
-      <p class="setting-note">Everything is in one file: the works, the chapters, where you are
-        in each of them, and the search index. Keep a copy somewhere that is not this phone.</p>
-      <button id="backup" class="primary">Back it up</button>
-      <p id="backup-state" class="setting-note" hidden></p>
-      <button id="import-replace" class="linkish">Bring in another library from a file…</button>
-      <!--
-          A shelf of EPUBs, read into the library's own shape.
-
-          They read badly as EPUBs: an exporter flattens the chaptering, drops
-          the tags and the notes, and leaves the reader outside everything the
-          library can do — searching every word held, continuing where you
-          were, the shelves. Brought in here they are works like any other.
-      -->
-      <button id="import-epubs" class="linkish">Bring in a shelf of EPUBs…</button>
-      <p class="setting-note">Read in as works, not as files. Where the archive's copy of one is
-        already here, the book is kept beside it under Earlier versions — the archive's has the
-        chaptering and the tags an exporter drops. Where it is not, the book is the work.</p>
-      <p class="setting-note">Works and chapters come from the file. Your reading positions,
-        the kudos you have left, and anything only on this phone stay as they are.</p>
-    </div>
-
-    <!--
-        A queue of hours of work is not a preference, but it is one of the
-        app's own affairs — which is what this screen is for. It had a tab,
-        and a tab is for a place you go rather than a thing you check.
-    -->
-    <div class="setting-group">
-      <h3 class="group">Downloading</h3>
-      <button id="open-activity" class="linkish">Activity<span id="activity-here" hidden></span></button>
-      <p class="setting-note">What is being fetched, what is waiting, what was blocked and what
-        was removed.</p>
-    </div>
-
-    <div class="setting-group">
-      <h3 class="group">Reading</h3>
-      <button id="open-typo" class="linkish">Typeface, size and margins…</button>
-      <label class="setting-toggle">Vibrate on page turns
-        <input id="haptics" type="checkbox">
+    <div class="settings-panel">
+      <button id="open-typo" class="settings-row">
+        <span class="settings-symbol" aria-hidden="true">Aa</span>
+        <span><strong>Appearance &amp; reading</strong><small id="reading-summary"></small></span>
+        <svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
+      </button>
+      <label class="settings-row setting-toggle">
+        <span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        <span><strong>Page-turn vibration</strong><small>A gentle tick as you turn a page</small></span>
+        <input id="haptics" type="checkbox" role="switch">
       </label>
-      <p class="setting-note">A small tick when a page turns or refuses to. Your phone's own
-        vibration setting still has the last word.</p>
     </div>
-
-
+    <h3 class="group">Your library</h3>
+    <div class="settings-panel">
+      <details class="settings-disclosure">
+        <summary><strong>Library &amp; backup</strong><small id="library-summary">Your books, kept on this phone</small></summary>
+        <div class="settings-content">
+          <dl id="library-facts" class="facts"></dl>
+          <button id="backup" class="primary">Back up library</button>
+          <p id="backup-state" class="setting-note" hidden></p>
+          <p class="setting-note">Save a copy somewhere outside this phone.</p>
+          <button id="import-replace" class="settings-row"><span><strong>Import library</strong><small>Merge a backup with this library</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+          <p class="setting-note">Your reading positions and local activity are kept.</p>
+        </div>
+      </details>
+      <button id="import-epubs" class="settings-row"><span><strong>Import EPUBs</strong><small>Add books from files on your device</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <details class="settings-disclosure settings-help"><summary>How EPUB imports work</summary><p class="setting-note">If the archive's copy is already here, the EPUB is saved under Earlier versions. Otherwise it becomes the copy you read.</p></details>
+      <button id="open-activity" class="settings-row"><span><strong>Downloads<span id="activity-here" hidden></span></strong><small id="downloads-summary">Nothing waiting</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    </div>
+    <h3 class="group">Manage your library</h3>
+    <div class="settings-panel">
+      <details class="settings-disclosure"><summary><strong>Blocked authors</strong><small>Manage whose works appear</small></summary><div id="blocked-list" class="settings-content"></div></details>
+      <details class="settings-disclosure"><summary><strong>Removed works</strong><small>Allow deleted works to be downloaded again</small></summary><div id="removed-list" class="settings-content"></div></details>
+    </div>
     <p id="version" class="setting-note version"></p>
   </section>
 
@@ -356,6 +318,7 @@
   </section>
 
   <section id="library" class="view" hidden>
+    <h2 class="library-title">Your library</h2>
     <div id="toolbar">
       <div class="toolrow">
         <button id="open-filters" class="filter-btn">
@@ -612,33 +575,33 @@
   </div>
 </dialog>
 
-<dialog id="typography">
-  <h2>Reading</h2>
-  <label>Preset
-    <select id="theme">
-      <option value="system">Follow system</option>
-      <option value="light">Light</option>
-      <option value="sepia">Sepia</option>
-      <option value="dark">Dark</option>
-      <option value="black">Black</option>
-      <option value="custom">Custom</option>
-    </select>
-  </label>
-  <label>Background <input id="bg" type="color"></label>
-  <label>Text <input id="fg" type="color"></label>
-  <label>Typeface
-    <input id="face" list="fonts" spellcheck="false" autocapitalize="words"
-           placeholder="Georgia, System, or any Google font">
-  </label>
-  <!--
-      Georgia, System and Monospace are on the phone already. Everything else
-      is fetched from Google the first time it is chosen, which is the one
-      place this app talks to anybody but the archive — worth saying, in an app
-      whose whole point is having things without asking for them.
-  -->
-  <p class="hint">Georgia, System, Monospace, Literata and Atkinson Hyperlegible are here
-     already and work with no connection. Other names are fetched from Google Fonts the first
-     time you use them, and need the internet once.</p>
+<dialog id="typography" aria-labelledby="reading-title">
+  <div class="reading-preview">
+    <div class="reading-sheet-head"><h2 id="reading-title">Make yourself comfortable</h2><button class="close-x" data-close="typography" aria-label="Close reading settings">×</button></div>
+    <p class="sample">She read the last line twice, and the room was very quiet. Outside, the rain had stopped, and afternoon light filled the room.</p>
+  </div>
+  <div class="reading-controls">
+    <h3 class="group">Theme</h3>
+    <select id="theme" hidden aria-label="Theme"><option value="system">Follow system</option><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="black">Black</option><option value="custom">Custom</option></select>
+    <div class="theme-choices" role="group" aria-label="Theme">
+      <button data-theme-choice="system"><span class="theme-swatch swatch-system">Aa</span>System</button>
+      <button data-theme-choice="light"><span class="theme-swatch swatch-light">Aa</span>Light</button>
+      <button data-theme-choice="sepia"><span class="theme-swatch swatch-sepia">Aa</span>Sepia</button>
+      <button data-theme-choice="dark"><span class="theme-swatch swatch-dark">Aa</span>Dark</button>
+      <button data-theme-choice="black"><span class="theme-swatch swatch-black">Aa</span>Black</button>
+    </div>
+    <h3 class="group">Typeface</h3>
+    <div class="font-choices" role="group" aria-label="Offline typefaces">
+      <button data-face-choice="Georgia" style="font-family:Georgia,serif">Georgia</button>
+      <button data-face-choice="Literata" style="font-family:Literata,serif">Literata</button>
+      <button data-face-choice="System" style="font-family:system-ui">System</button>
+      <button data-face-choice="Atkinson Hyperlegible" style="font-family:'Atkinson Hyperlegible',sans-serif">Atkinson</button>
+    </div>
+    <label class="reading-slider" for="size"><span>Text size <output id="size-value" for="size"></output></span><input id="size" type="range" min="12" max="34" step="1"></label>
+    <label class="reading-slider" for="lh"><span>Line spacing <output id="lh-value" for="lh"></output></span><input id="lh" type="range" min="110" max="250" step="5"></label>
+    <details id="reading-advanced" class="settings-disclosure">
+      <summary>More options</summary>
+      <label>Typeface <input id="face" list="fonts" spellcheck="false" autocapitalize="words" placeholder="Choose or enter a font name"></label>
   <datalist id="fonts">
     <!-- The ones that are here already come first: on a phone with no signal
          they are the only ones that will do anything at all. -->
@@ -651,23 +614,18 @@
     <option>Inter</option><option>Nunito</option>
     <option>Roboto</option><option>Open Sans</option><option>Lato</option>
   </datalist>
-  <label>Weight
-    <select id="weight">
-      <option value="300">Light</option><option value="400">Regular</option>
-      <option value="500">Medium</option><option value="600">Semibold</option>
-    </select>
-  </label>
-  <label>Size <input id="size" type="range" min="12" max="34" step="1"></label>
-  <label>Line spacing <input id="lh" type="range" min="110" max="250" step="5"></label>
-  <label>Side margin <input id="margin" type="range" min="0" max="48" step="2"></label>
-  <label>Top margin <input id="vmargin" type="range" min="0" max="64" step="4"></label>
-  <label>Alignment
-    <select id="align"><option value="start">Left</option><option value="justify">Justified</option></select>
-  </label>
-  <p class="sample">She read the last line twice, and the room was very quiet. Outside, the rain
-    had stopped without either of them noticing, and the light through the window
-    had gone the colour of weak tea.</p>
-  <button class="close" data-close="typography">Done</button>
+      <p class="hint">Georgia, System, Monospace, Literata and Atkinson Hyperlegible are here
+        already and work with no connection. Other fonts need the internet.</p>
+      <label>Weight <select id="weight"><option value="300">Light</option><option value="400">Regular</option><option value="500">Medium</option><option value="600">Semibold</option></select></label>
+      <label class="reading-slider" for="margin"><span>Side margin <output id="margin-value" for="margin"></output></span><input id="margin" type="range" min="0" max="48" step="2"></label>
+      <label class="reading-slider" for="vmargin"><span>Top margin <output id="vmargin-value" for="vmargin"></output></span><input id="vmargin" type="range" min="0" max="64" step="4"></label>
+      <label>Alignment <select id="align"><option value="start">Left</option><option value="justify">Justified</option></select></label>
+      <label>Page colour <input id="bg" type="color"></label>
+      <label>Text colour <input id="fg" type="color"></label>
+      <p class="hint">Choosing a colour switches to a custom theme.</p>
+    </details>
+    <div class="reading-sheet-foot"><button id="reset-reading" class="ghost">Reset reading settings</button><button class="primary" data-close="typography">Done</button></div>
+  </div>
 </dialog>
 
 <div id="toast" hidden></div>

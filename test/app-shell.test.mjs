@@ -2290,7 +2290,7 @@ test('tapping a work shows the work, wherever it is tapped', () => {
   const body = row.slice(0, row.indexOf('\n}\n'));
   assert.match(body, /node\.onclick = \(\) => openWork\(w\.work_id\);/,
     'and so does the library row');
-  assert.match(body, /open: \(\) => openChapter\(w\.work_id, p \? \(w\.at_chapter \?\? 1\) : 1\)/,
+  assert.match(body, /open: \(\) => w\.has_text\s*\? openChapter\(w\.work_id, p \? \(w\.at_chapter \?\? 1\) : 1\)\s*: openWork\(w\.work_id\)/,
     'while Read and Continue are the ways into the reader, and say so');
 });
 
@@ -2395,13 +2395,14 @@ test('a work\'s tags are not fenced', () => {
     'thirty pane-filled boxes is a wall in front of the summary');
 });
 
-test('a list of works is a list, not a stack of boxes', () => {
+test('library cards give the title room and keep reading actions clear', () => {
   const rule = css.slice(css.indexOf('.work-card {'));
   const body = rule.slice(0, rule.indexOf('}'));
-  assert.ok(!/background: var\(--pane\)/.test(body), 'rows retain their subtle tint rather than an opaque panel');
-  assert.ok(!/border: 1px solid/.test(body), 'and no frame of its own');
-  assert.match(css, /\.work-card \+ \.work-card \{ border-top/,
-    'what separates two rows is the line between them');
+  assert.match(body, /border-radius: var\(--r-card\)/);
+  const title = css.slice(css.indexOf('.work-card h3 {'));
+  assert.ok(!title.slice(0, title.indexOf('}')).includes('padding-right'),
+    'the date must not squeeze the title into a narrow column');
+  assert.match(css, /\.work-title-link:focus-visible/);
 });
 
 test('section headings all speak at the same volume', () => {
