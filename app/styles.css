@@ -2346,3 +2346,24 @@ button:disabled, .opt:disabled {
 .chapter-row .mark { color: var(--accent); font-size: .8rem; }
 .chapter-row.here .n { color: var(--accent); font-weight: 700; }
 .chapter-row.here .ct { font-weight: 600; }
+
+/*
+ * The dot that says work is going on, on the control that leads to it.
+ *
+ * It used to sit on the Activity tab. Activity moved under the cog and the
+ * dot stayed behind, so You wore a badge for a download that has nothing to
+ * do with anything on it.
+ */
+#open-settings { position: relative; }
+
+#open-settings #activity-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+#open-settings #activity-dot[data-state="held"] { background: var(--ink-mute); }

@@ -182,7 +182,11 @@ function applyPrefs() {
 
 /* ------------------------------------------------------------------ views */
 
-const VIEWS = ['setup', 'home', 'library', 'you', 'activity', 'results', 'detail', 'reader', 'settings'];
+/* Every section that is a view, because show() hides the ones it knows and
+   unhides the one it was asked for — so a view missing from here is a view
+   that can never be shown, and asking for it blanks the screen instead. */
+const VIEWS = ['setup', 'home', 'library', 'author', 'you', 'activity',
+  'results', 'detail', 'reader', 'settings'];
 const stack = new History();
 
 /** Views the tab bar owns; anything deeper hides it and shows Back instead. */

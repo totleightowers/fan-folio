@@ -3045,3 +3045,58 @@ test('what a work is comes before how long it is', () => {
   assert.ok(facts < chapters, 'and the numbers above the chapters');
 });
 
+/**
+ * A view the switcher has never heard of cannot be shown.
+ *
+ * show() hides every view it knows about and unhides the one it was asked
+ * for. A section that is a view but is missing from the list is therefore not
+ * merely unreachable — asking for it hides everything else and unhides
+ * nothing, and the screen goes blank with no error anywhere. That is what
+ * happened to the author page the day it was added.
+ */
+test('every view on the page is a view the app knows about', () => {
+  const sections = [...html.matchAll(/<section id="([a-z-]+)" class="view[ "]/g)]
+    .map((m) => m[1]);
+  assert.ok(sections.length > 5, 'found the views at all');
+
+  const listed = js.slice(js.indexOf('const VIEWS = ['));
+  const names = listed.slice(0, listed.indexOf('];'));
+  for (const id of sections) {
+    assert.ok(names.includes(`'${id}'`),
+      `${id} is a view and VIEWS does not know it: showing it blanks the screen`);
+  }
+});
+
+test('and every view the app knows about is on the page', () => {
+  const listed = js.slice(js.indexOf('const VIEWS = ['));
+  const names = [...listed.slice(0, listed.indexOf('];')).matchAll(/'([a-z-]+)'/g)]
+    .map((m) => m[1]);
+  for (const id of names) {
+    assert.match(html, new RegExp(`<section id="${id}" class="view[ "]`),
+      `VIEWS names ${id} and there is no such section`);
+  }
+});
+
+/**
+ * The dot follows the work, not the slot the work used to be in.
+ *
+ * It lived on the Activity tab. Activity moved under the cog and the dot
+ * stayed behind on the tab that took its place — so You wore a badge for a
+ * download that has nothing to do with anything on that screen.
+ */
+test('the badge is on the way to what it is about', () => {
+  const tabsAt = html.indexOf('<nav id="tabs"');
+  const tabs = html.slice(tabsAt, html.indexOf('</nav>', tabsAt));
+  assert.ok(!tabs.includes('activity-dot'),
+    'a tab that shows none of this does not wear its badge');
+
+  const cog = html.slice(html.indexOf('<button id="open-settings"'));
+  assert.ok(cog.slice(0, cog.indexOf('</button>') + 9).includes('id="activity-dot"'),
+    'the cog leads to Activity, so the cog carries the news');
+
+  /* And the row inside Settings says it too, so the last step of the way
+     there is signposted like the first. */
+  assert.ok(html.includes('id="activity-here"'));
+  assert.match(js, /const here = \$\('#activity-here'\)/);
+});
+
