@@ -3504,7 +3504,7 @@ function payloadFromEpub(book, name) {
   if (!Object.keys(tags).length && book.subjects?.length) tags.freeform = book.subjects;
 
   return {
-    workId: String(book.workId ?? `epub-${localIdFor(name)}`),
+    workId: String(book.workId ?? `epub-${localIdFor(book, name)}`),
     title: book.title ?? name.replace(/\.epub$/i, ''),
     authors: JSON.stringify(book.authors ?? []),
     summary: book.summary ?? null,
@@ -3519,6 +3519,14 @@ function payloadFromEpub(book, name) {
     kudos: book.kudos ?? null,
     bookmarkCount: book.bookmarkCount ?? null,
     hits: book.hits ?? null,
+    /* When this copy was taken, which the book knows and today does not.
+       A sync compares it against the date the archive says the work last
+       changed — so stamping an export from March with today's date says the
+       copy is current and quietly stops the work ever being fetched again. */
+    downloadedAt: book.downloadedAt ?? null,
+    /* The author's last word. There is a column for it and nothing was
+       putting anything in it. */
+    endNotesHtml: book.endNotesHtml ?? null,
     tags,
     chapters: (book.chapters ?? []).map((c) => ({
       title: c.title ?? null,
@@ -3532,12 +3540,17 @@ function payloadFromEpub(book, name) {
 /**
  * An id for a book the archive never had.
  *
- * Derived from the file's name rather than counted, so bringing the same
- * shelf in twice updates the same works instead of doubling the library.
+ * From what the book says it is rather than from what the file is called.
+ * A shelf downloaded from a cloud drive arrives as "Copy of Afterthought.epub"
+ * and the same shelf downloaded again arrives as "Copy of Afterthought (1)",
+ * which by the file's name are two different works and by any other reading
+ * are one. Title and author are what the book claims to be, and two books
+ * claiming the same are the same book.
  */
-function localIdFor(name) {
+function localIdFor(book, name) {
+  const said = `${book.title ?? name}|${(book.authors ?? []).join(',')}`;
   let hash = 0;
-  for (const ch of String(name)) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  for (const ch of said) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return hash.toString(36);
 }
 
