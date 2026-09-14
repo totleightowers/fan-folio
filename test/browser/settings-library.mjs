@@ -128,6 +128,20 @@ try {
   await page.setViewportSize({ width: 320, height: 720 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'reader fits narrow phones');
   await screenshot('reader-narrow', { fullPage: false });
+  await page.setViewportSize({ width: 900, height: 900 });
+  await screenshot('reader-tablet', { fullPage: false });
+  assert.equal(await page.locator('#comment-here').isVisible(), true);
+  assert.equal(await page.locator('#comment-here use').getAttribute('href'), '#i-comment');
+  for (const id of ['kudos-here', 'bookmark-here', 'on-archive']) assert.equal(await page.locator('#' + id).isVisible(), false);
+  await page.locator('#reader-more').click();
+  for (const id of ['reader-kudos', 'reader-bookmark', 'reader-archive']) assert.equal(await page.locator('#' + id).isVisible(), true);
+  await screenshot('reader-menu-tablet', { fullPage: false });
+  await page.locator('#reader-menu').press('Escape');
+  await page.locator('#reader-menu').waitFor({ state: 'hidden' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#reader-more').click();
+  assert.equal(await page.locator('#reader-comment').isVisible(), true);
+  assert.equal(await page.locator('#reader-comment use').getAttribute('href'), '#i-comment');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

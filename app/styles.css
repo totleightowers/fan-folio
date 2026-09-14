@@ -2426,21 +2426,9 @@ button:disabled, .opt:disabled {
 
 #open-settings #activity-dot[data-state="held"] { background: var(--ink-mute); }
 
-/*
- * Rolled up, or on the bar, never half of each.
- *
- * Kudos had a button on the chapter bar while bookmarking and commenting had
- * none, which put one third of one decision in one place and the rest
- * somewhere else. On a phone there is no room on that bar for three more
- * controls, so all three roll up into the sheet. On a tablet there is room,
- * so all three sit on the bar and the sheet does not draw them at all.
- */
+/* Secondary archive actions live in More; comments remain a tablet shortcut. */
 .on-the-bar { display: none; }
-
-@media (min-width: 44.01rem) {
-  .on-the-bar { display: inline-flex; }
-  .rolled-up { display: none; }
-}
+#on-archive { display: none; }
 
 /* Settings are destinations with current values, followed by optional detail. */
 #settings { max-width: 40rem; margin-inline: auto; }
@@ -2535,3 +2523,16 @@ button:disabled, .opt:disabled {
 }
 
 body:has(#reader:not([hidden])) #typo { display: none; }
+
+/* Give the wider reader a quiet toolbar with breathing room between groups. */
+@media (min-width: 44.01rem) {
+  #chapnav { gap: .5rem; }
+  #chapnav button { border-color: transparent; background: transparent; min-width: 2.75rem; }
+  #chapnav button:hover { background: var(--pane); }
+  #chapnav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #chapnav #to-work { margin-right: 1rem; }
+  #chapnav #chappos { background: var(--pane); padding-inline: 1rem; }
+  #chapnav #next { margin-right: auto; }
+  #chapnav #comment-here { display: inline-flex; align-items: center; justify-content: center; }
+  #reader-comment { display: none; }
+}

@@ -3253,29 +3253,6 @@ test('and a job changing anywhere else reaches the person it is about', () => {
     /if \(!\$\('#author'\)\.hidden\) paintAuthor\(\)/);
 });
 
-/**
- * Rolled up, or on the bar, never half of each.
- *
- * Kudos had a button on the chapter bar while bookmarking and commenting had
- * none — one third of one decision in one place and the rest somewhere else.
- */
-test('the archive actions are all in one place at any one width', () => {
-  const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
-
-  /* A phone has no room on that bar for three more controls, so all three
-     roll up. A tablet has room, so all three sit on it and the sheet does
-     not draw them at all. */
-  assert.match(css, /\.on-the-bar \{ display: none; \}/);
-  const wide = css.slice(css.lastIndexOf('@media (min-width: 44.01rem)'));
-  assert.match(wide, /\.on-the-bar \{ display: inline-flex; \}/);
-  assert.match(wide, /\.rolled-up \{ display: none; \}/);
-
-  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
-  const body = menu.slice(0, menu.indexOf('</dialog>'));
-  assert.match(body, /<h2 class="rolled-up">On this work<\/h2>/);
-  assert.match(body, /<div class="menu-list rolled-up">/);
-});
-
 test('a sheet of destinations has no row that is not one', () => {
   const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
   const body = menu.slice(0, menu.indexOf('</dialog>'));

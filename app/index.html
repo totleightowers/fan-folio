@@ -52,6 +52,10 @@
     <symbol id="i-prev" viewBox="0 0 24 24"><path d="M14.4 5.4 7.8 12l6.6 6.6"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24"><path d="m9.6 5.4 6.6 6.6-6.6 6.6"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9.6 5.4 6.6 6.6-6.6 6.6"/></symbol>
+    <symbol id="i-comment" viewBox="0 0 24 24">
+      <path d="M7 4.5h10a3 3 0 0 1 3 3v7a3 3 0 0 1-3 3h-6l-5 3v-3a3 3 0 0 1-3-3v-7a3 3 0 0 1 3-3z"/>
+      <path d="M7.5 9h9M7.5 13h6"/>
+    </symbol>
     <symbol id="i-star" viewBox="0 0 24 24">
       <path d="m12 4.1 2.5 5.1 5.6.8-4.1 4 1 5.6-5-2.6-5 2.6 1-5.6-4.1-4 5.6-.8z"/>
     </symbol>
@@ -393,7 +397,7 @@
       <button id="next" aria-label="Next chapter"><svg class="ic" aria-hidden="true"><use href="#i-next"/></svg></button>
       <button id="kudos-here" class="on-the-bar" aria-label="Leave kudos on this work"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg></button>
       <button id="bookmark-here" class="on-the-bar" aria-label="Bookmark this work"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg></button>
-      <button id="comment-here" class="on-the-bar" aria-label="Comment on this work"><svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg></button>
+      <button id="comment-here" class="on-the-bar" aria-label="Comment on this work"><svg class="ic" aria-hidden="true"><use href="#i-comment"/></svg></button>
       <button id="on-archive" aria-label="Open this chapter on the archive"><svg class="ic" aria-hidden="true"><use href="#i-external"/></svg></button>
       <!--
           The way out of the reader that is not the way you came in.
@@ -404,7 +408,7 @@
           all things — was the single control that stayed on screen.
       -->
       <button id="reader-type" aria-label="Reading settings">Aa</button>
-      <button id="reader-more" aria-label="Go elsewhere"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
+      <button id="reader-more" aria-label="More reader actions"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
     </nav>
     <div id="progress"><div id="progress-bar"></div></div>
   </section>
@@ -438,30 +442,13 @@
 </dialog>
 
 <dialog id="reader-menu">
-  <!--
-      The things that leave the phone, from the chapter they are about.
-
-      Kudos had a button on the chapter bar and the other two had nowhere at
-      all: bookmarking or commenting meant leaving the chapter, finding the
-      work's page and coming back. They are one decision made in one moment —
-      the end of a chapter — so they are together, here, where the rest of the
-      way out of a chapter already is.
-  -->
-  <!--
-      Rolled up or on the bar, never half of each.
-
-      Kudos had a button on the chapter bar while bookmarking and commenting
-      had none, which put one third of one decision in one place and the rest
-      somewhere else. On a phone there is no room for three more controls, so
-      all three roll up here. On a tablet there is, so all three sit on the
-      bar and this group is not drawn at all.
-  -->
+  <!-- Secondary reading actions stay available here at every screen width. -->
   <h2 class="rolled-up">On this work</h2>
   <div class="menu-list rolled-up">
     <button id="reader-kudos"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Leave kudos</button>
     <button id="reader-bookmark"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg>Bookmark it</button>
     <button id="reader-archive">Open on the archive</button>
-    <button id="reader-comment"><svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg>Leave a comment</button>
+    <button id="reader-comment"><svg class="ic" aria-hidden="true"><use href="#i-comment"/></svg>Leave a comment</button>
   </div>
 
   <h2>Go to</h2>
