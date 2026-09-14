@@ -2531,7 +2531,7 @@ body:has(#reader:not([hidden])) #typo { display: none; }
   #chapnav button:hover { background: var(--pane); }
   #chapnav button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   #chapnav #to-work { margin-right: 1rem; }
-  #chapnav #chappos { background: var(--pane); padding-inline: 1rem; }
+  #chapnav #chappos { flex: 0 0 auto; min-width: 6rem; justify-content: center; background: var(--pane); padding-inline: 1rem; }
   #chapnav #next { margin-right: auto; }
   #chapnav #comment-here { display: inline-flex; align-items: center; justify-content: center; }
   #reader-comment { display: none; }
