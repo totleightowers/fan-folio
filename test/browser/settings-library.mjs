@@ -129,7 +129,25 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'reader fits narrow phones');
   await screenshot('reader-narrow', { fullPage: false });
   await page.setViewportSize({ width: 900, height: 900 });
-  await screenshot('reader-tablet', { fullPage: false });
+  for (const [width, height, name] of [[900, 940, 'portrait'], [1280, 800, 'landscape']]) {
+    await page.setViewportSize({ width, height });
+    const centred = await page.evaluate(() => {
+      const bar = document.querySelector('#chapnav').getBoundingClientRect();
+      const chapter = document.querySelector('#chappos').getBoundingClientRect();
+      const navigation = document.querySelector('.reader-navigation').getBoundingClientRect();
+      const tools = document.querySelector('.reader-tools').getBoundingClientRect();
+      return Math.abs(chapter.x + chapter.width / 2 - bar.x - bar.width / 2) < 2
+        && navigation.right <= tools.left && tools.right <= bar.right;
+    });
+    assert.ok(centred, 'chapter navigation stays centred without overlapping actions');
+    await screenshot('reader-tablet-' + name, { fullPage: false });
+  }
+  await page.locator('#reader-type').click();
+  await page.locator('[data-theme-choice="dark"]').click();
+  await page.locator('#typography [data-close]').first().click();
+  await page.locator('#typography').waitFor({ state: 'hidden' });
+  await page.setViewportSize({ width: 900, height: 940 });
+  await screenshot('reader-tablet-dark', { fullPage: false });
   assert.equal(await page.locator('#comment-here').isVisible(), true);
   assert.equal(await page.locator('#comment-here use').getAttribute('href'), '#i-comment');
   for (const id of ['kudos-here', 'bookmark-here', 'on-archive']) assert.equal(await page.locator('#' + id).isVisible(), false);
