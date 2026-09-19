@@ -2790,22 +2790,12 @@ test('a half asked for is the only half fetched', () => {
     'the jobs that go up are the ones asked for');
 });
 
-/*
- * The order was tiles, then counts, then browse, then the shelves — so the
- * most common reason to open a reading app sat below three things that are
- * useful once and rarely twice.
- */
-test('what somebody came back for is first', () => {
+test('home puts fandom browsing above the reading shelves', () => {
   const home = html.slice(html.indexOf('<section id="home"'),
     html.indexOf('</section>', html.indexOf('<section id="home"')));
-  /* Continue reading, then what the library amounts to, then the ways in.
-     The counts were moved off the top of this screen because carrying on
-     with a work is why anybody opens a reading app — which was right — and
-     landed at the very bottom, under every shelf and the whole of Browse,
-     which made them present and functionally gone. They are what makes Home
-     read as somebody's own archive; both facts fit, in this order. */
-  const order = ['id="shelves"', 'id="stats"', 'id="starthere"', 'id="fandoms"']
+  const order = ['id="fandoms"', 'id="shelves"', 'id="stats"', 'id="starthere"']
     .map((id) => home.indexOf(id));
+  assert.ok(order.every(index => index >= 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
 

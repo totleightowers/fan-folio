@@ -699,7 +699,20 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 .fandom-list button .n {
   color: var(--muted); margin-left: .35rem; font-variant-numeric: tabular-nums;
 }
-.fandom-block { margin: 0 0 1.4rem; }
+.fandom-block {
+  margin: .35rem 0 1.4rem;
+  padding: .85rem;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-card);
+  background: var(--surface);
+}
+.fandom-block:empty { display: none; }
+.fandom-list button { display: flex; align-items: center; min-height: 48px; max-width: min(28rem, 80vw); }
+.fandom-list button .name {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.fandom-list button .n { flex-shrink: 0;
+}
 
 /* How many works this filter leaves, said before the list rather than after
    it. Tabular figures so it does not jitter as the number changes. */
@@ -730,9 +743,9 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 .browse-tabs::-webkit-scrollbar { display: none; }
 .browse-tab {
   flex: 0 0 auto; font: inherit; font-size: .8rem; background: none; border: 0;
-  color: var(--muted); cursor: pointer; padding: .25rem .1rem; border-bottom: 2px solid transparent;
+  color: var(--muted); cursor: pointer; padding: .45rem .7rem; min-height: 48px; border-radius: var(--r-pill);
 }
-.browse-tab.on { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.browse-tab.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); font-weight: 600; }
 
 /* -------------------------------------------------------------- work card */
 

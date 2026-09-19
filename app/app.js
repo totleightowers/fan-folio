@@ -4617,7 +4617,11 @@ function buildBrowse(browse) {
   const list = box.querySelector('.fandom-list');
 
   const paint = () => {
-    for (const b of tabs.children) b.classList.toggle('on', b.dataset.kind === browseKind);
+    for (const b of tabs.children) {
+      const selected = b.dataset.kind === browseKind;
+      b.classList.toggle('on', selected);
+      b.setAttribute('aria-pressed', String(selected));
+    }
     list.textContent = '';
     for (const item of browse[browseKind] ?? []) {
       const b = document.createElement('button');
@@ -4633,8 +4637,7 @@ function buildBrowse(browse) {
         b.dataset.spine = '';
         b.style.setProperty('--spine', spineColour(item.name));
       }
-      b.onclick = () => openTag(browseKind === 'rating' ? null : item.name,
-        browseKind === 'rating' ? item.name : null);
+      b.onclick = () => filterBy(browseKind === 'rating' ? 'rating' : 'tag', item.name);
       list.append(b);
     }
   };
@@ -4648,6 +4651,7 @@ function buildBrowse(browse) {
     b.onclick = () => { browseKind = kind; paint(); };
     tabs.append(b);
   }
+  if (!browse[browseKind]?.length) browseKind = tabs.firstElementChild?.dataset.kind ?? 'fandom';
   paint();
 }
 
@@ -4688,6 +4692,7 @@ function filterBy(kind, value) {
        once, which is the handful of works they wrote and also bookmarked. */
     bookmarkedBy: '',
     complete: '', language: '', wordsMin: '', wordsMax: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   });
   apply(value);
   save(VIEW_KEY, view);

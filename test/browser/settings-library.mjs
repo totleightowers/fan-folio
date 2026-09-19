@@ -55,6 +55,18 @@ try {
   await page.route('**/api/prefs', route => route.fulfill({ json: { prefs: null } }));
   await page.goto('http://127.0.0.1:18766');
   await page.locator('#home').waitFor({ state: 'visible' });
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 940 });
+    assert.ok(await page.evaluate(() => {
+      const browse = document.querySelector('#fandoms').getBoundingClientRect();
+      const shelves = document.querySelector('#shelves').getBoundingClientRect();
+      return browse.bottom <= shelves.top && document.documentElement.scrollWidth <= innerWidth;
+    }), 'fandom filters sit above shelves without horizontal page overflow');
+    assert.equal(await page.locator('.browse-tab[data-kind="fandom"]').getAttribute('aria-pressed'), 'true');
+    assert.ok(await page.locator('.fandom-list .name').first().evaluate(el => el.scrollWidth <= el.clientWidth), 'short fandom names remain fully readable');
+    await screenshot('home-' + width);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#open-settings').click();
   await page.locator('#reading-summary').filter({ hasText: 'Georgia' }).waitFor();
   await page.locator('#haptics').uncheck();
@@ -143,6 +155,8 @@ try {
     assert.ok(centred, 'chapter navigation stays centred without overlapping actions');
     await screenshot('reader-tablet-' + name, { fullPage: false });
   }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForFunction(() => !document.querySelector('#chapnav').classList.contains('away'));
   await page.locator('#reader-type').click();
   await page.locator('[data-theme-choice="dark"]').click();
   await page.locator('#typography [data-close]').first().click();
@@ -191,6 +205,12 @@ try {
     assert.ok(await page.locator('#author-block').evaluate(el => !el.closest('.author-sync')));
     await screenshot('author-' + width);
   }
+  await page.locator('#tabs [data-tab="home"]').click();
+  await screenshot('home-dark');
+  await page.locator('.fandom-list button').filter({ hasText: 'The Harbour' }).click();
+  await page.locator('#library').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 3);
+  assert.equal(await page.locator('#works .work-card').count(), 3, 'fandom browse clears the previous reading-only filter');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
