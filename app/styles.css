@@ -2351,8 +2351,21 @@ button:disabled, .opt:disabled {
 .author-acts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-top: .6rem;
+  gap: .65rem;
+  margin-top: .75rem;
+}
+
+.author-acts .ghost { flex: 1 1 12rem; min-height: 48px; }
+.author-sync .primary { min-height: 48px; }
+.author-manage {
+  margin: 2rem .3rem 1rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line-soft);
+}
+.author-manage .danger {
+  color: var(--no);
+  min-height: 48px;
+  max-width: 100%;
 }
 
 /*

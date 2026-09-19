@@ -33,7 +33,7 @@ export const SORTS = {
   words: 'w.words DESC',
   shortest: 'w.words ASC',
   chapters: 'w.chapter_count DESC',
-  recent: 'r.updated_at DESC',
+  recent: 'COALESCE(r.opened_at, r.updated_at) DESC',
   /* NULLS LAST, spelled out: a work whose counts we have never seen should
      not outrank one with none, and in SQLite a NULL sorts first descending. */
   kudos: 'w.kudos IS NULL, w.kudos DESC',

@@ -52,6 +52,7 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
+  await page.route('**/api/prefs', route => route.fulfill({ json: { prefs: null } }));
   await page.goto('http://127.0.0.1:18766');
   await page.locator('#home').waitFor({ state: 'visible' });
   await page.locator('#open-settings').click();
@@ -160,6 +161,36 @@ try {
   await page.locator('#reader-more').click();
   assert.equal(await page.locator('#reader-comment').isVisible(), true);
   assert.equal(await page.locator('#reader-comment use').getAttribute('href'), '#i-comment');
+  await fetch('http://127.0.0.1:18766/api/opened?workId=epub-demo', { method: 'POST' });
+  // A shelf must not inherit an unrelated library query.
+  await fetch('http://127.0.0.1:18766/api/opened?workId=2', { method: 'POST' });
+  await page.evaluate(() => localStorage.setItem('archive.view', JSON.stringify({
+    sort: 'title', state: 'all', include: ['Absent tag'], exclude: ['The Harbour'],
+    author: ['Someone else'], rating: ['Explicit'], bookmarkedBy: 'Someone else',
+    language: 'fr', complete: '0', wordsMin: '999999', wordsMax: '1',
+    chaptersMin: '99', chaptersMax: '1', updatedAfter: '2099-01-01',
+    updatedBefore: '1900-01-01', crossover: '1', otp: '1',
+  })));
+  await page.reload();
+  const readingShelf = page.locator('.shelf').filter({ has: page.locator('h2', { hasText: 'Continue reading' }) });
+  await readingShelf.getByRole('button', { name: 'See all', exact: false }).click();
+  await page.locator('#library').waitFor({ state: 'visible' });
+  await page.locator('#works .work-card').filter({ hasText: 'A little light in the afternoon' }).waitFor();
+  assert.equal(await page.locator('#sort').inputValue(), 'recent');
+  await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#detail [data-filter="author"]').first().click();
+  await page.locator('#author').waitFor({ state: 'visible' });
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 940 });
+    for (const id of ['author-sync-both', 'author-see-all', 'author-block']) {
+      const control = await page.locator('#' + id).evaluate(el => ({
+        height: el.getBoundingClientRect().height, border: parseFloat(getComputedStyle(el).borderTopWidth),
+      }));
+      assert.ok(control.height >= 48 && control.border > 0, 'author actions have visible touch targets');
+    }
+    assert.ok(await page.locator('#author-block').evaluate(el => !el.closest('.author-sync')));
+    await screenshot('author-' + width);
+  }
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

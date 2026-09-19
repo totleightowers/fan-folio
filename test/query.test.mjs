@@ -501,3 +501,11 @@ test('a new library can be made from the emitted schema, the way the shell makes
   assert.equal(db.prepare(q.countSql).get(...q.args).n, 1,
     'the app can read what it just made');
 });
+
+
+test('recent reading follows opening time, with legacy update time as fallback', () => {
+  const db = library();
+  db.exec("UPDATE reading SET opened_at='2026-09-19', updated_at='2026-01-01' WHERE work_id='1'");
+  db.exec("UPDATE reading SET opened_at=NULL, updated_at='2026-09-18' WHERE work_id='3'");
+  assert.deepEqual(run(db, { sort: 'recent' }), ['1', '3', '2']);
+});

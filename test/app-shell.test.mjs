@@ -2819,7 +2819,7 @@ test('a shelf says how much of it is not on it', () => {
   /* And the button has to land on the same question the shelf asked. */
   const map = js.slice(js.indexOf('const SHELF_VIEW = {'));
   const table = map.slice(0, map.indexOf('};'));
-  assert.match(table, /reading: \{ state: 'reading' \}/);
+  assert.match(table, /reading: \{ state: 'reading', sort: 'recent' \}/);
   assert.match(table, /long: \{ state: 'unread', complete: '1'/,
     'Settle in is long, complete and unstarted — it used to open on the whole library');
 });

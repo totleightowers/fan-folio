@@ -3154,7 +3154,7 @@ function paintAuthor() {
   /* The other direction: somebody you do not want to read at all. */
   const rid = $('#author-block');
   rid.disabled = false;
-  rid.textContent = `Delete their works and block ${name}`;
+  rid.textContent = 'Delete works and block author';
   rid.onclick = () => askToBlock(name);
 }
 
@@ -4548,8 +4548,12 @@ async function buildHome() {
     section.querySelector('.shelf-head button').onclick = () => {
       /* The same question the shelf asked, or See all shows a different set of
          works from the one it was pressed under. */
-      Object.assign(view, { state: 'all', complete: '', wordsMax: '', sort: view.sort },
-        SHELF_VIEW[shelf.key] ?? {});
+      Object.assign(view, {
+        state: 'all', include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
+        complete: '', language: '', wordsMin: '', wordsMax: '',
+        chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
+      }, SHELF_VIEW[shelf.key] ?? {});
+      currentAuthor = null;
       save(VIEW_KEY, view);
       $('#sort').value = view.sort;
       paintActiveFilters();
@@ -4579,11 +4583,10 @@ async function buildHome() {
  * is, ordered by length, most of it neither complete nor unstarted. A shelf
  * and the button under it have to be asking the same question.
  *
- * What is set here is set on top of the filters already in force, and shows
- * up in the row of pills like any other, so nothing arrives invisibly.
+ * A shelf starts a fresh library query; previous filters must not hide its works.
  */
 const SHELF_VIEW = {
-  reading: { state: 'reading' },
+  reading: { state: 'reading', sort: 'recent' },
   later: { state: 'later' },
   added: { state: 'all', sort: 'added' },
   updated: { state: 'all', sort: 'updated' },
