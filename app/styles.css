@@ -752,12 +752,13 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 /* Library rows carry a faint spine tint and keep their existing separators. */
 .work-card {
   --muted: color-mix(in srgb, var(--ink-mute) 85%, var(--ink));
-  position: relative; cursor: pointer;
+  position: relative; cursor: pointer; min-width: 0;
+  overflow-wrap: anywhere;
   background: color-mix(in srgb, var(--spine, var(--accent)) 3%, var(--paper));
   padding: 1rem 1rem .85rem 1.15rem; margin: 0;
   border: 1px solid var(--line-soft); border-radius: var(--r-card);
 }
-.list { display: grid; gap: .85rem; }
+.list { display: grid; grid-template-columns: minmax(0, 1fr); gap: .85rem; }
 .library-title { font-size: 1.35rem; margin: .3rem 0 .9rem; }
 .work-card::before {
   content: ''; position: absolute; inset: .95rem auto 1.05rem 0;
@@ -809,7 +810,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 }
 .work-card .sum {
   margin: 0 0 .3rem; font-size: .87rem; line-height: 1.5; opacity: .85;
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: anywhere;
 }
 .work-card .rowactions {
   display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin: .75rem 0 0;

@@ -27,6 +27,10 @@ for (const [id, title, held] of [
 db.exec("UPDATE works SET chapter_count=2 WHERE work_id='1'");
 db.prepare('INSERT INTO chapters (work_id,number,title,html,text,words) VALUES (?,?,?,?,?,?)')
   .run('1', 2, 'Chapter 2: The way back', '<p>The harbour was quiet.</p>'.repeat(40), 'The harbour was quiet.', 1000);
+db.prepare('INSERT INTO tags (work_id,kind,name) VALUES (?,?,?)')
+  .run('1', 'relationship', 'Jeon Jungkook/Jung Hoseok | J-Hope/Kim Namjoon | RM/Min Yoongi | Suga/Park Jimin');
+db.prepare('UPDATE works SET summary=? WHERE work_id=?')
+  .run('A long description with several sentences that should wrap naturally within the card. '.repeat(12) + 'The final sentence stays visible.', '1');
 db.close();
 const server = spawn(process.execPath, [new URL('../../tools/serve.mjs', import.meta.url).pathname], {
   cwd: dir, env: { ...process.env, FANFOLIO_DB: dbPath, PORT: '18766' }, stdio: ['ignore', 'pipe', 'inherit'],
@@ -91,9 +95,15 @@ try {
   await page.locator('.work-title-link').first().waitFor();
   assert.ok(await page.locator('#works .not-held').count());
   assert.equal(await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).locator('[data-act="ao3"]').count(), 0);
-  for (const [width, height, name] of [[390,844,'phone'], [320,720,'narrow'], [900,900,'tablet']]) {
+  for (const [width, height, name] of [[390,844,'phone'], [320,720,'narrow'], [582,1280,'large-phone'], [900,900,'tablet']]) {
     await page.setViewportSize({ width, height });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal page overflow');
+    assert.ok(await page.locator('#works .work-card').evaluateAll(cards => cards.every(card => {
+      const box = card.getBoundingClientRect();
+      const summary = card.querySelector('.sum');
+      return box.left >= 0 && box.right <= innerWidth && card.scrollWidth <= card.clientWidth
+        && (!summary || (summary.scrollWidth <= summary.clientWidth && summary.scrollHeight <= summary.clientHeight));
+    })), 'long relationship tags cannot widen cards or clip descriptions');
     await screenshot(`library-${name}`);
   }
   await page.setViewportSize({ width: 390, height: 844 });
