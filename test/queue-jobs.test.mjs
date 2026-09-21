@@ -546,3 +546,77 @@ test('a stopped job tells a loop to give up rather than making it wait', async (
   assert.equal(await q.waitUntilRunnable(gone), false, 'and deleting a row cancels its work');
   assert.equal(q.isStopped(gone), true);
 });
+
+test('job results distinguish the active request, waiting works and completed works', async () => {
+  let finish;
+  let calls = 0;
+  const q = createQueue({ runTask: () => { calls++; return new Promise(r => { finish = r; }); },
+    wait: () => new Promise(() => {}), gap: () => 1 });
+  const id = q.add(job('a', 'works', ['1', '2']));
+  assert.deepEqual(q.details(id).items.map(i => i.state), ['downloading', 'waiting']);
+  q.details(id).items[0].state = 'failed';
+  assert.equal(q.details(id).items[0].state, 'downloading', 'viewing cannot mutate the runner');
+  assert.equal(calls, 1, 'inspecting results makes no request');
+  finish(); await settle();
+  assert.deepEqual(q.details(id).items.map(i => i.state), ['downloaded', 'waiting']);
+});
+
+test('completed and failed works survive restart without being fetched again', async () => {
+  const { q, tick } = harness({ runTask: async id => { if (id === '2') throw new Error('The archive answered 404'); } });
+  const id = q.add(job('a', 'works', ['1', '2']));
+  await settle(); await tick();
+  assert.deepEqual(q.details(id).items.map(i => i.state), ['downloaded', 'failed']);
+  let calls = 0;
+  const restored = createQueue({ runTask: async () => { calls++; } });
+  const again = restored.restore(q.save()[0]);
+  assert.deepEqual(restored.details(again).items, q.details(id).items);
+  assert.equal(restored.details(again).historyComplete, true);
+  assert.equal(restored.details(again).items[1].error, 'The archive answered 404');
+  await settle(); assert.equal(calls, 0);
+});
+
+test('verification retries retain earlier results without losing the full job list', async () => {
+  const counts = new Map();
+  const q = createQueue({ runTask: async id => counts.set(id, (counts.get(id) || 0) + 1),
+    wait: async () => {}, gap: () => 0,
+    verify: async () => counts.get('2') === 1 ? ['2'] : [] });
+  const id = q.add(job('a', 'works', ['1', '2']));
+  await settle();
+  assert.deepEqual([...counts], [['1', 1], ['2', 2]]);
+  assert.deepEqual(q.details(id).items.map(i => [i.workId, i.state]), [['1', 'downloaded'], ['2', 'downloaded']]);
+  assert.equal(q.save()[0].items.length, 2);
+});
+
+test('a paused or stopped restored job retains results and never starts a request', async () => {
+  for (const state of ['paused', 'cancelled']) {
+    let calls = 0;
+    const q = createQueue({ runTask: async () => { calls++; } });
+    const id = q.restore({ author: 'a', part: 'works', state, workIds: ['2'], total: 2,
+      items: [{ workId: '1', state: 'downloaded' }, { workId: '2', state: 'downloading' }], historyComplete: true });
+    await settle();
+    assert.equal(calls, 0);
+    assert.equal(q.details(id).state, state);
+    assert.deepEqual(q.details(id).items.map(i => i.state), ['downloaded', 'waiting']);
+    assert.equal(q.save()[0].state, state);
+  }
+});
+
+test('older job records expose the retained missing ids without inventing completed ids', () => {
+  const q = createQueue();
+  const id = q.restore({ author: 'a', part: 'works', state: 'done', workIds: [],
+    total: 100, added: 99, unfinished: ['7'], lastError: 'Unavailable' });
+  assert.equal(q.details(id).historyComplete, false);
+  assert.deepEqual(q.details(id).items, [{ workId: '7', state: 'failed', error: 'Unavailable' }]);
+  assert.equal(q.list()[0].added, 99);
+});
+
+test('EPUB results can be recorded without adding a network request', () => {
+  let calls = 0;
+  const q = createQueue({ runTask: async () => { calls++; } });
+  const id = q.add({ author: 'Your EPUBs', part: 'books', open: true });
+  q.record(id, { workId: 'epub-local', title: 'A local book', state: 'version' });
+  q.seal(id);
+  assert.equal(q.details(id).items[0].state, 'version');
+  assert.equal(q.save()[0].items[0].title, 'A local book');
+  assert.equal(calls, 0);
+});

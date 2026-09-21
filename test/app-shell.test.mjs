@@ -2314,13 +2314,13 @@ test('what has already run can still be seen', () => {
   const src = readFileSync(new URL('../app/core/sync/queue.js', import.meta.url), 'utf8');
   const fn = src.slice(src.indexOf('function restore('));
   const body = fn.slice(0, fn.indexOf('\n  }\n'));
-  assert.match(body, /state: saved\.state === 'done' \? 'done' : 'queued'/,
+  assert.match(body, /state: \['done', 'cancelled', 'paused', 'pausing'\]\.includes\(saved\.state\)/,
     'a job comes back as what it was, rather than being guessed at from a list');
   assert.match(body, /wasTotal: Number\(saved\.total\) \|\| owed\.length/,
     'and how much it was about is a number that was written down');
 
   const resume = js.slice(js.indexOf('function resumeJobs('));
-  assert.match(resume.slice(0, resume.indexOf('\n}\n')), /jobs\.restore\(\{ \.\.\.job, workIds: \[\] \}\)/,
+  assert.match(resume.slice(0, resume.indexOf('\n}\n')), /jobs\.restore\(\{ \.\.\.job, items, workIds: \[\], state: 'done' \}\)/,
     'a finished job comes back as a record rather than not at all');
 
   const paint = js.slice(js.indexOf('function paintJobs('));

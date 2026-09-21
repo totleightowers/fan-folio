@@ -408,14 +408,21 @@ try {
   // Restored job records expose the outcome without issuing any network requests.
   await page.evaluate(() => localStorage.setItem('fanfolio.jobs', JSON.stringify([
     { author: 'Rowan', part: 'works', state: 'done', total: 3, added: 2, failed: 1,
-      unfinished: ['9999'], workIds: [], lastError: 'Archive request failed (525)', at: Date.now() },
+      unfinished: ['9999'], workIds: [], lastError: 'Archive request failed (525)', at: Date.now(), historyComplete: true,
+      items: [{workId:'1',state:'downloaded'}, {workId:'epub-demo',state:'downloaded'},
+        {workId:'9999',state:'failed',error:'Archive request failed (525)'}] },
+    { author: 'Waiting collection', part: 'works', state: 'paused', total: 1, workIds: ['2'], historyComplete: true,
+      items: [{workId:'2',state:'waiting'}] },
+    { author: 'Older collection', part: 'works', state: 'done', total: 30, added: 30, workIds: [] },
+    { author: 'Large collection', part: 'works', state: 'done', total: 55, added: 55, workIds: [], historyComplete: true,
+      items: Array.from({length:55}, (_,i) => ({workId:String(1000+i),state:'downloaded'})) },
   ])));
   await page.reload();
   await page.locator('#tabs [data-tab="activity"]').click();
-  await page.locator('#download-state').filter({ hasText: 'Some works still need attention' }).waitFor();
+  await page.locator('#download-state').filter({ hasText: 'Downloads paused' }).waitFor();
   assert.match(await page.locator('.job-error-detail').innerText(), /525/);
   assert.equal(await page.locator('#downloads-pause').isVisible(), false);
-  assert.equal(await page.locator('#downloads-resume').isVisible(), false);
+  assert.equal(await page.locator('#downloads-resume').isVisible(), true);
   assert.equal(await page.locator('.download-help').evaluate(el => el.open), false);
   await page.locator('.job-act[aria-label="Try the 1 that never arrived again"]').waitFor();
   for (const width of [390, 900]) {
@@ -423,6 +430,43 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await screenshot('v3-download-status-' + width, { fullPage: false });
   }
+  await page.locator('.job-open').filter({ hasText: 'Rowan' }).click();
+  await page.locator('#job-works [data-work-id="1"] .primary').waitFor();
+  assert.equal(await page.locator('#job-works .job-work').count(), 3);
+  assert.equal(await page.locator('#job-works [data-work-id="2"]').count(), 0, 'a job only shows its own works');
+  assert.match(await page.locator('#job-works [data-work-id="9999"]').innerText(), /525/);
+  await page.locator('[data-job-filter="downloaded"]').click();
+  await page.locator('#job-works [data-work-id="9999"]').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#job-works .job-work').count(), 2);
+  await page.locator('#job-works [data-work-id="epub-demo"] .primary').click();
+  await page.waitForFunction(() => !document.querySelector('#reader').hidden && document.querySelector('#workskin').textContent.includes('Afternoon'));
+  await page.locator('#back').click();
+  await page.locator('#download-job').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('[data-job-filter="downloaded"]').getAttribute('aria-pressed'), 'true');
+  for (const width of [320, 900]) {
+    await page.setViewportSize({ width, height: 940 });
+    await screenshot('job-works-' + width, { fullPage: false });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  }
+  await page.locator('#back').click();
+  await page.locator('.job-open').filter({ hasText: 'Waiting collection' }).click();
+  await page.locator('#job-works [data-work-id="2"]').waitFor();
+  assert.match(await page.locator('#job-works [data-work-id="2"]').innerText(), /Paused/);
+  assert.equal(await page.locator('#job-works .primary').count(), 0, 'a waiting work is not offered as readable');
+  await page.locator('#back').click();
+  await page.locator('.job-open').filter({ hasText: 'Older collection' }).click();
+  assert.equal(await page.locator('#job-history-note').isVisible(), true);
+  await page.locator('#back').click();
+  await page.locator('.job-open').filter({ hasText: 'Large collection' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('#job-works .job-work').length === 50);
+  await page.locator('#job-next').click();
+  await page.waitForFunction(() => document.querySelectorAll('#job-works .job-work').length === 5);
+  assert.equal(await page.locator('#job-next').isDisabled(), true);
+  await page.reload();
+  await page.locator('#tabs [data-tab="activity"]').click();
+  await page.locator('.job-open').filter({ hasText: 'Rowan' }).click();
+  await page.locator('#job-works [data-work-id="epub-demo"] .primary').waitFor();
+  await page.locator('#back').click();
   await page.locator('#downloads-library').click();
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
   assert.equal(await page.locator('#availability').inputValue(), 'held');

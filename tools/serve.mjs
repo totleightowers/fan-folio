@@ -101,6 +101,7 @@ function filtersFrom(params) {
   const filters = {
     state: params.get('state') || params.get('filter') || 'all',
     ...Object.fromEntries(['availability', 'collection', 'bookmarkedBy', 'updatedAfter', 'updatedBefore', 'crossover', 'otp'].map(key => [key, params.get(key) || ''])),
+    ids: params.get('ids') || '',
     include: params.get('include') || '',
     exclude: params.get('exclude') || '',
     rating: params.get('rating') || '',

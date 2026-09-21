@@ -167,6 +167,26 @@
 
 
 
+  <section id="download-job" class="view" hidden aria-labelledby="job-title">
+    <p class="eyebrow">Downloads</p>
+    <h1 id="job-title" class="settings-title"></h1>
+    <p id="job-summary" class="setting-note" aria-live="polite"></p>
+    <div id="job-controls" class="actions"></div>
+    <p id="job-history-note" class="setting-note" hidden></p>
+    <div id="job-filters" class="collection-shortcuts" aria-label="Works in this job">
+      <button class="chip" data-job-filter="all">All</button>
+      <button class="chip" data-job-filter="downloaded">Downloaded</button>
+      <button class="chip" data-job-filter="waiting">In progress</button>
+      <button class="chip" data-job-filter="failed">Needs attention</button>
+    </div>
+    <div id="job-works"></div>
+    <div id="job-pages" class="actions">
+      <button id="job-previous" class="linkish">Previous works</button>
+      <span id="job-page" class="setting-note"></span>
+      <button id="job-next" class="linkish">More works</button>
+    </div>
+  </section>
+
   <section id="activity" class="view" hidden>
     <h2 class="settings-title">Downloads</h2>
     <p class="setting-note">Your downloads and archive checks, in one place.</p>

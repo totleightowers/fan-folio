@@ -50,6 +50,11 @@ export function createQueue({
   maxRounds = 3,
 } = {}) {
   const jobs = [];
+  const initialItems = (ids) => new Map(ids.map(id => [String(id), { workId: String(id), state: 'waiting' }]));
+  const itemChange = (job, workId, patch) => {
+    const id = String(workId);
+    job.items.set(id, { ...(job.items.get(id) ?? { workId: id }), ...patch });
+  };
 
   const view = (j) => ({
     id: j.id, author: j.author, part: j.part, state: j.state,
@@ -97,7 +102,8 @@ export function createQueue({
       return existing.id;
     }
     const job = {
-      id: nextId++, author, part, workIds: [...workIds],
+      id: nextId++, author, part, workIds: [...new Set(workIds.map(String))],
+      items: initialItems(workIds), historyComplete: true,
       done: 0, added: 0, failed: 0, open,
       /* How far through the index the walk had read, so a restart carries on
          from the next page rather than reading the whole thing again. */
@@ -123,10 +129,11 @@ export function createQueue({
   function append(id, workIds) {
     const job = find(id);
     if (!job || job.state === 'done' || job.state === 'cancelled') return false;
-    const known = new Set(job.workIds);
-    const fresh = workIds.filter((w) => !known.has(w));
+    const known = new Set(job.items.keys());
+    const fresh = [...new Set(workIds.map(String))].filter(w => !known.has(w));
     if (!fresh.length) return false;
     job.workIds.push(...fresh);
+    for (const workId of fresh) itemChange(job, workId, { state: 'waiting' });
     if (job.state === 'listing') job.state = 'queued';   // it has something to do now
     announce('grew', job);
     pump();                       // a job that had finished its list resumes
@@ -231,8 +238,12 @@ export function createQueue({
       if (job.done > 0) await wait(gap());
       if (job.state !== 'running') break;
 
+      const workId = job.workIds[job.done];
+      itemChange(job, workId, { state: 'downloading', error: null });
+      announce('item', job);
       try {
-        await runTask(job.workIds[job.done]);
+        await runTask(workId);
+        itemChange(job, workId, { state: 'downloaded', error: null });
         job.added += 1;
         job.attempt = 0;
       } catch (e) {
@@ -243,6 +254,7 @@ export function createQueue({
              against the work. */
           job.attempt = attempt + 1;
           job.retrying = String(e?.message ?? '');
+          itemChange(job, workId, { state: 'retrying', error: job.retrying });
           announce('retrying', job);
           await wait(retryWait(attempt));
           continue;
@@ -257,6 +269,7 @@ export function createQueue({
          */
         job.failed += 1;
         job.lastError = String(e?.message ?? '');
+        itemChange(job, workId, { state: 'failed', error: job.lastError });
         if (shouldRetry(e?.message)) (job.unfinished ??= []).push(job.workIds[job.done]);
         job.attempt = 0;
         job.retrying = null;
@@ -285,7 +298,11 @@ export function createQueue({
     let owed = [];
     try { owed = await verify(job.workIds); } catch { owed = []; }
 
+    for (const workId of owed) itemChange(job, workId, {
+      state: 'failed', error: job.items.get(String(workId))?.error || 'No saved chapters were found after downloading.',
+    });
     if (owed.length && job.rounds < maxRounds) {
+      for (const workId of owed) itemChange(job, workId, { state: 'waiting' });
       job.workIds = owed;
       job.done = 0;
       job.unfinished = [];
@@ -316,6 +333,8 @@ export function createQueue({
     const job = {
       id: nextId++, author: saved.author, part: saved.part,
       workIds: owed,
+      items: initialItems([...(saved.items ?? []).map(item => item.workId).filter(Boolean), ...owed, ...(saved.unfinished ?? [])]),
+      historyComplete: Boolean(saved.historyComplete),
       done: 0, added: saved.added ?? 0, failed: saved.failed ?? 0,
       open: Boolean(saved.open),
       page: saved.page ?? 0, pages: saved.pages ?? null,
@@ -327,11 +346,20 @@ export function createQueue({
       wasTotal: Number(saved.total) || owed.length,
       at: saved.at ?? null,
       unfinished: saved.state === 'done' ? [...(saved.unfinished ?? [])] : [],
-      state: saved.state === 'done' ? 'done' : 'queued',
+      state: ['done', 'cancelled', 'paused', 'pausing'].includes(saved.state)
+        ? (saved.state === 'pausing' ? 'paused' : saved.state) : 'queued',
     };
     /* Anything owed by a job that had not finished goes back to waiting; a
        finished one stays finished, with what it never got still named. */
-    if (job.state !== 'done' && !job.workIds.length) job.state = job.open ? 'listing' : 'done';
+    for (const workId of saved.unfinished ?? []) itemChange(job, workId, {
+      state: 'failed', error: saved.lastError || 'This work did not arrive.',
+    });
+    for (const item of saved.items ?? []) {
+      if (!item?.workId) continue;
+      const state = ['downloaded', 'failed', 'version'].includes(item.state) ? item.state : 'waiting';
+      itemChange(job, item.workId, { ...item, state, workId: String(item.workId) });
+    }
+    if (job.state === 'queued' && !job.workIds.length) job.state = job.open ? 'listing' : 'done';
     jobs.push(job);
     announce('restored', job);
     if (job.state === 'queued') pump();
@@ -350,6 +378,7 @@ export function createQueue({
     const again = job.unfinished?.length ? job.unfinished : job.workIds;
     if (!again.length) return false;
     job.workIds = [...again];
+    for (const workId of again) itemChange(job, workId, { state: 'waiting', error: null });
     job.done = 0; job.added = 0; job.failed = 0;
     job.unfinished = []; job.rounds = 0;
     job.lastError = null; job.attempt = 0;
@@ -420,8 +449,23 @@ export function createQueue({
     return true;
   }
 
+  /** Imported books use the same result view without entering the network queue. */
+  function record(id, item) {
+    const job = find(id);
+    if (!job || !item?.workId) return false;
+    itemChange(job, item.workId, item);
+    announce('item', job);
+    return true;
+  }
+
+  function details(id) {
+    const job = find(id);
+    return job ? { ...view(job), historyComplete: job.historyComplete,
+      items: [...job.items.values()].map(item => ({ ...item })) } : null;
+  }
+
   return {
-    add, append, note, seal, rerun, restore,
+    add, append, note, seal, rerun, restore, record, details,
     waitUntilRunnable, isStopped,
     pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
@@ -445,20 +489,20 @@ export function createQueue({
      * then the work still owed. The cure is not a better description. It is
      * to write down the job and read the job back.
      *
-     * A finished job keeps its counts and whatever it never got, and lets go
-     * of the ids it delivered — those are in the library now, and thousands
-     * of them are not worth carrying around to say a job went well.
+     * Pending work and per-work results are separate. A restart resumes only
+     * pending requests, while completed work remains inspectable in its job.
      *
      * Bounded to the last forty: a record of recent work, not a log.
      */
     save: () => jobs
-      .filter((j) => j.state !== 'cancelled')
       .slice(-40)
       .map((j) => {
         const settled = j.state === 'done';
         return {
           author: j.author, part: j.part,
           state: j.state,
+          items: [...j.items.values()].map(item => ({ ...item })),
+          historyComplete: j.historyComplete,
           workIds: settled
             ? [...(j.unfinished ?? [])]
             : [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],

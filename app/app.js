@@ -228,7 +228,7 @@ function paintReadingControls() {
    unhides the one it was asked for — so a view missing from here is a view
    that can never be shown, and asking for it blanks the screen instead. */
 const VIEWS = ['setup', 'home', 'library', 'author', 'activity',
-  'results', 'detail', 'reader', 'settings'];
+  'results', 'detail', 'reader', 'settings', 'download-job'];
 const stack = new History();
 
 /* Reading, finding and ongoing work each have a stable home. */
@@ -245,7 +245,7 @@ const TABBED = new Set(['home', 'library', 'activity']);
  *
  * Only the reader is immersive, and only setup has nothing to navigate yet.
  */
-const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author', 'settings']);
+const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author', 'settings', 'download-job']);
 
 /** The tab whose part of the app you are in, lit even a screen or two down. */
 let inTab = 'home';
@@ -426,6 +426,7 @@ function here() {
     if (current.versionId) params.versionId = current.versionId;
     if (readingIsTransient) params.transient = true;
   }
+  if (route === 'download-job') Object.assign(params, jobShowing);
   if (route === 'results') {
     params.query = $('#q').value;
     params.scope = searchInScope;
@@ -490,6 +491,10 @@ function renderPlace(place, motion = 'back') {
       currentAuthor = p.author;
       paintAuthor();
       ready = loadAuthorWorks(true);
+    } else if (place.route === 'download-job') {
+      jobShowing = { id: p.id, filter: p.filter || 'all', page: Number(p.page) || 0 };
+      show('download-job', motion);
+      ready = paintJobDetail();
     } else if (place.route === 'library') {
       if (p.filters) {
         Object.assign(view, p.filters);
@@ -2501,6 +2506,7 @@ const jobs = createQueue({
        started, paused, finished or cleared anywhere else is news to them. */
     if (!$('#author').hidden) paintAuthor();
     if (!$('#activity').hidden) { paintJobs(); paintStubs(); }
+    if (showing() === 'download-job') paintJobDetail();
   },
 });
 
@@ -2774,6 +2780,109 @@ function queueSeries(plan) {
   return true;
 }
 
+let jobShowing = { id: null, filter: 'all', page: 0 };
+let jobDetailRequest = 0;
+const JOB_PAGE_SIZE = 50;
+const jobItemGroup = item => ['downloaded', 'version'].includes(item.state) ? 'downloaded'
+  : item.state === 'failed' ? 'failed' : 'waiting';
+
+function openJob(id) {
+  go('download-job', { id });
+  jobShowing = { id, filter: 'all', page: 0 };
+  return paintJobDetail();
+}
+
+async function paintJobDetail() {
+  const request = ++jobDetailRequest;
+  const job = jobs.details(jobShowing.id);
+  const box = $('#job-works');
+  const controls = $('#job-controls');
+  if (!job) {
+    $('#job-title').textContent = 'Job removed';
+    $('#job-summary').textContent = 'Its saved works remain in your library.';
+    controls.textContent = ''; box.textContent = '';
+    $('#job-history-note').hidden = true; $('#job-pages').hidden = true; $('#job-filters').hidden = true;
+    return;
+  }
+  $('#job-filters').hidden = false;
+  $('#job-title').textContent = `${job.author} · ${job.part}`;
+  const counts = { downloaded: 0, waiting: 0, failed: 0 };
+  for (const item of job.items) counts[jobItemGroup(item)]++;
+  const status = downloadStatus([job], { coolUntil });
+  $('#job-summary').textContent = `${status.title} · ${counts.downloaded} downloaded · ${counts.waiting} in progress · ${counts.failed} need attention`;
+  $('#job-history-note').hidden = job.historyComplete;
+  $('#job-history-note').textContent = 'This older job did not retain its complete work list. Only recorded works can be shown; the summary on Downloads still has its original counts.';
+  controls.textContent = '';
+  const action = (label, fn) => {
+    const b = document.createElement('button'); b.className = 'linkish'; b.textContent = label;
+    b.onclick = () => { fn(); paintJobDetail(); }; controls.append(b);
+  };
+  if (['running', 'listing', 'queued'].includes(job.state)) action('Pause job', () => jobs.pause(job.id));
+  if (['paused', 'pausing'].includes(job.state)) action('Resume job', () => jobs.resume(job.id));
+  if (['done', 'cancelled'].includes(job.state) && !isEpubJob(job)) action(job.unfinished ? 'Retry missing works' : 'Run again', () => runAgain(job));
+  if (!['done', 'cancelled'].includes(job.state)) action('Stop job', () => jobs.stop(job.id));
+  const filtered = job.items.filter(item => jobShowing.filter === 'all' || jobItemGroup(item) === jobShowing.filter);
+  jobShowing.page = Math.min(jobShowing.page, Math.max(0, Math.ceil(filtered.length / JOB_PAGE_SIZE) - 1));
+  for (const button of $$('#job-filters button')) {
+    const selected = button.dataset.jobFilter === jobShowing.filter;
+    button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected);
+  }
+  const start = jobShowing.page * JOB_PAGE_SIZE;
+  const items = filtered.slice(start, start + JOB_PAGE_SIZE);
+  const viewKey = `${job.id}:${jobShowing.filter}:${jobShowing.page}`;
+  if (box.dataset.view !== viewKey) { box.textContent = 'Loading works…'; box.dataset.view = viewKey; }
+  box.setAttribute('aria-busy', 'true');
+  $('#job-pages').hidden = filtered.length <= JOB_PAGE_SIZE;
+  $('#job-previous').disabled = !jobShowing.page;
+  $('#job-next').disabled = start + JOB_PAGE_SIZE >= filtered.length;
+  $('#job-page').textContent = `${start + 1}–${Math.min(start + JOB_PAGE_SIZE, filtered.length)} of ${filtered.length}`;
+  try {
+    const params = new URLSearchParams({ ids: items.map(item => item.workId).join('\t'), limit: String(JOB_PAGE_SIZE) });
+    const out = items.length ? await api(`/api/works?${params}`) : { works: [] };
+    if (request !== jobDetailRequest || showing() !== 'download-job') return;
+    if (out.error) throw new Error(out.error);
+    const works = new Map((out.works ?? []).map(work => [String(work.work_id), work]));
+    const fragment = document.createDocumentFragment();
+    for (const item of items) {
+      const work = works.get(String(item.workId));
+      const row = document.createElement('article'); row.className = 'job-work'; row.dataset.workId = item.workId;
+      const head = document.createElement('h2'); head.textContent = work?.title || item.title || `Work ${item.workId}`;
+      const by = document.createElement('p'); by.className = 'by';
+      by.textContent = work ? authorsOf(work.authors).join(', ') || 'Anonymous' : '';
+      const state = document.createElement('p'); state.className = 'job-work-state';
+      state.textContent = item.state === 'version' ? 'Imported as an earlier version'
+        : item.state === 'downloaded' ? (work?.has_text ? 'Downloaded · available to read' : 'Downloaded in this job · no current copy in your visible library')
+        : item.state === 'failed' ? `Could not download${work?.has_text ? ' · your saved copy is still available' : ''}`
+        : item.state === 'retrying' ? 'Waiting to retry'
+        : item.state === 'downloading' ? 'Downloading'
+        : ['paused', 'pausing'].includes(job.state) ? 'Paused'
+        : job.state === 'cancelled' ? 'Stopped before downloading' : 'Waiting to download';
+      row.append(head, by, state);
+      if (item.error) { const error = document.createElement('p'); error.className = 'job-error-detail'; error.textContent = item.error; row.append(error); }
+      if (work?.has_text) {
+        const actions = document.createElement('div'); actions.className = 'actions';
+        const read = document.createElement('button'); read.className = 'primary'; read.textContent = readingAction(work);
+        read.onclick = () => readWork(work);
+        const detail = document.createElement('button'); detail.className = 'linkish'; detail.textContent = 'Work details'; detail.onclick = () => openWork(work.work_id);
+        actions.append(read, detail); row.append(actions);
+      }
+      fragment.append(row);
+    }
+    if (!items.length) { const empty = document.createElement('p'); empty.className = 'empty'; empty.textContent = job.open ? 'Reading the list. Works will appear here as they are found.' : 'No recorded works in this view.'; fragment.append(empty); }
+    box.replaceChildren(fragment);
+  } catch (error) {
+    if (request !== jobDetailRequest || showing() !== 'download-job') return;
+    box.textContent = `Could not read this job’s works: ${error.message}`;
+  } finally {
+    if (request === jobDetailRequest) box.setAttribute('aria-busy', 'false');
+  }
+}
+for (const button of $$('#job-filters button')) button.onclick = () => {
+  jobShowing.filter = button.dataset.jobFilter; jobShowing.page = 0; paintJobDetail();
+};
+$('#job-previous').onclick = () => { jobShowing.page--; paintJobDetail(); };
+$('#job-next').onclick = () => { jobShowing.page++; paintJobDetail(); };
+
 function paintDownloadStatus() {
   const status = downloadStatus(jobs.list(), { coolUntil });
   $('#download-state').textContent = status.title;
@@ -2833,8 +2942,10 @@ function paintJobs() {
     const row = document.createElement('div');
     row.className = 'job-row';
 
-    const text = document.createElement('div');
-    text.className = 'job-text';
+    const text = document.createElement('button');
+    text.className = 'job-text job-open';
+    text.setAttribute('aria-label', `View works in ${job.author} · ${job.part}`);
+    text.onclick = () => openJob(job.id);
     const who = document.createElement('span');
     who.className = 'job-who';
     who.textContent = `${job.author} · ${job.part}`;
@@ -3007,6 +3118,10 @@ function storedQueue() {
 
 function resumeJobs() {
   for (const job of storedQueue()) {
+    if (job.state === 'done' || job.state === 'cancelled') {
+      jobs.restore(job);
+      continue;
+    }
     const ids = (job.workIds ?? []).map(String);
     /*
      * Which of these are actually downloaded — text and all.
@@ -3025,6 +3140,9 @@ function resumeJobs() {
       /* Asking is an optimisation; failing to ask is not a reason to abandon
          somebody's queue. The worst it costs is fetching something twice. */
     }
+    const originallyPending = new Set(ids), stillPending = new Set(left);
+    const items = (job.items ?? []).map(item => originallyPending.has(String(item.workId)) && !stillPending.has(String(item.workId))
+      ? { ...item, state: 'downloaded', error: null } : item);
     /*
      * A shelf of books cannot be picked up where it was put down.
      *
@@ -3038,7 +3156,7 @@ function resumeJobs() {
     if (isEpubJob(job)) {
       const says = (Number(job.added) || 0) + (Number(job.failed) || 0);
       if (says > 0 || job.say) {
-        jobs.restore({ ...job, workIds: [], open: false, state: 'done' });
+        jobs.restore({ ...job, items, workIds: [], open: false, state: 'done' });
       }
       continue;
     }
@@ -3052,13 +3170,11 @@ function resumeJobs() {
          0 of 0 and then save their zeros back over what they had done. */
       const says = (Number(job.total) || 0) + (Number(job.added) || 0)
         + (Number(job.failed) || 0);
-      if (says > 0) jobs.restore({ ...job, workIds: [] });
+      if (says > 0 || items.length) jobs.restore({ ...job, items, workIds: [], state: 'done' });
       continue;
     }
 
-    const id = jobs.add({
-      author: job.author, part: job.part, workIds: left, open: Boolean(job.open),
-    });
+    const id = jobs.restore({ ...job, items, workIds: left, open: Boolean(job.open) });
 
     /*
      * A job that was still reading an index goes back to reading it, from the
@@ -3724,7 +3840,10 @@ async function bringInEpubs(count) {
            a shelf go in should say which work is going in, not which file. */
         jobs.note(job, { say: `${where} · ${saidOf(book, name)}` });
 
-        const out = saveEpub(payloadFromEpub(book, name));
+        const payload = payloadFromEpub(book, name);
+        const out = saveEpub(payload);
+        jobs.record(job, { workId: payload.workId, title: book.title || name,
+          state: out.kept === 'version' ? 'version' : 'downloaded' });
         if (out.kept === 'version') versioned++; else added++;
         jobs.note(job, {
           say: `${where} · ${saidOf(book, name)} — `
