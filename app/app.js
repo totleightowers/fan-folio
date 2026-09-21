@@ -7,6 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
+import { downloadStatus } from './core/downloads.js';
 import { History, openingOffset } from './core/nav.js';
 import { parseEpub } from './core/epub.js';
 import { reachedTheEnd, chromeHidden, readingStatus } from './core/reading.js';
@@ -1849,7 +1850,7 @@ function paintStubs() {
   button.textContent = total > STUBS_AT_ONCE
     ? `Download the next ${fmt(STUBS_AT_ONCE)}` : 'Download them all';
   button.onclick = () => {
-    if (!signedIn()) { toast('Sign in to the archive first'); return; }
+    if (!signedIn()) { showAccountForDownloads(); return; }
     // read again rather than reusing the painted list: some may have arrived
     const queued = stubIds();
     if (!queued.length) { paintStubs(); return; }
@@ -2534,6 +2535,12 @@ for (const button of $$('#library-collections [data-collection]')) {
   };
 }
 
+function showAccountForDownloads() {
+  go('settings'); buildSettings();
+  $('#account').focus();
+  toast('Sign in to the archive to start this download.');
+}
+
 function openBookmarkSync() {
   goToTab('activity');
   $('#bookmark-sync').scrollIntoView({ block: 'start' });
@@ -2581,7 +2588,7 @@ function runAgain(job) {
     toast(`Queued ${fmt(queued.length)} works`);
     return;
   }
-  if (!isNative || !signedIn()) { toast('Sign in to the archive first'); return; }
+  if (!isNative || !signedIn()) { showAccountForDownloads(); return; }
   const part = job.part === 'bookmarks' ? 'bookmarks' : 'works';
   const id = jobs.add({ author: job.author, part, workIds: [], open: true });
   walkAuthor(job.author, { listing: part, jobId: id })
@@ -2735,7 +2742,21 @@ function queueSeries(plan) {
   return true;
 }
 
+function paintDownloadStatus() {
+  const status = downloadStatus(jobs.list(), { coolUntil });
+  $('#download-state').textContent = status.title;
+  $('#download-detail').textContent = status.detail;
+  $('#downloads-pause').hidden = !status.active;
+  $('#downloads-resume').hidden = !status.paused;
+}
+$('#downloads-pause').onclick = () => { window.__pauseAll(); paintJobs(); };
+$('#downloads-resume').onclick = () => { window.__resumeAll(); paintJobs(); };
+$('#downloads-library').onclick = () => openLibraryAs({ availability: 'held', sort: 'added' });
+$('#downloads-add').onclick = () => $('#add').click();
+setInterval(() => { if (showing() === 'activity') paintDownloadStatus(); }, 15000);
+
 function paintJobs() {
+  paintDownloadStatus();
   const box = $('#job-list');
   box.textContent = '';
   /* A job that reached the end of its list without getting everything is not
@@ -2748,7 +2769,7 @@ function paintJobs() {
      or to ask for it again. */
   /* What is happening, then what happened. A finished job below the running
      ones is a record; above them it is in the way. */
-  const RANK = { running: 0, queued: 1, listing: 1, paused: 2, done: 3, cancelled: 3 };
+  const RANK = { running: 0, queued: 1, listing: 1, paused: 2, pausing: 2, done: 3, cancelled: 3 };
   const list = jobs.list()
     .map((j, i) => [j, i])
     .sort((a, b) => (RANK[a[0].state] ?? 9) - (RANK[b[0].state] ?? 9) || a[1] - b[1])
@@ -2830,6 +2851,7 @@ function paintJobs() {
 
     const standing = counting ? ''
       : job.state === 'running' ? (job.parallel ? ' · running now' : ' · downloading')
+      : job.state === 'pausing' ? ' · pausing after this request'
       : job.state === 'paused' ? ' · paused'
       : job.state === 'cancelled' ? ' · stopped'
       : job.state === 'listing' ? ' · still reading the list'
@@ -2857,7 +2879,15 @@ function paintJobs() {
     }
     track.append(fill);
 
+    track.setAttribute('role', 'progressbar');
+    track.setAttribute('aria-label', `${job.author}: ${job.part}`);
+    track.setAttribute('aria-valuemin', '0'); track.setAttribute('aria-valuemax', '100');
+    if (!counting && job.total) track.setAttribute('aria-valuenow', String(Math.min(100, Math.round(job.done / job.total * 100))));
     text.append(who, how, track);
+    if (job.lastError) {
+      const error = document.createElement('p'); error.className = 'job-error-detail';
+      error.textContent = `Last error: ${job.lastError}`; text.append(error);
+    }
     row.append(text);
 
     const acts = document.createElement('div');
@@ -2871,6 +2901,10 @@ function paintJobs() {
       b.setAttribute('aria-label', label);
       b.title = label;
       b.append(icon(icon_, 'ic'));
+      if (['Pause', 'Resume', 'Stop'].includes(label) || icon_ === 'play') {
+        const caption = document.createElement('span');
+        caption.textContent = label.startsWith('Try ') ? 'Retry' : label === 'Ask for this again' ? 'Run again' : label; b.append(caption);
+      }
       b.onclick = () => { fn(); paintJobs(); };
       acts.append(b);
     };
@@ -3114,8 +3148,9 @@ let authorShowing = { name: null, which: 'works', offset: 0, total: 0 };
 
 function showAuthorAs(name, which) {
   currentAuthor = name;
-  authorShowing = { name, which, offset: 0, total: 0 };
   go('author', { author: name, which });
+  authorShowing = { name, which, offset: 0, total: 0 };
+  $('#author-management').open = false;
   paintAuthor();
   loadAuthorWorks(true);
 }
@@ -3125,6 +3160,8 @@ function paintAuthor() {
   const { name, which } = authorShowing;
   if (!name) return;
   $('#author-name').textContent = name;
+  $('#author-downloads').onclick = () => goToTab('activity');
+  paintAuthorCounts(name, which);
 
   const onBookmarks = which === 'bookmarks';
   $('#author-view-works').classList.toggle('on', !onBookmarks);
@@ -3137,39 +3174,7 @@ function paintAuthor() {
     else filterBy('author', name);
   };
 
-  const note = $('#author-known');
-  let held = 0;
-  let known = 0;
-  try {
-    const rows = JSON.parse(window.ArchiveNative.query(
-      'SELECT has_text, count(*) AS n FROM works WHERE authors LIKE ? ESCAPE \'\\\' GROUP BY has_text',
-      JSON.stringify([worksByPattern(name)])));
-    for (const r of rows.rows ?? []) {
-      if (Number(r.has_text) === 1) held = Number(r.n) || 0;
-      else known += Number(r.n) || 0;
-    }
-  } catch { /* the counts are a courtesy; the buttons still work */ }
-
-  const seen = seenAuthors[name] ?? {};
-  const checked = seen.works?.n != null || seen.bookmarks?.n != null;
-  if (onBookmarks) {
-    /*
-     * It fills in going forward.
-     *
-     * For anybody walked before this existed the list is empty, because the
-     * membership was discarded at the time and there is no way to recover it
-     * without reading their index again. Saying so is better than an empty
-     * screen that looks like a person who bookmarks nothing.
-     */
-    const n = bookmarkedByCount(name);
-    note.textContent = n
-      ? `${fmt(n)} work${n === 1 ? '' : 's'} in their bookmarks.`
-      : 'Nothing recorded yet. Syncing their bookmarks is what fills this in.';
-  } else {
-    note.textContent = `${fmt(held)} of theirs downloaded`
-      + (known ? `, ${fmt(known)} known but not` : '')
-      + (checked ? '. Checked before.' : '. Not checked against the archive yet.');
-  }
+  $('#author-known').textContent ||= 'Nothing recorded yet. Checking this library…';
 
   /*
    * This half, or both.
@@ -3198,7 +3203,7 @@ function paintAuthor() {
     button.disabled = going.length > 0;
     button.textContent = going.length ? sayJob(going) : label;
     button.onclick = () => {
-      if (!signedIn()) { toast('Sign in to the archive first'); return; }
+      if (!signedIn()) { showAccountForDownloads(); return; }
       catchUpOn(name, parts);
       toast(`Reading ${name}'s ${parts.join(' and ')}`);
       paintAuthor();
@@ -3210,6 +3215,23 @@ function paintAuthor() {
   rid.disabled = false;
   rid.textContent = 'Delete works and block author';
   rid.onclick = () => askToBlock(name);
+}
+
+let authorCountsRequest = 0;
+async function paintAuthorCounts(name, which) {
+  const request = ++authorCountsRequest;
+  const params = new URLSearchParams({ limit: '1', state: 'all' });
+  params.set(which === 'bookmarks' ? 'bookmarkedBy' : 'author', name);
+  try {
+    const [known, held] = await Promise.all([
+      api(`/api/works?${params}`), api(`/api/works?${params}&availability=held`),
+    ]);
+    if (request !== authorCountsRequest || authorShowing.name !== name || authorShowing.which !== which) return;
+    $('#author-known').textContent = `${fmt(known.total)} ${which === 'bookmarks' ? 'bookmarked works recorded' : 'works known'} · ${fmt(held.total)} downloaded.`;
+    if (!known.total) $('#author-known').textContent += ' Sync to discover their archive list.';
+  } catch {
+    if (request === authorCountsRequest) $('#author-known').textContent = 'Could not count local works. You can still browse or sync.';
+  }
 }
 
 /**
@@ -3241,10 +3263,12 @@ function sayJob(going) {
  * should find the library as they left it.
  */
 let loadingAuthor = false;
+let authorRequest = 0;
 
 async function loadAuthorWorks(reset = false) {
   const { name, which } = authorShowing;
-  if (!name || loadingAuthor) return;
+  if (!name || (loadingAuthor && !reset)) return;
+  const request = ++authorRequest;
   loadingAuthor = true;
   if (reset) { authorShowing.offset = 0; $('#author-works').textContent = ''; }
   $('#author-more').textContent = 'Loading…';
@@ -3259,6 +3283,7 @@ async function loadAuthorWorks(reset = false) {
     else params.set('author', name);
 
     const { works, total: n } = await api(`/api/works?${params}`);
+    if (request !== authorRequest) return;
     authorShowing.total = n;
     const box = $('#author-works');
     for (const w of works) box.append(workRow(w));
@@ -3279,9 +3304,9 @@ async function loadAuthorWorks(reset = false) {
           : 'Nothing of theirs here yet.');
     }
   } catch (e) {
-    $('#author-more').textContent = String(e.message ?? e);
+    if (request === authorRequest) $('#author-more').textContent = String(e.message ?? e);
   } finally {
-    loadingAuthor = false;
+    if (request === authorRequest) loadingAuthor = false;
   }
 }
 
@@ -3854,6 +3879,7 @@ let coolUntil = 0;
 /** The archive asked for room. Everything waits, not just whoever was told. */
 function slowDown(ms = 5 * 60_000) {
   coolUntil = Math.max(coolUntil, Date.now() + ms);
+  if (showing() === 'activity') paintDownloadStatus();
 }
 
 /*
@@ -3974,7 +4000,7 @@ function forgetArchiveUser() {
 async function reconcileAllBookmarks() {
   if (walkingBookmarks()) { toast('A bookmark list is already being read'); go('activity'); return; }
   if (!isNative) { toast('Syncing needs the app'); return; }
-  if (!signedIn()) { toast('Sign in to the archive first'); return; }
+  if (!signedIn()) { showAccountForDownloads(); return; }
 
   const id = jobs.add({ ...BOOKMARKS_ALL, workIds: [], open: true });
   paintSyncButtons();
@@ -4040,7 +4066,7 @@ async function runReconcile(id) {
 async function syncBookmarks() {
   if (walkingBookmarks()) { toast('A bookmark list is already being read'); go('activity'); return; }
   if (!isNative) { toast('Syncing needs the app'); return; }
-  if (!signedIn()) { toast('Sign in to the archive first'); return; }
+  if (!signedIn()) { showAccountForDownloads(); return; }
 
   const id = jobs.add({ ...BOOKMARKS_NEW, workIds: [], open: true });
   paintSyncButtons();

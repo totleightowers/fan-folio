@@ -171,18 +171,27 @@
     <h2 class="settings-title">Downloads</h2>
     <p class="setting-note">Your downloads and archive checks, in one place.</p>
 
-    <div class="setting-group">
-      <h3 class="group">Downloads</h3>
-      <p class="setting-note">Works waiting to be downloaded. Fan Folio asks the archive for one
-        at a time and waits about half a minute between, so a large author takes a while.</p>
-      <p class="setting-note">Tapping an author puts both jobs here straight away. Their list
-        of works is read a page at a time, so a job says it is reading before it can say
-        how many.</p>
-      <div id="job-list"></div>
-      <p class="setting-note">Prioritise moves a job to the front so it runs alongside the one
-        already going. Every request still waits its turn behind the same half minute, so this
-        changes the order things arrive in rather than how fast the archive is asked.</p>
+    <div class="download-overview">
+      <h3 id="download-state" aria-live="polite">Nothing downloading</h3>
+      <p id="download-detail" class="setting-note"></p>
+      <div class="download-controls">
+        <button id="downloads-pause" class="ghost" hidden>Pause all</button>
+        <button id="downloads-resume" class="primary" hidden>Resume all</button>
+        <button id="downloads-library" class="ghost">Read downloaded works</button>
+        <button id="downloads-add" class="ghost">Add works</button>
+      </div>
     </div>
+    <div id="job-list"></div>
+    <details class="download-help">
+      <summary>How downloading works</summary>
+      <p class="setting-note">Requests share a paced queue. Opening a work gives that work priority;
+        it still respects any cooldown requested by the archive. Prioritise changes the order
+        jobs are served without increasing the request rate.</p>
+      <p class="setting-note">Pause keeps your queue. Stop ends the job and keeps what arrived.
+        Completed jobs stay here so you can check the result or retry missing works.</p>
+      <p class="setting-note">Android may suspend downloads when the app is in the background.
+        Open Fan Folio to continue; downloaded works are kept for offline reading.</p>
+    </details>
 
     <div class="setting-group">
       <h3 class="group">Not downloaded</h3>
@@ -194,12 +203,6 @@
       -->
       <p class="setting-note" id="stub-count"></p>
       <button id="fetch-stubs" class="primary">Download them all</button>
-      <p class="setting-note">One at a time with a wait between, like everything else. It can be
-        paused or stopped from the list above, and it carries on where it left off.</p>
-      <p class="setting-note">While there is work to do, a notification shows what is happening
-        and can pause it. The download does not reliably survive leaving the app: what it has
-        already fetched is kept and the job resumes when you come back, but a long run needs
-        Fan&nbsp;Folio open to finish.</p>
     </div>
 
     <div id="bookmark-sync" class="setting-group">
@@ -281,6 +284,11 @@
   -->
   <section id="author" class="view" hidden>
     <h2 id="author-name" class="author-name"></h2>
+    <details id="author-management" class="author-manage">
+      <summary>Manage this author</summary>
+      <p class="setting-note">Removal and blocking are separate from syncing. You will review the affected works before confirming.</p>
+      <button id="author-block" class="ghost danger">Delete works and block author</button>
+    </details>
 
     <div class="author-tabs seg">
       <button id="author-view-works" class="on">Works</button>
@@ -293,14 +301,13 @@
       <div class="author-acts">
         <button id="author-sync-both" class="ghost">Sync both</button>
         <button id="author-see-all" class="ghost">See these in the library</button>
+        <button id="author-downloads" class="ghost">View downloads</button>
       </div>
     </div>
 
     <div id="author-works" class="list"></div>
     <div id="author-more" class="more"></div>
-    <div class="author-manage">
-      <button id="author-block" class="ghost danger">Delete works and block author</button>
-    </div>
+
   </section>
 
   <section id="library" class="view" hidden>

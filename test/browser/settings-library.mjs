@@ -206,6 +206,9 @@ try {
   await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).locator('.work-title-link').click();
   await page.locator('#detail [data-filter="author"]').first().click();
   await page.locator('#author').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#author-block').isVisible(), false, 'author removal stays behind explicit management');
+  await page.locator('#author-known').filter({ hasText: '3 works known · 2 downloaded' }).waitFor();
+  await page.locator('#author-management summary').click();
   for (const width of [390, 900]) {
     await page.setViewportSize({ width, height: 940 });
     for (const id of ['author-sync-both', 'author-see-all', 'author-block']) {
@@ -370,6 +373,31 @@ try {
   assert.equal(await page.locator('#library-density').inputValue(), 'compact', 'density choice persists');
   assert.equal(await page.locator('#availability').inputValue(), 'held', 'availability persists');
   await page.locator('#library-density').selectOption('expanded');
+  // Restored job records expose the outcome without issuing any network requests.
+  await page.evaluate(() => localStorage.setItem('fanfolio.jobs', JSON.stringify([
+    { author: 'Rowan', part: 'works', state: 'done', total: 3, added: 2, failed: 1,
+      unfinished: ['9999'], workIds: [], lastError: 'Archive request failed (525)', at: Date.now() },
+  ])));
+  await page.reload();
+  await page.locator('#tabs [data-tab="activity"]').click();
+  await page.locator('#download-state').filter({ hasText: 'Some works still need attention' }).waitFor();
+  assert.match(await page.locator('.job-error-detail').innerText(), /525/);
+  assert.equal(await page.locator('#downloads-pause').isVisible(), false);
+  assert.equal(await page.locator('#downloads-resume').isVisible(), false);
+  assert.equal(await page.locator('.download-help').evaluate(el => el.open), false);
+  await page.locator('.job-act[aria-label="Try the 1 that never arrived again"]').waitFor();
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 940 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await screenshot('v3-download-status-' + width, { fullPage: false });
+  }
+  await page.locator('#downloads-library').click();
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
+  assert.equal(await page.locator('#availability').inputValue(), 'held');
+  await page.locator('#works .author-link').first().click();
+  await page.locator('#author-sync-this').click();
+  await page.locator('#settings').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#account').isVisible(), true, 'signed-out sync leads to the account');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

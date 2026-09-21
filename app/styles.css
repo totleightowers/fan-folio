@@ -2602,3 +2602,15 @@ body:has(#reader:not([hidden])) #typo { display: none; }
 .library-options label { display: grid; min-width: 0; gap: .2rem; font-size: .8rem; color: var(--muted); }
 .library-options select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-field); min-height: 2.75rem; min-width: 0; padding: .4rem; flex: 1; }
 .author-link:active, .work-description:active > summary { opacity: .75; }
+
+.download-overview { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-card); padding: 1rem; margin: 1rem 0; }
+.download-overview h3 { font-size: 1.1rem; margin: 0 0 .5rem; }
+.download-controls { display: flex; flex-wrap: wrap; gap: .6rem; }
+.download-help { margin: 1rem 0 1.5rem; }
+.download-help > summary, .author-manage > summary { min-height: 3rem; padding-block: .7rem; color: var(--accent); cursor: pointer; }
+.download-help:active > summary, .author-manage:active > summary { opacity: .75; }
+#author .author-manage { margin: 0 0 1rem; padding: 0 .9rem; border: 1px solid var(--line-soft); border-radius: var(--r-card); }
+#author .author-manage[open] { padding-bottom: 1rem; }
+.job-error-detail { margin: .4rem 0 0; font-size: .8rem; color: var(--no); overflow-wrap: anywhere; }
+.job-acts { flex-wrap: wrap; }
+.job-act:has(span) { width: auto; display: flex; gap: .3rem; align-items: center; padding-inline: .55rem; }
