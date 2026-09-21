@@ -393,6 +393,29 @@ try {
     await page.setViewportSize({ width, height: 940 });
     await screenshot('v3-library-compact-' + width, { fullPage: false });
   }
+  // Choose → preview → read → return keeps the same filtered collection.
+  await page.locator('#works .work-title-link').filter({ hasText: 'The long way home' }).click();
+  await page.locator('#preview-story .work-title').waitFor();
+  assert.equal(await page.locator('#preview-library').isVisible(), true);
+  assert.equal(await page.locator('#preview-list button').count(), 2);
+  assert.match(await page.locator('#preview-story .work-summary').innerText(), /The final sentence stays visible/);
+  await page.locator('#preview-list button').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#preview-story .work-title').filter({ hasText: 'Letters from the coast' }).waitFor();
+  assert.match(await page.locator('#preview-story .saved-copy').innerText(), /Imported EPUB/);
+  await screenshot('v3-library-preview-tablet', { fullPage: false });
+  await page.locator('#preview-story .actions .primary').click();
+  await page.locator('#reader-head').waitFor({ state: 'visible' });
+  await page.locator('#to-work').click();
+  await page.locator('#preview-story .work-title').filter({ hasText: 'Letters from the coast' }).waitFor();
+  assert.equal(await page.locator('#preview-library').isVisible(), true, 'the reader returns to the same preview and collection');
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.locator('#preview-library').isVisible(), false);
+  assert.equal(await page.locator('#preview-return').isVisible(), true);
+  await screenshot('v3-library-preview-phone', { fullPage: false });
+  await page.locator('#preview-return').click();
+  await page.waitForFunction(() => !document.querySelector('#library').hidden && document.querySelectorAll('#works .work-card').length === 2);
+  assert.equal(await page.locator('#availability').inputValue(), 'held');
+  assert.equal(await page.locator('#library-density').inputValue(), 'compact');
   // A slow old filter response cannot replace the latest collection.
   let oldResponse;
   const oldArrived = new Promise(resolve => { oldResponse = resolve; });
@@ -549,6 +572,30 @@ try {
   const afterPeek = await (await fetch('http://127.0.0.1:18766/api/works/1')).json();
   assert.equal(afterPeek.at_chapter, 2, 'returning to a search peek cannot replace the reading chapter');
   assert.equal(afterPeek.offset, 125);
+  // A preview opened beyond the first batch returns to that batch and offset.
+  const largeLibrary = new DatabaseSync(dbPath);
+  const insert = largeLibrary.prepare("INSERT INTO works (work_id,title,authors,summary,has_text,chapter_count,words,complete) VALUES (?,?,?, ?,0,1,100,1)");
+  for (let n = 1; n <= 55; n++) insert.run(`epub-collection${n}`, `Collection story ${String(n).padStart(3, '0')}`, '["Rowan"]', 'A story in a large collection.');
+  largeLibrary.close();
+  await page.setViewportSize({ width: 900, height: 940 });
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-menu [data-go="library"]').click();
+  await page.locator('[data-collection="all"]').click();
+  await page.locator('#availability').selectOption('known');
+  await page.locator('#sort').selectOption('title');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length >= 50);
+  await page.locator('#more').scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 56);
+  const lastChoice = page.locator('#works .work-title-link').filter({ hasText: 'Collection story 055' });
+  await lastChoice.scrollIntoViewIfNeeded();
+  const collectionY = await page.evaluate(() => window.scrollY);
+  await lastChoice.click();
+  await page.locator('#preview-story .work-title').filter({ hasText: 'Collection story 055' }).waitFor();
+  assert.equal(await page.locator('#preview-list button').count(), 56);
+  await page.locator('#preview-return').click();
+  await page.waitForFunction(() => !document.querySelector('#library').hidden && document.querySelectorAll('#works .work-card').length === 56);
+  await page.waitForFunction(y => Math.abs(window.scrollY - y) < 3, collectionY);
+  assert.equal(await page.locator('#availability').inputValue(), 'known');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

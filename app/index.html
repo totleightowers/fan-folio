@@ -397,7 +397,17 @@
       The reader below still carries it, and should: that is where the
       archive's own words and an author's own skin are shown.
   -->
-  <section id="detail" class="view" hidden></section>
+  <section id="detail" class="view" hidden>
+    <button id="preview-return" class="linkish" hidden><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Back to your collection</button>
+    <div class="preview-layout">
+      <aside id="preview-library" aria-label="Works in this collection" hidden>
+        <p class="eyebrow">In this collection</p>
+        <p id="preview-count" class="setting-note"></p>
+        <div id="preview-list"></div>
+      </aside>
+      <article id="preview-story"></article>
+    </div>
+  </section>
 
   <section id="reader" class="view ao3page" hidden>
     <style id="workskin-css"></style>

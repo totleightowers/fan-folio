@@ -418,7 +418,10 @@ $('#reader-search').onclick = () => {
 function here() {
   const route = showing();
   const params = {};
-  if (route === 'detail' && currentWork) params.workId = String(currentWork.work_id);
+  if (route === 'detail' && currentWork) {
+    params.workId = String(currentWork.work_id);
+    if (previewCollection) params.collection = previewCollection;
+  }
   if (route === 'author' && authorShowing.name) {
     params.author = authorShowing.name;
     params.which = authorShowing.which;
@@ -469,7 +472,7 @@ function renderPlace(place, motion = 'back') {
   try {
     if (place.route === 'detail' && p.workId) {
       show('detail', motion);
-      ready = openWork(p.workId);
+      ready = openWork(p.workId, { collection: p.collection ?? null });
     } else if (place.route === 'reader' && p.workId) {
       show('reader', motion);
       ready = p.versionId ? openVersion(p.workId, p.versionId)
@@ -548,7 +551,9 @@ function goBack() {
  */
 function upToWork(workId) {
   if (!workId) return;
-  const parent = { route: 'detail', params: { workId: String(workId) } };
+  const previous = stack.peek();
+  const parent = previous?.route === 'detail' && previous.params?.workId === String(workId)
+    ? previous : { route: 'detail', params: { workId: String(workId) } };
   const { popped } = stack.up(here(), parent);
   if (popped) { renderPlace(popped, 'back'); return; }
   restoring = true;
@@ -683,6 +688,8 @@ let offset = 0;
 let total = 0;
 let loading = false;
 let libraryRequest = 0;
+let libraryRows = [];
+let previewCollection = null;
 
 /**
  * One work in the library list.
@@ -852,7 +859,7 @@ async function loadMore(reset = false, limit = 50) {
   if (loading && !reset) return;
   const request = ++libraryRequest;
   loading = true;
-  if (reset) { offset = 0; $('#works').textContent = ''; }
+  if (reset) { offset = 0; libraryRows = []; $('#works').textContent = ''; }
   $('#more').textContent = 'Loading…';
   try {
     const params = filterParams({ limit: String(limit), offset: String(offset) });
@@ -861,6 +868,7 @@ async function loadMore(reset = false, limit = 50) {
     total = n;
     const box = $('#works');
     for (const w of works) box.append(workRow(w));
+    libraryRows.push(...works.map(w => ({ work_id: String(w.work_id), title: w.title, authors: w.authors })));
     offset += works.length;
     $('#more').textContent = offset < total
       ? `${fmt(offset)} of ${fmt(total)}`
@@ -5310,13 +5318,56 @@ function workFacts(w) {
   return line;
 }
 
-async function openWork(workId) {
+/** A preview retains the collection it came from, including its loaded range. */
+function paintPreviewCollection(workId) {
+  const origin = previewCollection;
+  $('#preview-return').hidden = !origin;
+  $('#preview-library').hidden = !origin;
+  $('#detail').classList.toggle('from-collection', Boolean(origin));
+  const list = $('#preview-list');
+  const before = list.scrollTop;
+  list.replaceChildren();
+  if (!origin) return;
+  $('#preview-count').textContent = `${origin.works.length} loaded · ${fmt(origin.total)} in collection`;
+  for (const work of origin.works) {
+    const button = document.createElement('button'); button.className = 'preview-choice';
+    const selected = String(work.work_id) === String(workId);
+    if (selected) button.setAttribute('aria-current', 'true');
+    const title = document.createElement('strong'); title.textContent = work.title || '(untitled)';
+    const by = document.createElement('small'); by.textContent = authorsOf(work.authors).join(', ') || 'Anonymous';
+    button.append(title, by);
+    button.onclick = () => {
+      if (!selected) openWork(work.work_id, { collection: origin, replacePreview: true });
+    };
+    list.append(button);
+  }
+  list.scrollTop = before;
+}
+$('#preview-return').onclick = () => {
+  if (!previewCollection) return;
+  // A preview selection replaces the preview, so one Back still returns to the list.
+  const destination = { route: 'library', params: { filters: previewCollection.filters,
+    loaded: previewCollection.loaded }, tab: 'library', scrollY: previewCollection.scrollY };
+  if (stack.peek()?.route === 'library') stack.back();
+  renderPlace(destination, 'back');
+};
+
+async function openWork(workId, options = {}) {
+  const origin = showing() === 'library' ? {
+    filters: JSON.parse(JSON.stringify(view)), loaded: offset, total,
+    scrollY: window.scrollY, works: libraryRows.slice(),
+  } : showing() === 'detail' ? previewCollection : null;
+  const collection = Object.hasOwn(options, 'collection') ? options.collection : origin;
+
   /* Opening a second work before the first has answered must not let the
      first overwrite the second when it lands. */
   const token = ++pending;
   currentWork = null;
-  go('detail', { workId: String(workId) });
-  const box = $('#detail');
+  if (!options.replacePreview) go('detail', { workId: String(workId) });
+  else window.scrollTo(0, 0);
+  previewCollection = collection;
+  paintPreviewCollection(workId);
+  const box = $('#preview-story');
   box.replaceChildren(skeleton('title', 'line', 'line', 'meta', 'button'));
 
   let w;
@@ -5390,7 +5441,13 @@ async function openWork(workId) {
   const reading = readingStatus(w);
   const status = document.createElement('p');
   status.className = 'work-reading-state';
-  status.textContent = w.has_text ? readingLabel(w) : 'Downloading this work for offline reading…';
+  status.textContent = w.has_text ? readingLabel(w) : 'No saved chapters yet';
+  if (w.has_text) {
+    const copy = document.createElement('p'); copy.className = 'saved-copy';
+    const count = w.chapters.length;
+    copy.textContent = `${count} chapter${count === 1 ? '' : 's'} saved on this device${w.source === 'epub' ? ' · Imported EPUB' : ''}`;
+    head.append(copy);
+  }
   head.append(status);
   const actions = document.createElement('div');
   actions.className = 'actions';
@@ -5431,7 +5488,11 @@ async function openWork(workId) {
   }
   head.append(actions);
 
-  box.append(archiveActions(w));
+  const participation = document.createElement('section'); participation.className = 'work-participation';
+  const participationHeading = document.createElement('h2'); participationHeading.className = 'group';
+  participationHeading.textContent = 'Keep & share';
+  participation.append(participationHeading, archiveActions(w));
+  box.append(participation);
 
   /* Tags, each group labelled above its own chips rather than beside them.
      A relationship tag can be longer than the screen; given the whole width it
@@ -6086,6 +6147,7 @@ function keepAwake(on) {
  * lands on one is asking for that pan, not for a page turn.
  */
 function scrollsSideways(node, direction) {
+  if (node?.closest?.('#preview-library')) return true;
   for (let el = node; el && el !== document.body; el = el.parentElement) {
     const { scrollWidth, clientWidth, scrollLeft } = el;
     if (scrollWidth <= clientWidth + 4) continue;      // cheap test before styles

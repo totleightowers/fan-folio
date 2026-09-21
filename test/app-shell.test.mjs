@@ -2631,7 +2631,7 @@ test('a history entry describes a place, not a screen', () => {
 test('going back rebuilds the place rather than unhiding a screen', () => {
   const fn = js.slice(js.indexOf('function renderPlace('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /openWork\(p\.workId\)/, 'the work that entry names');
+  assert.match(body, /openWork\(p\.workId, \{ collection: p\.collection \?\? null \}\)/, 'the work that entry names');
   assert.match(body, /openChapter\(p\.workId, Number\(p\.chapter\) \|\| 1, \{ transient: Boolean\(p\.transient\) \}\)/, 'that chapter');
   assert.match(body, /runSearch\(p\.query\)/, 'that search');
   assert.match(body, /Object\.assign\(view, p\.filters\)/, 'those filters');
@@ -3050,7 +3050,7 @@ test('a rating and a language are ways into the library, not grey text', () => {
 });
 
 test('the language is not said twice', () => {
-  const open = js.slice(js.indexOf('async function openWork(workId)'));
+  const open = js.slice(js.indexOf('async function openWork(workId, options = {})'));
   const body = open.slice(0, open.indexOf('\n  if (!w.has_text) await fetchOnArrival'));
   assert.ok(!/detail\('Language'/.test(body),
     'it moved into the facts, where it can be pressed');
@@ -3079,7 +3079,7 @@ test('the chapters are on the page, and the wall of them is not', () => {
 });
 
 test('what a work is comes before how long it is', () => {
-  const open = js.slice(js.indexOf('async function openWork(workId)'));
+  const open = js.slice(js.indexOf('async function openWork(workId, options = {})'));
   const body = open.slice(0, open.indexOf('\n  if (!w.has_text) await fetchOnArrival'));
   const summary = body.indexOf("summary.className = 'work-summary'");
   const facts = body.indexOf('box.append(workFacts(w))');
