@@ -113,6 +113,11 @@ try {
   await page.locator('#works .work-title-link').first().waitFor();
   for (const [width, height, name] of [[390,844,'phone'], [320,720,'narrow'], [582,1280,'large-phone'], [900,900,'tablet']]) {
     await page.setViewportSize({ width, height });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all(document.getAnimations().filter(a => a.effect?.getTiming().iterations !== Infinity)
+        .map(a => a.finished.catch(() => {})));
+    });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal page overflow');
     assert.ok(await page.locator('#works .work-card').evaluateAll(cards => cards.every(card => {
       const box = card.getBoundingClientRect();
