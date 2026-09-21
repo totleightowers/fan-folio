@@ -1,0 +1,190 @@
+{
+  "baseline": "v2.10.4",
+  "commit": "7561274c93b37483d15e2f35604db57543a27904",
+  "fixture": "Synthetic library; external requests blocked; no native bridge",
+  "screens": [
+    {
+      "name": "01-home-phone",
+      "view": "home",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Home",
+      "height": 2112
+    },
+    {
+      "name": "02-work-from-continue",
+      "view": "detail",
+      "search": "Search every word held\u2026",
+      "selectedTab": "Home",
+      "height": 1937
+    },
+    {
+      "name": "03-versions",
+      "view": "detail",
+      "search": "Search every word held\u2026",
+      "selectedTab": "Home",
+      "height": 1937
+    },
+    {
+      "name": "04-reader-phone",
+      "view": "reader",
+      "search": "Search within this work\u2026",
+      "selectedTab": "Home",
+      "height": 3205
+    },
+    {
+      "name": "05-chapters",
+      "view": "reader",
+      "search": "Search within this work\u2026",
+      "selectedTab": "Home",
+      "height": 3205
+    },
+    {
+      "name": "06-reading-settings",
+      "view": "reader",
+      "search": "Search within this work\u2026",
+      "selectedTab": "Home",
+      "height": 3205
+    },
+    {
+      "name": "07-reader-menu",
+      "view": "reader",
+      "search": "Search within this work\u2026",
+      "selectedTab": "Home",
+      "height": 3205
+    },
+    {
+      "name": "08-search-from-home",
+      "view": "results",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Home",
+      "height": 849
+    },
+    {
+      "name": "09-library",
+      "view": "library",
+      "search": "Search this library\u2026",
+      "selectedTab": "Library",
+      "height": 6798
+    },
+    {
+      "name": "10-filters",
+      "view": "library",
+      "search": "Search this library\u2026",
+      "selectedTab": "Library",
+      "height": 6798
+    },
+    {
+      "name": "11-author-works",
+      "view": "author",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Library",
+      "height": 2113
+    },
+    {
+      "name": "12-author-bookmarks",
+      "view": "author",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Library",
+      "height": 7126
+    },
+    {
+      "name": "13-block-confirmation",
+      "view": "author",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Library",
+      "height": 7126
+    },
+    {
+      "name": "14-settings",
+      "view": "settings",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Library",
+      "height": 934
+    },
+    {
+      "name": "15-downloads-empty",
+      "view": "activity",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Library",
+      "height": 844
+    },
+    {
+      "name": "16-you",
+      "view": "you",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "You",
+      "height": 867
+    },
+    {
+      "name": "17-you-blocked-destination",
+      "view": "activity",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "You",
+      "height": 844
+    },
+    {
+      "name": "18-add",
+      "view": "home",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Home",
+      "height": 2112
+    },
+    {
+      "name": "19-home-tablet",
+      "view": "home",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Home",
+      "height": 1996
+    },
+    {
+      "name": "20-library-tablet",
+      "view": "library",
+      "search": "Search this library\u2026",
+      "selectedTab": "Library",
+      "height": 3748
+    },
+    {
+      "name": "21-reader-tablet",
+      "view": "reader",
+      "search": "Search within this work\u2026",
+      "selectedTab": "Home",
+      "height": 3173
+    },
+    {
+      "name": "22-reader-tablet-dark",
+      "view": "reader",
+      "search": "Search within this work\u2026",
+      "selectedTab": "Home",
+      "height": 3173
+    },
+    {
+      "name": "23-home-tablet-dark",
+      "view": "home",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Home",
+      "height": 1996
+    },
+    {
+      "name": "24-library-tablet-dark",
+      "view": "library",
+      "search": "Search this library\u2026",
+      "selectedTab": "Library",
+      "height": 3748
+    },
+    {
+      "name": "25-library-phone-dark",
+      "view": "library",
+      "search": "Search this library\u2026",
+      "selectedTab": "Library",
+      "height": 6798
+    },
+    {
+      "name": "26-settings-expanded-dark",
+      "view": "settings",
+      "search": "Search works, tags and text\u2026",
+      "selectedTab": "Library",
+      "height": 1383
+    }
+  ],
+  "browserErrors": []
+}
