@@ -2905,7 +2905,7 @@ test('a box that would not know what it was searching is not shown', () => {
   const names = set.slice(0, set.indexOf(');'));
   assert.ok(!/'activity'|'settings'|'setup'/.test(names),
     'search fell through to whatever scope was last in force on these');
-  assert.match(js, /\$\('#bar-gap'\)\.hidden = \(!\$\('#q'\)\.hidden && !slot\)/,
+  assert.match(js, /\$\('#bar-gap'\)\.hidden = !\$\('#q'\)\.hidden \|\| reader/,
     'and the bar keeps its shape without it');
 });
 

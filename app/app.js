@@ -270,7 +270,7 @@ function paintNowReading(name = showing()) {
   $('#now-reading').hidden = !nowReading || name === 'home' || !KEEPS_TABS.has(name);
   if (!nowReading) return;
   $('#now-reading-title').textContent = nowReading.title;
-  $('#now-reading-place').textContent = `Return to reading · Chapter ${nowReading.chapter}`;
+  $('#now-reading-place').textContent = `Return to the story · Chapter ${nowReading.chapter}`;
 }
 $('#now-reading').onclick = () => {
   if (nowReading) openChapter(nowReading.workId, nowReading.chapter);
@@ -343,8 +343,8 @@ function show(name, motion = 'none') {
   /* A work opened from the library is still the library, and the tab bar says
      so rather than going blank the moment you touch anything. */
   if (TABBED.has(name)) inTab = name;
-  for (const b of $$('#tabs button')) {
-    const selected = b.dataset.tab === (TABBED.has(name) ? name : inTab);
+  for (const b of $$('#tabs [data-tab]')) {
+    const selected = !name.startsWith('settings') && b.dataset.tab === (TABBED.has(name) ? name : inTab);
     b.classList.toggle('on', selected);
     if (selected) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   }
@@ -365,6 +365,7 @@ function show(name, motion = 'none') {
  * ago. A box with no meaning is not shown.
  */
 const SEARCHABLE = new Set(['home', 'library', 'results', 'detail', 'reader', 'author']);
+window.matchMedia?.(WIDE).addEventListener?.('change', () => paintChrome(showing()));
 
 /**
  * What the top bar offers, screen by screen.
@@ -382,7 +383,8 @@ function paintChrome(name) {
   $('#open-settings').hidden = name.startsWith('settings') || !KEEPS_TABS.has(name);
   $('#typo').hidden = name !== 'reader';
   const reader = name === 'reader';
-  const contextual = name === 'detail' || name === 'author';
+  const collection = name === 'home' || name === 'library';
+  const contextual = name === 'detail' || name === 'author' || (collection && !wideScreen());
   $('#context-search').hidden = !contextual;
   $('#context-search').setAttribute('aria-expanded', String(contextual && contextSearchOpen));
   $('#reader-context').hidden = !reader || readerSearchOpen;
@@ -392,14 +394,15 @@ function paintChrome(name) {
   $('#search-field').hidden = $('#q').hidden;
   /* The box is what stretches the bar; without it the controls would bunch up
      against the Back button with the rest of the width left empty. */
-  const slot = name === 'home' ? $('#home-search-slot') : name === 'library' ? $('#library-search-slot') : null;
-  if (slot) slot.append($('#search-field'));
-  else $('#bar').insertBefore($('#search-field'), $('#bar-gap'));
-  $('#bar-title').hidden = reader || (!slot && !$('#q').hidden);
-  $('#bar-title').textContent = ({ home: 'Fan Folio', library: 'Library', activity: 'Downloads',
+  $('#bar').classList.toggle('searching', !$('#q').hidden);
+  $('#bar-title').hidden = reader || (!wideScreen() && !$('#q').hidden);
+  $('#bar-title').textContent = ({ home: 'Home', library: 'Library', activity: 'Downloads',
     'download-job': 'Downloads', detail: 'Story', author: 'Author', settings: 'Settings' })[name]
-    || (name.startsWith('settings-') ? 'Settings' : 'Fan Folio');
-  $('#bar-gap').hidden = (!$('#q').hidden && !slot) || reader;
+    || (name.startsWith('settings-') ? 'Settings' : 'Search');
+  $('#bar-gap').hidden = !$('#q').hidden || reader;
+  $('#nav-settings').classList.toggle('on', name.startsWith('settings'));
+  if (name.startsWith('settings')) $('#nav-settings').setAttribute('aria-current', 'page');
+  else $('#nav-settings').removeAttribute('aria-current');
 }
 
 /**
@@ -790,6 +793,7 @@ function whenParts({ label, date }) {
 function workRow(w) {
   const node = document.createElement('div');
   node.className = 'work-card';
+  node.dataset.density = libraryDisplay.density;
   node.style.setProperty('--spine', spineColour(w.fandom || w.title));
   const p = progressOf(w);
   const tags = [w.fandom, w.relationship].filter(Boolean);
@@ -843,9 +847,7 @@ function workRow(w) {
   if (description) {
     description.open = libraryDisplay.density !== 'compact';
     description.onclick = e => e.stopPropagation();
-    node.append(description);
   }
-  by.after(node.querySelector('.rowactions'));
 
   const when = whenOf(w);
   if (when) node.querySelector('.work-when').append(...whenParts(when));
@@ -856,6 +858,9 @@ function workRow(w) {
     const pill = document.createElement('button');
     pill.className = 'tagpill';
     pill.textContent = t;
+    if (t === w.fandom) {
+      const dot = document.createElement('span'); dot.className = 'fandom-dot'; dot.setAttribute('aria-hidden', 'true'); pill.prepend(dot);
+    }
     pill.onclick = (e) => { e.stopPropagation(); openTag(t, null); };
     tagrow.append(pill);
   }
@@ -931,6 +936,7 @@ $('#library-density').value = libraryDisplay.density;
 $('#library-density').onchange = () => {
   libraryDisplay.density = $('#library-density').value;
   save('archive.library-display', libraryDisplay);
+  for (const row of $$('.work-card')) row.dataset.density = libraryDisplay.density;
   for (const description of $$('.work-description')) description.open = libraryDisplay.density !== 'compact';
 };
 $('#availability').value = view.availability || '';
@@ -1922,6 +1928,7 @@ function paintStubs() {
 }
 
 $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
+$('#nav-settings').onclick = () => { go('settings'); buildSettings(); };
 for (const button of $$('[data-settings-page]')) button.onclick = () => {
   go(`settings-${button.dataset.settingsPage}`); buildSettings();
 };
@@ -4803,6 +4810,9 @@ function resumeCard(w) {
   const card = document.createElement('article');
   card.className = 'card resume-card';
   card.style.setProperty('--spine', spineColour(w.fandom || w.title));
+  const fandom = document.createElement('p');
+  fandom.className = 'resume-fandom';
+  fandom.textContent = w.fandom || 'Your library';
   const title = document.createElement('button');
   title.className = 'work-title-link';
   title.textContent = w.title || '(untitled)';
@@ -4810,14 +4820,23 @@ function resumeCard(w) {
   const by = document.createElement('p');
   by.className = 'by';
   by.textContent = authorsOf(w.authors).join(', ') || 'Anonymous';
+  const footer = document.createElement('div'); footer.className = 'resume-footer';
   const position = document.createElement('p');
   position.className = 'resume-position';
   position.textContent = readingLabel(w);
   const resume = document.createElement('button');
-  resume.className = 'primary resume-action';
-  resume.textContent = w.has_text ? 'Resume' : 'Download to resume';
+  resume.className = 'resume-action';
+  resume.textContent = w.has_text ? 'Resume →' : 'Download to resume';
   resume.onclick = () => w.has_text ? readWork(w) : openWork(w.work_id);
-  card.append(title, by, position, resume);
+  footer.append(position, resume);
+  const progress = readingStatus(w);
+  const bar = document.createElement('div'); bar.className = 'bar';
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-label', 'Chapters read');
+  bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', String(progress.total));
+  bar.setAttribute('aria-valuenow', String(Math.min(progress.total, progress.read)));
+  const fill = document.createElement('div'); fill.style.width = `${progress.pct}%`; bar.append(fill);
+  card.append(fandom, title, by, footer, bar);
   return card;
 }
 
@@ -4870,6 +4889,7 @@ async function buildHome() {
   for (const [i, shelf] of shelves.entries()) {
     const section = document.createElement('section');
     section.className = shelf.key === 'reading' ? 'shelf reading-desk' : 'shelf';
+    section.dataset.shelf = shelf.key;
     section.innerHTML = '<div class="shelf-head"><h2></h2><span class="shelf-n"></span>'
       + '<button></button></div><div class="rail"></div>';
     section.querySelector('h2').textContent = shelf.title;
@@ -4877,13 +4897,13 @@ async function buildHome() {
     /*
      * How much of the shelf is not on the shelf.
      *
-     * Twelve at most, and nothing said so: twenty works on the go showed as
-     * twelve and the missing eight read as lost rather than folded away. The
-     * count is stated, and See all says how many it is about to show.
+     * Home offers a few choices without obscuring the size of the collection.
+     * The total and See all include every matching work, beyond this preview.
      */
     const total = Number(shelf.total ?? shelf.works.length);
-    const more = total > shelf.works.length;
-    section.querySelector('.shelf-n').textContent = more ? total : '';
+    const shown = shelf.works.slice(0, shelf.key === 'reading' ? 6 : 3);
+    const more = total > shown.length;
+    section.querySelector('.shelf-n').textContent = total;
     section.querySelector('.shelf-head button').textContent = more ? `See all ${total}` : 'See all';
 
     section.querySelector('.shelf-head button').onclick = () => {
@@ -4894,15 +4914,7 @@ async function buildHome() {
     };
     const rail = section.querySelector('.rail');
     rail.classList.toggle('resume-rail', shelf.key === 'reading');
-    for (const [index, w] of shelf.works.entries()) {
-      const card = shelf.key === 'reading' ? resumeCard(w) : workCard(w);
-      if (shelf.key === 'reading' && index === 0) {
-        card.classList.add('desk-lead');
-        const label = document.createElement('p'); label.className = 'eyebrow'; label.textContent = 'Pick up where you left off';
-        card.prepend(label);
-      }
-      rail.append(card);
-    }
+    for (const w of shown) rail.append(shelf.key === 'reading' ? resumeCard(w) : workCard(w));
     box.append(section);
     /* Collection totals follow the reading choices rather than interrupting them. */
     if (i === shelves.length - 1) box.append(stats);
@@ -4951,16 +4963,12 @@ function buildBrowse(browse) {
   box.textContent = '';
   if (!Object.keys(browse).length) return;
 
-  box.innerHTML = '<h2>Browse</h2><div class="browse-tabs"></div><div class="fandom-list"></div>';
-  const tabs = box.querySelector('.browse-tabs');
+  box.innerHTML = '<select id="browse-kind" aria-label="Browse by"></select><div class="fandom-list"></div>';
+  const tabs = box.querySelector('#browse-kind');
   const list = box.querySelector('.fandom-list');
 
   const paint = () => {
-    for (const b of tabs.children) {
-      const selected = b.dataset.kind === browseKind;
-      b.classList.toggle('on', selected);
-      b.setAttribute('aria-pressed', String(selected));
-    }
+    tabs.value = browseKind;
     list.textContent = '';
     for (const item of browse[browseKind] ?? []) {
       const b = document.createElement('button');
@@ -4983,14 +4991,13 @@ function buildBrowse(browse) {
 
   for (const [kind, label] of BROWSE_TABS) {
     if (!browse[kind]?.length) continue;
-    const b = document.createElement('button');
-    b.className = 'browse-tab';
-    b.dataset.kind = kind;
+    const b = document.createElement('option');
+    b.value = kind;
     b.textContent = label;
-    b.onclick = () => { browseKind = kind; paint(); };
     tabs.append(b);
   }
-  if (!browse[browseKind]?.length) browseKind = tabs.firstElementChild?.dataset.kind ?? 'fandom';
+  tabs.onchange = () => { browseKind = tabs.value; paint(); };
+  if (!browse[browseKind]?.length) browseKind = tabs.firstElementChild?.value ?? 'fandom';
   paint();
 }
 
@@ -6401,7 +6408,7 @@ function goToTab(tab) {
   // Home is refreshed by show(), the same way arriving at it any other way is
 }
 
-for (const b of $$('#tabs button')) b.onclick = () => goToTab(b.dataset.tab);
+for (const b of $$('#tabs [data-tab]')) b.onclick = () => goToTab(b.dataset.tab);
 
 $('#reader-more').onclick = () => openSheet($('#reader-menu'));
 for (const b of $$('#reader-menu [data-go]')) {

@@ -111,7 +111,8 @@
   <button id="context-search" class="icon" hidden aria-label="Search here" aria-expanded="false" aria-controls="search-field"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
   <button id="reader-search" class="icon" hidden aria-label="Search this work" aria-expanded="false" aria-controls="search-field"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
   <div id="search-field">
-    <label class="search-scope-label">Search
+    <svg class="ic search-mark" aria-hidden="true"><use href="#i-search"/></svg>
+    <label class="search-scope-label"><span class="scope-caption">Search</span>
       <select id="search-scope" aria-label="Search scope">
         <option value="everything">Everything saved</option>
         <option value="meta">Library · with filters</option>
@@ -129,7 +130,7 @@
   <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
 </header>
 
-<button id="now-reading" class="now-reading" hidden><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span><small id="now-reading-place">Return to reading</small><strong id="now-reading-title"></strong></span><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
+<button id="now-reading" class="now-reading" hidden><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span><small id="now-reading-place">Return to the story</small><strong id="now-reading-title"></strong></span><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
 <main id="main">
 
   <!-- first run: there is no archive to read yet -->
@@ -151,9 +152,7 @@
   </section>
 
   <!-- Fandom browsing first, followed by reading shelves and library totals. -->
-  <section id="home" class="view" hidden>
-    <header class="desk-heading"><div><p class="eyebrow">Your reading desk</p><h1>A little time for a story.</h1></div><img src="/folio-mark.svg" class="folio-mark" alt="" width="56" height="56"></header>
-    <div id="home-search-slot" class="page-search"></div>
+  <section id="home" class="view" aria-label="Home" hidden>
     <div id="fandoms" class="fandom-block"></div>
     <div id="shelves"></div>
     <!--
@@ -253,8 +252,7 @@
     </div>
   </section>
 
-  <section id="settings" class="view" hidden>
-    <header class="page-heading"><p class="eyebrow">Your space</p><h1>Make it yours.</h1></header>
+  <section id="settings" class="view" aria-label="Settings" hidden>
     <div class="settings-menu">
 <button class="settings-row" data-settings-page="appearance"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></span><span><strong>Appearance</strong><small>Light, dark, or colours of your own</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       <button class="settings-row" data-settings-page="reading"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-text"/></svg></span><span><strong>Reading</strong><small><span id="reading-summary"></span></small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
@@ -367,9 +365,8 @@
 
   </section>
 
-  <section id="library" class="view" hidden>
-    <header class="page-heading"><p class="eyebrow">Your collection</p><h1 class="library-title">Find your next story.</h1></header>
-    <div id="library-search-slot" class="page-search"></div>
+  <section id="library" class="view" aria-label="Library" hidden>
+    <div class="collection-header">
     <div id="library-collections" class="collection-tabs" role="group" aria-label="Library collections">
       <button class="chip" data-collection="all">All works</button>
       <button class="chip" data-collection="reading">Reading</button>
@@ -378,10 +375,12 @@
       <button class="chip" data-collection="bookmarked">AO3 bookmarks</button>
     </div>
     <button id="library-sync" class="ghost" hidden>Check your AO3 bookmarks</button>
+    </div>
     <div id="toolbar">
       <div class="toolrow">
+        <div id="count" class="count" aria-live="polite"></div>
         <button id="open-filters" class="filter-btn">
-          <svg class="ic" aria-hidden="true"><use href="#i-filters"/></svg><span>Filters</span><span id="filter-count" class="badge" hidden></span>
+          <svg class="ic" aria-hidden="true"><use href="#i-filters"/></svg><span>View &amp; filters</span><span id="filter-count" class="badge" hidden></span>
         </button>
         <label class="sort">
           <span>Sort</span>
@@ -402,12 +401,7 @@
           </select>
         </label>
       </div>
-      <div class="library-options">
-        <label>Show <select id="availability"><option value="">All availability</option><option value="held">Downloaded</option><option value="known">Not downloaded</option></select></label>
-        <label>View <select id="library-density"><option value="expanded">Full descriptions</option><option value="compact">Compact</option></select></label>
-      </div>
       <div id="active" class="active-filters"></div>
-      <div id="count" class="count"></div>
       <div id="chips" class="chips"></div>
     </div>
     <div id="works" class="list"></div>
@@ -487,10 +481,12 @@
   </section>
 </main>
 
-<nav id="tabs" hidden>
+<nav id="tabs" aria-label="Main navigation" hidden>
+  <span class="nav-brand" aria-label="Fan Folio">ff.</span>
   <button data-tab="home" class="on"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
   <button data-tab="library"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
   <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-download"/></svg>Downloads<span id="activity-dot" hidden></span></button>
+  <button id="nav-settings"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
 </nav>
 
 <dialog id="chapters-dialog" aria-labelledby="chapters-dialog-title">
@@ -621,9 +617,13 @@
 <dialog id="filters" aria-labelledby="filters-title">
   <div class="filter-head">
     <button class="close-x" data-close="filters" aria-label="Close">×</button>
-    <h2 id="filters-title">Filters</h2>
+    <h2 id="filters-title">View &amp; filters</h2>
     <span class="filter-head-spacer"></span>
   </div>
+      <div class="library-options">
+        <label>Show <select id="availability"><option value="">All availability</option><option value="held">Downloaded</option><option value="known">Not downloaded</option></select></label>
+        <label>View <select id="library-density"><option value="expanded">Full descriptions</option><option value="compact">Compact</option></select></label>
+      </div>
   <div id="filter-body"></div>
   <div class="filter-foot">
     <button id="clear-filters" class="ghost">Clear</button>

@@ -45,3 +45,12 @@ The browser fixture now covers a 56-work filtered collection, moving between tab
 The app icon is generated from one shape definition into Android vectors, every legacy launcher density and the in-app SVG. It remains legible as a monochrome adaptive mark.
 
 Implementation and browser verification are complete; physical Android validation remains explicitly separate. No connected Android device was available in this environment, so native Back, launchers, link handoff and file-picker behavior are not claimed from the browser fixtures.
+
+
+## Approved visual reset — 3.10
+
+The reading-desk presentation used oversized introductions and a double-height first card. The accepted replacement uses a compact search/navigation bar, flat collection rows, a small green accent and quieter fandom markers. Story titles and summaries provide the hierarchy; slogans and nested header panels are removed.
+
+Home has equal reading cards, a horizontal reading shelf on phones and a grid on tablets. A compact selector retains fandom, pairing, character, tag and rating browsing above the works. Secondary shelves offer a few stories with accurate totals and See all. Library starts with its collection tabs, count, sort and View & filters. Availability and description density move into that existing sheet, retaining their saved settings and full descriptions by default. Settings uses a single list of named destinations, and Downloads adopts the same lighter surface treatment.
+
+The bottom **Return to the story** pill is explicitly retained. Its existing action resumes the saved work, chapter and scroll position. It remains above phone navigation and at the bottom of tablet views, and stays out of the reader. It must never substitute a temporary search passage or an earlier copy for the saved place.

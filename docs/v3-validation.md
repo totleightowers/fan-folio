@@ -6,8 +6,8 @@ The initial six slices improved individual screens. The subsequent reading-first
 
 | Intent | v3 route | Coverage |
 |---|---|---|
-| Choose or resume | Home keeps fandom browsing above a prominent latest-reading choice and supporting coloured shelves. Resume opens the saved chapter; the title opens details. | Browser phone/tablet journeys; shared reading-state queries. |
-| Find and organise | Library has reading and collection shortcuts, independent availability, detailed filters, sorting and explicit search scope. Full descriptions remain the default; Compact offers a full-description disclosure. Tablet previews retain the loaded collection alongside the story, and phone previews return explicitly to the list. | 320–900px long-title/tag/summary checks, combined-query tests, saved density, delayed-response regression, and a 56-work filtered list with preserved scroll and loaded range. |
+| Choose or resume | Home keeps compact fandom/category browsing above equal reading cards and quieter story lists. Resume opens the saved chapter; the title opens details. | Browser phone/tablet journeys; shared reading-state queries. |
+| Find and organise | Library has reading and collection shortcuts, independent availability, detailed filters and density in View & filters, sorting and explicit search scope in the app bar. Full descriptions remain the default; Compact offers a full-description disclosure. Tablet previews retain the loaded collection alongside the story, and phone previews return explicitly to the list. | 320–900px long-title/tag/summary checks, combined-query tests, saved density, delayed-response regression, and a 56-work filtered list with preserved scroll and loaded range. |
 | Read and return | Work actions precede the full summary. Saved chapters and EPUB provenance are stated explicitly. Reading fills the screen at every size; other destinations offer a persistent return to the saved chapter. Reader offers work details, previous/contents/next, appearance, comments and More; a labelled search button exposes within-work search. | Phone/tablet controls through 1280px, chapter/end actions, search and Back. Existing gesture tests remain in place. |
 | Finish or reread | Starting again resets the current pass while retaining earlier completion. A new chapter creates a resume opportunity; caught-up unfinished works remain distinct from author-complete works. | Reading-state, atomic restart, older-database migration and backup merge tests. |
 | Add and follow progress | Add accepts work/chapter/series links and offers EPUBs or bookmark acquisition. Downloads opens each job into its individual waiting, successful, failed and earlier-version outcomes, preserving them across restart. Jobs retain pause/resume, retries and a direct route to readable works. | Browser entry routes and restored job records; queue-state unit fixtures. Network requests blocked. |
@@ -33,3 +33,10 @@ Each slice runs the logic suite, JavaScript parsing, browser journeys, native AP
 ## Physical-device follow-up
 
 The browser fixtures never contact AO3. Physical Android Back/edge gestures, TalkBack, device font scaling, app links, file pickers, installing an upgrade, sign-in, live archive forms, notification controls and long background downloads still need device checks. Fetch pacing, retry policy, archive authority and image/source rendering were retained. Their existing logic/build tests passed; this rollout does not claim new live-network validation.
+
+
+## 3.10 visual reset checks
+
+The existing browser journey now uses the compact search button on phones, the Settings rail entry on tablets and View & filters for availability and density. It checks alternate Home browse categories, bounds on the Home header, the phone reading shelf, and all previous full-description and preserved-collection journeys.
+
+A specific return-pill check leaves a transient search passage, opens Settings, verifies the pill clears phone navigation, and resumes the saved second chapter at its original scroll offset. The reader hides the pill while the chapter is open. The implementation does not alter fetch pacing, saved text, database layout or import state.

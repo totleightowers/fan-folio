@@ -63,6 +63,15 @@ try {
     if (!(await page.locator('#q').isVisible()) && await page.locator('#context-search').isVisible()) await page.locator('#context-search').click();
     await page.locator('#q').fill(query);
   };
+  const openSettings = async () => {
+    await page.locator(await page.locator('#nav-settings').isVisible() ? '#nav-settings' : '#open-settings').click();
+  };
+  const chooseLibraryOption = async (id, value) => {
+    await page.locator('#open-filters').click();
+    await page.locator('#' + id).selectOption(value);
+    await page.locator('#apply-filters').click();
+    await page.locator('#filters').waitFor({ state: 'hidden' });
+  };
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
@@ -76,12 +85,16 @@ try {
       const shelves = document.querySelector('#shelves').getBoundingClientRect();
       return browse.bottom <= shelves.top && document.documentElement.scrollWidth <= innerWidth;
     }), 'fandom filters sit above shelves without horizontal page overflow');
-    assert.equal(await page.locator('.browse-tab[data-kind="fandom"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await page.locator('#browse-kind').inputValue(), 'fandom');
+    assert.ok(await page.locator('#shelves').evaluate(el => el.getBoundingClientRect().top < 220), 'Home begins with stories, not a decorative header');
+    await page.locator('#browse-kind').selectOption('relationship');
+    assert.match(await page.locator('.fandom-list').innerText(), /Jeon Jungkook/);
+    await page.locator('#browse-kind').selectOption('fandom');
     assert.ok(await page.locator('.fandom-list .name').first().evaluate(el => el.scrollWidth <= el.clientWidth), 'short fandom names remain fully readable');
     await screenshot('home-' + width);
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#open-settings').click();
+  await openSettings();
   await page.locator('#reading-summary').filter({ hasText: 'Georgia' }).waitFor();
   await screenshot('settings-directory-phone');
   for (const name of ['appearance', 'account', 'library', 'recovery']) {
@@ -167,7 +180,7 @@ try {
     await screenshot(`library-${name}`);
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('#open-settings').click();
+  await openSettings();
   await page.locator('#settings [data-settings-page="reading"]').click();
   await page.locator('#open-typo').click();
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -307,7 +320,7 @@ try {
     await page.locator('#tabs [data-tab="activity"]').click();
     await page.locator('#activity').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#sync-now').count(), 1);
-    await page.locator('#open-settings').click();
+    await openSettings();
     await page.locator('#settings [data-settings-page="account"]').click();
     assert.equal(await page.locator('#settings-account #account').isVisible(), true);
     assert.equal(await page.locator('#tabs').isVisible(), true);
@@ -397,9 +410,12 @@ try {
   const resume = page.locator('.resume-card').filter({ hasText: 'The long way home' });
   await resume.filter({ hasText: 'Reading again' }).waitFor();
   assert.match(await resume.innerText(), /Reading again/);
-  assert.equal(await page.locator('.resume-card').first().evaluate(el => el.getBoundingClientRect().bottom <= el.nextElementSibling.getBoundingClientRect().top), true, 'phone reading choices form a vertical desk');
+  assert.equal(await page.locator('.resume-card').first().evaluate(el => {
+    const first = el.getBoundingClientRect(), next = el.nextElementSibling.getBoundingClientRect();
+    return Math.abs(first.top - next.top) < 2 && first.right <= next.left;
+  }), true, 'phone reading choices share a compact horizontal shelf');
   await screenshot('v3-resume-phone', { fullPage: false });
-  assert.equal(await page.locator('#now-reading').isVisible(), false, 'Home already offers Resume in the reading desk');
+  assert.equal(await page.locator('#now-reading').isVisible(), false, 'Home already offers the reading shelf');
   await resume.locator('.resume-action').click();
   await page.locator('#reader').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#detail').isVisible(), false, 'Resume goes directly to reading');
@@ -415,10 +431,10 @@ try {
   // Density never discards a description; independent filters survive the return journey.
   await page.locator('#tabs [data-tab="library"]').click();
   await page.locator('[data-collection="reading"]').click();
-  await page.locator('#availability').selectOption('held');
+  await chooseLibraryOption('availability', 'held');
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
   assert.equal(await page.locator('#active').innerText().then(s => /Reading/.test(s) && /Downloaded/.test(s)), true);
-  await page.locator('#library-density').selectOption('compact');
+  await chooseLibraryOption('library-density', 'compact');
   const story = page.locator('#works .work-card').filter({ hasText: 'The long way home' });
   assert.equal(await story.locator('.sum').isVisible(), false);
   await story.locator('.work-description summary').click();
@@ -468,9 +484,9 @@ try {
       await route.fulfill({ response });
     } else await route.continue();
   });
-  await page.locator('#availability').selectOption('known');
+  await chooseLibraryOption('availability', 'known');
   await oldArrived;
-  await page.locator('#availability').selectOption('held');
+  await chooseLibraryOption('availability', 'held');
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
   await page.waitForTimeout(550);
   assert.equal(await page.locator('#works .work-card').count(), 2);
@@ -479,7 +495,7 @@ try {
   await page.locator('#tabs [data-tab="library"]').click();
   assert.equal(await page.locator('#library-density').inputValue(), 'compact', 'density choice persists');
   assert.equal(await page.locator('#availability').inputValue(), 'held', 'availability persists');
-  await page.locator('#library-density').selectOption('expanded');
+  await chooseLibraryOption('library-density', 'expanded');
   // Restored job records expose the outcome without issuing any network requests.
   await page.evaluate(() => localStorage.setItem('fanfolio.jobs', JSON.stringify([
     { author: 'Rowan', part: 'works', state: 'done', total: 3, added: 2, failed: 1,
@@ -614,6 +630,22 @@ try {
   const afterPeek = await (await fetch('http://127.0.0.1:18766/api/works/1')).json();
   assert.equal(afterPeek.at_chapter, 2, 'returning to a search peek cannot replace the reading chapter');
   assert.equal(afterPeek.offset, 125);
+  // The return pill must leave a search peek and resume the saved chapter/offset.
+  await page.evaluate(() => window.scrollBy(0, -60));
+  await page.waitForFunction(() => !document.querySelector('#chapnav').classList.contains('away'));
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-menu [data-go="settings"]').click();
+  await page.locator('#now-reading').waitFor({ state: 'visible' });
+  assert.match(await page.locator('#now-reading-place').innerText(), /Return to the story · Chapter 2/);
+  assert.ok(await page.locator('#now-reading').evaluate(el => {
+    const pill = el.getBoundingClientRect(), tabs = document.querySelector('#tabs').getBoundingClientRect();
+    return pill.bottom <= tabs.top && pill.left >= 0 && pill.right <= innerWidth;
+  }), 'the return pill stays above phone navigation');
+  await page.locator('#now-reading').click();
+  await page.waitForFunction(() => document.querySelector('#workskin').textContent.includes('harbour was quiet'));
+  await page.waitForFunction(() => Math.abs(window.scrollY - 125) < 5);
+  assert.equal(await page.locator('#now-reading').isVisible(), false, 'the pill stays out of the reading page');
+
   // A preview opened beyond the first batch returns to that batch and offset.
   const largeLibrary = new DatabaseSync(dbPath);
   const insert = largeLibrary.prepare("INSERT INTO works (work_id,title,authors,summary,has_text,chapter_count,words,complete) VALUES (?,?,?, ?,0,1,100,1)");
@@ -623,7 +655,7 @@ try {
   await page.locator('#reader-more').click();
   await page.locator('#reader-menu [data-go="library"]').click();
   await page.locator('[data-collection="all"]').click();
-  await page.locator('#availability').selectOption('known');
+  await chooseLibraryOption('availability', 'known');
   await page.locator('#sort').selectOption('title');
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length >= 50);
   await page.locator('#more').scrollIntoViewIfNeeded();
@@ -639,7 +671,7 @@ try {
   await page.waitForFunction(y => Math.abs(window.scrollY - y) < 3, collectionY);
   assert.equal(await page.locator('#availability').inputValue(), 'known');
   // Updating a preview in place must not add a second copy to Back history.
-  await page.locator('#availability').selectOption('held');
+  await chooseLibraryOption('availability', 'held');
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
   await page.locator('#works .work-title-link').filter({ hasText: 'Letters from the coast' }).click();
   await page.locator('#preview-story button').filter({ hasText: /^Mark finished$/ }).click();

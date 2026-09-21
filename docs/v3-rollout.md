@@ -26,3 +26,8 @@ The Android package and signing key are retained. Validate each changed journey 
 The 3.2 reading migration adds `reading.completed_before` with a default of zero. Existing chapter positions and reading preferences remain intact. Starting again resets current progress atomically while remembering earlier completion; backup merges carry that fact with imported reading positions.
 
 The completed capability mapping and verification limits are recorded in [v3 journey validation](v3-validation.md).
+
+
+### 3.10 visual reset
+
+The approved visual prototype replaces the previous large page introductions and featured card with compact navigation/search, equal reading cards, a flat Library, a combined View & filters sheet and consistent Settings/Downloads surfaces. The persistent Return to the story pill remains a required part of the design. Delivered as one coherent visual-system change; no database migration is needed.
