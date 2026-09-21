@@ -512,7 +512,11 @@ function renderPlace(place, motion = 'back') {
   const expectedRoute = place.route;
   const expectedNavigation = navigationGeneration;
   Promise.resolve(ready).then(() => {
-    if (showing() === expectedRoute && navigationGeneration === expectedNavigation) requestAnimationFrame(() => window.scrollTo(0, place.scrollY ?? 0));
+    requestAnimationFrame(() => {
+      if (showing() !== expectedRoute || navigationGeneration !== expectedNavigation) return;
+      window.scrollTo(0, place.scrollY ?? 0);
+      if (expectedRoute === 'reader' && readingIsTransient) transientFrom = window.scrollY;
+    });
   });
 }
 
@@ -5830,7 +5834,9 @@ addEventListener('scroll', () => {
   updateProgress();
   quietenChrome();
   clearTimeout(posTimer);
+  const atNavigation = navigationGeneration;
   posTimer = setTimeout(() => {
+    if ($('#reader').hidden || atNavigation !== navigationGeneration) return;
     /* Far enough past where the search dropped you that this is no longer a
        glance at a passage but reading the work. */
     if (readingIsTransient && !transientForever

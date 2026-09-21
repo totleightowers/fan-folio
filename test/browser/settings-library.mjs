@@ -452,6 +452,25 @@ try {
   await page.locator('#back').click();
   await page.locator('#reader').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#search-field').isVisible(), false);
+  // A search peek remains transient when returning at a different viewport height.
+  await fetch('http://127.0.0.1:18766/api/progress?workId=1&chapter=2&offset=125', { method: 'POST' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#reader-search').click();
+  await page.locator('#q').fill('Afternoon');
+  await page.locator('#results .hit').first().click();
+  await page.locator('#workskin .userstuff').waitFor();
+  await page.evaluate(() => window.scrollTo(0, 550));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => window.scrollBy(0, -40));
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-menu [data-go="settings"]').click();
+  await page.setViewportSize({ width: 390, height: 480 });
+  await page.locator('#back').click();
+  await page.locator('#workskin .userstuff').waitFor();
+  await page.waitForTimeout(600);
+  const afterPeek = await (await fetch('http://127.0.0.1:18766/api/works/1')).json();
+  assert.equal(afterPeek.at_chapter, 2, 'returning to a search peek cannot replace the reading chapter');
+  assert.equal(afterPeek.offset, 125);
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
