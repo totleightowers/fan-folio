@@ -5395,9 +5395,13 @@ async function openWork(workId, options = {}) {
   /* Opening a second work before the first has answered must not let the
      first overwrite the second when it lands. */
   const token = ++pending;
-  currentWork = null;
-  if (!options.replacePreview) go('detail', { workId: String(workId) });
+  // Capture the current work before clearing its data. An in-place refresh is
+  // the same destination, including its collection, and must not add a Back step.
+  const destination = { workId: String(workId) };
+  if (collection) destination.collection = collection;
+  if (!options.replacePreview) go('detail', destination);
   else window.scrollTo(0, 0);
+  currentWork = null;
   previewCollection = collection;
   paintPreviewCollection(workId);
   const box = $('#preview-story');

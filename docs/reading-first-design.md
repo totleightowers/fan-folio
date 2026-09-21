@@ -38,7 +38,7 @@ Before calling the wider redesign complete, demonstrate those loops with full su
 
 ## Implemented departure
 
-The second pass implements the journeys above in addition to the earlier 3.0–3.5 changes. Saved-copy repair shipped in 3.5.1; persisted download results in 3.6.0; the reading desk, persistent return control, immersive tablet reader and new folded folio identity in 3.7.0. The collection preview and focused Settings destinations complete the implementation in the next two slices.
+The second pass implements the journeys above in addition to the earlier 3.0–3.5 changes. Saved-copy repair shipped in 3.5.1; persisted download results in 3.6.0; the reading desk, persistent return control, immersive tablet reader and new folded folio identity in 3.7.0. The collection preview in 3.8.0 and focused Settings destinations in 3.9.0 complete the implementation.
 
 The browser fixture now covers a 56-work filtered collection, moving between tablet previews, opening the saved imported copy, and returning from reading to that same preview and list position. Phone previews keep an explicit collection return. The independent reading and appearance pages share their preferences with the reader sheet. Backup/import, account and recovery retain their original handlers in named destinations.
 

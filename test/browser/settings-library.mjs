@@ -638,6 +638,14 @@ try {
   await page.waitForFunction(() => !document.querySelector('#library').hidden && document.querySelectorAll('#works .work-card').length === 56);
   await page.waitForFunction(y => Math.abs(window.scrollY - y) < 3, collectionY);
   assert.equal(await page.locator('#availability').inputValue(), 'known');
+  // Updating a preview in place must not add a second copy to Back history.
+  await page.locator('#availability').selectOption('held');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
+  await page.locator('#works .work-title-link').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#preview-story button').filter({ hasText: /^Mark finished$/ }).click();
+  await page.locator('#preview-story .actions .primary').filter({ hasText: 'Read again' }).waitFor();
+  await page.locator('#back').click();
+  await page.locator('#library').waitFor({ state: 'visible', timeout: 5000 });
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
