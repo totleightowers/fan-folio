@@ -2809,7 +2809,8 @@ async function paintJobDetail() {
   const counts = { downloaded: 0, waiting: 0, failed: 0 };
   for (const item of job.items) counts[jobItemGroup(item)]++;
   const status = downloadStatus([job], { coolUntil });
-  $('#job-summary').textContent = `${status.title} · ${counts.downloaded} downloaded · ${counts.waiting} in progress · ${counts.failed} need attention`;
+  $('#job-summary').textContent = isEpubJob(job) && job.say ? job.say
+    : `${status.title} · ${counts.downloaded} downloaded · ${counts.waiting} in progress · ${counts.failed} need attention`;
   $('#job-history-note').hidden = job.historyComplete;
   $('#job-history-note').textContent = 'This older job did not retain its complete work list. Only recorded works can be shown; the summary on Downloads still has its original counts.';
   controls.textContent = '';

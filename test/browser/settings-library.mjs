@@ -436,7 +436,8 @@ try {
   assert.equal(await page.locator('#job-works [data-work-id="2"]').count(), 0, 'a job only shows its own works');
   assert.match(await page.locator('#job-works [data-work-id="9999"]').innerText(), /525/);
   await page.locator('[data-job-filter="downloaded"]').click();
-  await page.locator('#job-works [data-work-id="9999"]').waitFor({ state: 'hidden' });
+  await page.locator('#job-works[aria-busy="false"]').waitFor();
+  assert.equal(await page.locator('#job-works [data-work-id="9999"]').count(), 0);
   assert.equal(await page.locator('#job-works .job-work').count(), 2);
   await page.locator('#job-works [data-work-id="epub-demo"] .primary').click();
   await page.waitForFunction(() => !document.querySelector('#reader').hidden && document.querySelector('#workskin').textContent.includes('Afternoon'));
