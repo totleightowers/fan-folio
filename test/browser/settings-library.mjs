@@ -33,6 +33,8 @@ db.prepare('UPDATE works SET summary=? WHERE work_id=?')
   .run('A long description with several sentences that should wrap naturally within the card. '.repeat(12) + 'The final sentence stays visible.', '1');
 db.exec("INSERT INTO chapter_fts(chapter_fts) VALUES('rebuild')");
 db.exec("INSERT INTO work_fts(rowid,work_id,title,authors,summary,tags) SELECT rowid,work_id,title,authors,summary,'' FROM works");
+db.prepare(`INSERT INTO chapter_versions (id,work_id,number,title,html,text,words,reason,archived_at)
+  VALUES (1,'1',1,'Earlier opening','<p>The older beginning.</p>','The older beginning.',4,'content','2026-08-01')`).run();
 db.close();
 const server = spawn(process.execPath, [new URL('../../tools/serve.mjs', import.meta.url).pathname], {
   cwd: dir, env: { ...process.env, FANFOLIO_DB: dbPath, PORT: '18766' }, stdio: ['ignore', 'pipe', 'inherit'],
@@ -126,6 +128,12 @@ try {
   await screenshot('library-light');
   await page.locator('#works .work-card').filter({ hasText: 'The long way home' }).locator('[data-act="open"]').click();
   await page.locator('#reader-head').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#search-field').isVisible(), false, 'the reading header starts quiet');
+  await page.locator('#reader-search').click();
+  assert.equal(await page.locator('#search-field').isVisible(), true);
+  assert.equal(await page.locator('#search-scope').inputValue(), 'work');
+  await page.locator('#reader-search').click();
+  assert.equal(await page.locator('#reader-search').getAttribute('aria-expanded'), 'false');
   await screenshot('reader-phone', { fullPage: false });
   await page.evaluate(() => window.scrollTo(0, 800));
   // Wait for the downward scroll to be handled before reversing direction.
@@ -137,9 +145,11 @@ try {
   assert.ok(await page.locator('#typography').evaluate(el => el.classList.contains('from-reader')));
   await page.locator('[data-face-choice="Literata"]').click();
   assert.ok((await page.locator('#workskin').evaluate(el => getComputedStyle(el).fontFamily)).includes('Literata'));
+  assert.equal(await page.locator('#workskin').evaluate(el => getComputedStyle(el).fontSize), '19px', 'reading text uses the chosen size rather than archive defaults');
   await screenshot('reader-controls', { reading: true, fullPage: false });
   await page.locator('#typography [data-close]').first().click();
   await page.locator('#typography').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.activeElement.id === 'reader-type');
   await page.locator('#read-next').scrollIntoViewIfNeeded();
   assert.equal(await page.locator('#next-title').textContent(), 'The way back');
   await page.screenshot({ path: 'ui-screenshots/reader-ending.png' });
@@ -165,6 +175,11 @@ try {
         && navigation.right <= tools.left && tools.right <= bar.right;
     });
     assert.ok(centred, 'chapter navigation stays centred without overlapping actions');
+    assert.ok(await page.evaluate(() => {
+      const prose = document.querySelector('#workskin').getBoundingClientRect();
+      const heading = document.querySelector('#reader-head').getBoundingClientRect();
+      return Math.abs(prose.x - heading.x) < 2 && Math.abs(prose.width - heading.width) < 2;
+    }), 'prose and heading share the chosen reading column');
     await screenshot('reader-tablet-' + name, { fullPage: false });
   }
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -398,6 +413,45 @@ try {
   await page.locator('#author-sync-this').click();
   await page.locator('#settings').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#account').isVisible(), true, 'signed-out sync leads to the account');
+  // Back to an earlier version preserves the copy and never changes current reading progress.
+  await page.locator('#tabs [data-tab="library"]').click();
+  await page.locator('[data-collection="all"]').click();
+  await page.locator('#works .work-title-link').filter({ hasText: 'The long way home' }).click();
+  await page.locator('#detail').getByRole('button', { name: 'Earlier versions (1)', exact: true }).click();
+  await page.locator('#versions-list .version-row').click();
+  await page.locator('#archive-banner').waitFor({ state: 'visible' });
+  await page.locator('#versions-dialog').waitFor({ state: 'hidden' });
+  const beforeVersion = await (await fetch('http://127.0.0.1:18766/api/works/1')).json();
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-menu [data-go="settings"]').click();
+  await page.locator('#reader-menu').waitFor({ state: 'hidden' });
+  await page.locator('#back').click();
+  await page.locator('#archive-banner').waitFor({ state: 'visible' });
+  await page.locator('#workskin').filter({ hasText: 'The older beginning' }).waitFor();
+  assert.match(await page.locator('#workskin').innerText(), /The older beginning/);
+  assert.equal(await page.locator('#next').isDisabled(), true);
+  const afterVersion = await (await fetch('http://127.0.0.1:18766/api/works/1')).json();
+  assert.equal(afterVersion.at_chapter, beforeVersion.at_chapter);
+  assert.equal(afterVersion.offset, beforeVersion.offset);
+  await page.locator('#ab-current').click();
+  await page.locator('#archive-banner').waitFor({ state: 'hidden' });
+  await page.locator('#rh-chapter').waitFor({ state: 'visible' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-menu').press('Escape');
+  await page.locator('#reader-menu').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.activeElement.id === 'reader-more');
+  assert.equal(await page.locator('dialog').evaluateAll(dialogs => dialogs.every(d =>
+    d.getAttribute('aria-labelledby') && document.getElementById(d.getAttribute('aria-labelledby'))?.textContent.trim())), true,
+    'every dialog has an accessible name');
+  await page.locator('#reader-search').click();
+  await page.locator('#q').fill('Afternoon');
+  await page.locator('#results .hit').first().waitFor();
+  assert.match(await page.locator('#results .search-context').innerText(), /current copy/);
+  await page.locator('#back').click();
+  await page.locator('#reader').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#search-field').isVisible(), false);
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

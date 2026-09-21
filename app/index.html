@@ -106,6 +106,8 @@
 
 <header id="bar">
   <button id="back" class="icon" hidden aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
+  <span id="reader-context" hidden>Reading</span>
+  <button id="reader-search" class="icon" hidden aria-label="Search this work" aria-expanded="false" aria-controls="search-field"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
   <div id="search-field">
     <label class="search-scope-label">Search
       <select id="search-scope" aria-label="Search scope">
@@ -131,18 +133,16 @@
   <section id="setup" class="view" hidden>
     <div class="setup-card">
       <h1>Welcome to Fan Folio</h1>
-      <p>Keep and read your archive offline: the works, their text, where you were in
-         each of them, and a search across every word held.</p>
+      <p>Bring in stories from AO3 or EPUB files, read offline, and return to your place.</p>
       <!--
           A first run could only say "find me a fanfolio.db", which assumes some
           other tool made one — and there is no other tool. Everything needed to
           fill a library is already here; only the empty file was missing.
       -->
       <button id="start-fresh" class="primary">Start a new library</button>
-      <p class="hint">Then sign in to the archive and fetch your bookmarks, or paste a
-         link to a work.</p>
-      <p class="hint">Already have a <code>fanfolio.db</code>?
-         <button id="import" class="linkish">Bring it in</button></p>
+      <p class="hint">Next, add an AO3 link, choose EPUB files, or sync your bookmarks.</p>
+      <p class="hint">Have a Fan Folio backup?
+         <button id="import" class="linkish">Import your library</button></p>
       <p class="hint" id="setup-hint"></p>
     </div>
   </section>
@@ -391,7 +391,7 @@
       <button id="read-next" class="primary"><span>Next chapter</span><strong id="next-title"></strong></button>
       <button id="ending-contents" class="ghost">All chapters</button>
     </div>
-    <nav id="chapnav">
+    <nav id="chapnav" aria-label="Reader controls"><div class="reader-toolbar">
       <button id="to-work" aria-label="Back to this work"><svg class="ic" aria-hidden="true"><use href="#i-work"/></svg></button>
       <div class="reader-navigation" role="group" aria-label="Chapter navigation">
       <button id="prev" aria-label="Previous chapter"><svg class="ic" aria-hidden="true"><use href="#i-prev"/></svg></button>
@@ -414,7 +414,7 @@
       <button id="reader-type" aria-label="Reading settings">Aa</button>
       <button id="reader-more" aria-label="More reader actions"><svg class="ic" aria-hidden="true"><use href="#i-more"/></svg></button>
       </div>
-    </nav>
+    </div></nav>
     <div id="progress"><div id="progress-bar"></div></div>
   </section>
 </main>
@@ -425,15 +425,15 @@
   <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-download"/></svg>Downloads<span id="activity-dot" hidden></span></button>
 </nav>
 
-<dialog id="chapters-dialog">
-  <h2>Chapters</h2>
+<dialog id="chapters-dialog" aria-labelledby="chapters-dialog-title">
+  <h2 id="chapters-dialog-title">Chapters</h2>
   <div id="chapter-list"></div>
   <button class="close" data-close="chapters-dialog">Done</button>
 </dialog>
 
-<dialog id="reader-menu">
+<dialog id="reader-menu" aria-labelledby="reader-menu-title">
   <!-- Secondary reading actions stay available here at every screen width. -->
-  <h2 class="rolled-up">On this work</h2>
+  <h2 id="reader-menu-title" class="rolled-up">On this work</h2>
   <div class="menu-list rolled-up">
     <button id="reader-kudos"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Leave kudos</button>
     <button id="reader-bookmark"><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg>Bookmark it</button>
@@ -455,8 +455,8 @@
   -->
 </dialog>
 
-<dialog id="addwork">
-  <h2>Add to your library</h2>
+<dialog id="addwork" aria-labelledby="addwork-title">
+  <h2 id="addwork-title">Add to your library</h2>
   <p class="addwork-hint">Paste an AO3 work, chapter or series link.</p>
   <input id="addwork-url" type="url" inputmode="url" spellcheck="false"
          autocomplete="off" placeholder="https://…/works/12345">
@@ -475,8 +475,8 @@
   </div>
 </dialog>
 
-<dialog id="delete-dialog">
-  <h2>Delete this work?</h2>
+<dialog id="delete-dialog" aria-labelledby="delete-dialog-title">
+  <h2 id="delete-dialog-title">Delete this work?</h2>
   <p id="del-what" class="setting-note"></p>
   <!--
       Said plainly, because this is the one control in the app that cannot be
@@ -492,8 +492,8 @@
   </div>
 </dialog>
 
-<dialog id="block-dialog">
-  <h2>Block <span id="block-who"></span>?</h2>
+<dialog id="block-dialog" aria-labelledby="block-dialog-title">
+  <h2 id="block-dialog-title">Block <span id="block-who"></span>?</h2>
   <p id="block-what" class="setting-note"></p>
   <!--
       Two halves of one want: not this person. Blocking alone leaves their
@@ -509,8 +509,8 @@
   </div>
 </dialog>
 
-<dialog id="versions-dialog">
-  <h2>Earlier versions</h2>
+<dialog id="versions-dialog" aria-labelledby="versions-dialog-title">
+  <h2 id="versions-dialog-title">Earlier versions</h2>
   <p class="setting-note">Copies kept when the author changed a chapter after we had it.
     They are not on the archive any more; this is the only place they exist.</p>
   <div id="versions-list"></div>
@@ -519,8 +519,8 @@
   </div>
 </dialog>
 
-<dialog id="bookmark-dialog">
-  <h2>Bookmark on the archive</h2>
+<dialog id="bookmark-dialog" aria-labelledby="bookmark-dialog-title">
+  <h2 id="bookmark-dialog-title">Bookmark on the archive</h2>
   <label class="stacked">Notes
     <textarea id="bm-notes" rows="3" placeholder="Why you kept it"></textarea>
   </label>
@@ -536,8 +536,8 @@
   </div>
 </dialog>
 
-<dialog id="comment-dialog">
-  <h2>Comment</h2>
+<dialog id="comment-dialog" aria-labelledby="comment-dialog-title">
+  <h2 id="comment-dialog-title">Comment</h2>
   <p class="setting-note">This is posted to the archive under your account, and authors are
     notified. It cannot be taken back from here.</p>
   <label class="stacked">Comment
@@ -550,10 +550,10 @@
   </div>
 </dialog>
 
-<dialog id="filters">
+<dialog id="filters" aria-labelledby="filters-title">
   <div class="filter-head">
     <button class="close-x" data-close="filters" aria-label="Close">×</button>
-    <h2>Filters</h2>
+    <h2 id="filters-title">Filters</h2>
     <span class="filter-head-spacer"></span>
   </div>
   <div id="filter-body"></div>
@@ -569,7 +569,8 @@
     <p class="sample">Afternoon light filled the room. She turned the page and read on.</p>
   </div>
   <div class="reading-controls">
-    <h3 class="group">Theme</h3>
+    <h3 class="group">App &amp; page colours</h3>
+    <p class="setting-note">Theme applies across Fan Folio. The text controls below change your reading pages.</p>
     <select id="theme" hidden aria-label="Theme"><option value="system">Follow system</option><option value="light">Light</option><option value="sepia">Sepia</option><option value="dark">Dark</option><option value="black">Black</option><option value="custom">Custom</option></select>
     <div class="theme-choices" role="group" aria-label="Theme">
       <button data-theme-choice="system"><span class="theme-swatch swatch-system">Aa</span>System</button>
@@ -578,7 +579,7 @@
       <button data-theme-choice="dark"><span class="theme-swatch swatch-dark">Aa</span>Dark</button>
       <button data-theme-choice="black"><span class="theme-swatch swatch-black">Aa</span>Black</button>
     </div>
-    <h3 class="group">Typeface</h3>
+    <h3 class="group">Reading typeface</h3>
     <div class="font-choices" role="group" aria-label="Offline typefaces">
       <button data-face-choice="Georgia" style="font-family:Georgia,serif">Georgia</button>
       <button data-face-choice="Literata" style="font-family:Literata,serif">Literata</button>

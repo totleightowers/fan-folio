@@ -292,11 +292,12 @@ const MOTION = { forward: 'in-forward', back: 'in-back', lateral: 'in-lateral' }
    animations disagreeing about the same movement. */
 let suppressMotion = false;
 let navigationGeneration = 0;
+let readerSearchOpen = false;
 
 function show(name, motion = 'none') {
   navigationGeneration++;
   let ready;
-  if (name !== 'reader') keepAwake(false);
+  if (name !== 'reader') { keepAwake(false); readerSearchOpen = false; }
   if (name !== 'results') {
     clearTimeout(searchTimer);
     searchRequest++;
@@ -337,7 +338,9 @@ function show(name, motion = 'none') {
      so rather than going blank the moment you touch anything. */
   if (TABBED.has(name)) inTab = name;
   for (const b of $$('#tabs button')) {
-    b.classList.toggle('on', b.dataset.tab === (TABBED.has(name) ? name : inTab));
+    const selected = b.dataset.tab === (TABBED.has(name) ? name : inTab);
+    b.classList.toggle('on', selected);
+    if (selected) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   }
   paintSearchPlaceholder();
   paintCollections();
@@ -372,11 +375,15 @@ function paintChrome(name) {
   $('#add').hidden = name === 'reader';
   $('#open-settings').hidden = name === 'settings' || !KEEPS_TABS.has(name);
   $('#typo').hidden = name !== 'reader';
-  $('#q').hidden = !SEARCHABLE.has(name);
+  const reader = name === 'reader';
+  $('#reader-context').hidden = !reader || readerSearchOpen;
+  $('#reader-search').hidden = !reader;
+  $('#reader-search').setAttribute('aria-expanded', String(reader && readerSearchOpen));
+  $('#q').hidden = !SEARCHABLE.has(name) || (reader && !readerSearchOpen);
   $('#search-field').hidden = $('#q').hidden;
   /* The box is what stretches the bar; without it the controls would bunch up
      against the Back button with the rest of the width left empty. */
-  $('#bar-gap').hidden = !$('#q').hidden;
+  $('#bar-gap').hidden = !$('#q').hidden || reader;
 }
 
 /**
@@ -390,6 +397,12 @@ function paintChrome(name) {
  * position. An entry now describes the place it came from, which is the only
  * thing Back ever needs to know.
  */
+$('#reader-search').onclick = () => {
+  readerSearchOpen = !readerSearchOpen;
+  paintChrome('reader');
+  if (readerSearchOpen) { paintSearchPlaceholder(); $('#q').focus(); }
+};
+
 /**
  * Where the reader is now, described well enough to be built again.
  *
@@ -410,6 +423,8 @@ function here() {
   if (route === 'reader' && current.workId) {
     params.workId = String(current.workId);
     params.chapter = Number(current.chapter) || 1;
+    if (current.versionId) params.versionId = current.versionId;
+    if (readingIsTransient) params.transient = true;
   }
   if (route === 'results') {
     params.query = $('#q').value;
@@ -453,7 +468,8 @@ function renderPlace(place, motion = 'back') {
       ready = openWork(p.workId);
     } else if (place.route === 'reader' && p.workId) {
       show('reader', motion);
-      ready = openChapter(p.workId, Number(p.chapter) || 1);
+      ready = p.versionId ? openVersion(p.workId, p.versionId)
+        : openChapter(p.workId, Number(p.chapter) || 1, { transient: Boolean(p.transient) });
     } else if (place.route === 'results' && p.query) {
       $('#q').value = p.query;
       searchInScope = p.scope || 'text';
@@ -689,6 +705,7 @@ function icon(name, className = 'ic') {
 function marks(w) {
   const mark = (name, className, label) => {
     const el = icon(name, `ic ic-inline ${className}`);
+    el.removeAttribute('aria-hidden');
     el.setAttribute('role', 'img');
     el.setAttribute('aria-label', label);   // the only thing that says so aloud
     return el;
@@ -1030,6 +1047,8 @@ async function buildFilterPanel() {
   const chip = (label, n, state, onclick) => {
     const b = document.createElement('button');
     b.className = `opt ${state}`;
+    b.setAttribute('aria-pressed', state === 'out' ? 'mixed' : String(Boolean(state)));
+    if (state === 'out') b.setAttribute('aria-label', `${label}, excluded`);
     b.innerHTML = '<span class="l"></span>' + (n == null ? '' : '<span class="n"></span>');
     b.querySelector('.l').textContent = label;
     if (n != null) b.querySelector('.n').textContent = n;
@@ -1053,9 +1072,11 @@ async function buildFilterPanel() {
       sel.textContent = selected.length === 1 ? selected[0] : `(${selected.length})`;
       sel.classList.add('has');
     }
+    el.querySelector('.sec-head').setAttribute('aria-expanded', String(openSections.has(key)));
     el.querySelector('.sec-head').onclick = () => {
       if (openSections.has(key)) openSections.delete(key); else openSections.add(key);
       el.classList.toggle('open');
+      el.querySelector('.sec-head').setAttribute('aria-expanded', String(openSections.has(key)));
     };
     fill(el.querySelector('.sec-body'));
     body.append(el);
@@ -2287,26 +2308,32 @@ function chapterName(title, number) {
  */
 async function openVersion(workId, versionId) {
   $('#chapter-ending').hidden = true;
+  $('#archive-banner').hidden = true;
   const token = ++pending;
   go('reader');
   $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line'));
   $('#reader-head').hidden = true;
 
-  let v;
+  let v; let work;
   try {
-    v = await api(`/api/works/${workId}/versions/${versionId}`);
+    [v, work] = await Promise.all([api(`/api/works/${workId}/versions/${versionId}`), api(`/api/works/${workId}`)]);
   } catch (e) {
     if (token === pending) $('#workskin').replaceChildren(failure(e.message, () => {}));
     return;
   }
   if (token !== pending) return;
 
+  clearTimeout(posTimer);
+  currentWork = work;
+  paintSearchPlaceholder();
   viewingArchive = true;
   /* An old copy of the text: an offset into it does not point at the same
      words in the copy you have now, so this one never expires. */
   readingIsTransient = true;
   transientForever = true;
-  current = { workId, chapter: v.number, count: v.number };
+  current = { workId, chapter: v.number, count: v.number, versionId };
+  $('#reader-context').textContent = `Earlier copy · chapter ${v.number}`;
+  $('#reader-context').title = work.title || 'Earlier copy';
 
   $('#workskin').classList.toggle('plain-prose', !v.css);
   $('#workskin-css').textContent = v.css || '';
@@ -3166,6 +3193,8 @@ function paintAuthor() {
   const onBookmarks = which === 'bookmarks';
   $('#author-view-works').classList.toggle('on', !onBookmarks);
   $('#author-view-bookmarks').classList.toggle('on', onBookmarks);
+  $('#author-view-works').setAttribute('aria-pressed', String(!onBookmarks));
+  $('#author-view-bookmarks').setAttribute('aria-pressed', String(onBookmarks));
   $('#author-view-works').onclick = () => showAuthorAs(name, 'works');
   $('#author-view-bookmarks').onclick = () => showAuthorAs(name, 'bookmarks');
 
@@ -4404,6 +4433,11 @@ function openSheet(d) {
   sheetHandle(d);
   dismissOnBackdrop(d);
   d.classList.remove('sheet-out');
+  const opener = document.activeElement;
+  const openedAt = navigationGeneration;
+  d.addEventListener('close', () => {
+    if (navigationGeneration === openedAt && opener?.isConnected && opener.getClientRects().length && !document.querySelector('dialog[open]')) opener.focus({ preventScroll: true });
+  }, { once: true });
   d.showModal();
   d.classList.add('sheet-in');
   d.addEventListener('animationend', () => d.classList.remove('sheet-in'), { once: true });
@@ -4862,14 +4896,12 @@ async function buildStartHere() {
   const later = document.createElement('button');
   later.className = 'start-tile';
   later.innerHTML = '<b>Marked for later</b><span>what you meant to get to</span>';
-  later.onclick = () => { view.state = 'later'; save(VIEW_KEY, view);
-    paintActiveFilters(); loadMore(true); show('library'); };
+  later.onclick = () => openLibraryAs({ collection: 'later' });
 
   const unread = document.createElement('button');
   unread.className = 'start-tile';
   unread.innerHTML = '<b>Never opened</b><span>the ones still waiting</span>';
-  unread.onclick = () => { view.state = 'unread'; save(VIEW_KEY, view);
-    paintActiveFilters(); loadMore(true); show('library'); };
+  unread.onclick = () => openLibraryAs({ state: 'unread' });
 
   row.append(pick, later, unread);
   box.append(row);
@@ -5152,6 +5184,8 @@ async function openWork(workId) {
   if (token !== pending) return;    // the reader has already gone elsewhere
 
   currentWork = w;
+  $('#reader-context').textContent = w.title || 'Reading';
+  $('#reader-context').title = w.title || 'Reading';
   paintSearchPlaceholder();
   // the database is authoritative; the local cache only remembers the exact
   // scroll offset, which is not worth a column of its own
@@ -5440,11 +5474,6 @@ let transientFrom = 0;
 let transientForever = false;
 
 async function openChapter(workId, number, { transient = false } = {}) {
-  readingIsTransient = transient;
-  transientFrom = window.scrollY;
-  transientForever = false;
-  viewingArchive = false;
-  $('#archive-banner').hidden = true;
   const token = ++pending;
   $('#chapter-ending').hidden = true;
 
@@ -5461,6 +5490,12 @@ async function openChapter(workId, number, { transient = false } = {}) {
     $('#chappos').textContent = '…';   // replaced once the chapter count is known
   }
 
+  readingIsTransient = transient;
+  transientFrom = window.scrollY;
+  transientForever = false;
+  viewingArchive = false;
+  $('#archive-banner').hidden = true;
+
   let w; let ch;
   try {
     w = currentWork?.work_id === workId ? currentWork : await api(`/api/works/${workId}`);
@@ -5474,6 +5509,8 @@ async function openChapter(workId, number, { transient = false } = {}) {
   if (token !== pending) return;
 
   currentWork = w;
+  $('#reader-context').textContent = w.title || 'Reading';
+  $('#reader-context').title = w.title || 'Reading';
   paintSearchPlaceholder();
 
   /* A scroll write is queued 400ms after the last scroll and keyed on whatever
@@ -6309,7 +6346,8 @@ $('#start-fresh').onclick = async () => {
     createDatabase();
     $('#setup-hint').textContent = '';
     await start();
-    toast('Library made. Sign in to fetch your bookmarks, or add a work.');
+    toast('Your library is ready. Add your first work.');
+    $('#add').click();
   } catch (e) {
     $('#setup-hint').textContent = e.message;
     button.disabled = false;

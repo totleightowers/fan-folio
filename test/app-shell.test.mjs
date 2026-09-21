@@ -826,12 +826,9 @@ test('the reader bar sits above anything sharing the bottom edge', () => {
  * threw its controls to opposite edges with a void between them, while the
  * prose sat in a 40em measure up the centre.
  */
-test('the chapter bar keeps to the reading measure', () => {
-  const rule = css.slice(css.indexOf('#chapnav {'), css.indexOf('}', css.indexOf('#chapnav {')));
-  assert.match(rule, /padding-inline:\s*max\([^)]*calc\(\(100% - var\(--read-width\)\)/,
-    'the controls are held to the same measure as the prose above them');
-  assert.ok(!/justify-content:\s*space-between/.test(rule),
-    'space-between across a tablet is what put an ocean between the controls');
+test('the chapter bar keeps to a centred reading measure', () => {
+  assert.match(css, /\.reader-toolbar\s*\{[^}]*width: min\(100%, var\(--read-width\), 44rem\)/);
+  assert.match(css, /\.reader-toolbar\s*\{[^}]*margin-inline: auto/);
 });
 
 test('the chapter bar is defined once', () => {
@@ -2647,7 +2644,7 @@ test('going back rebuilds the place rather than unhiding a screen', () => {
   const fn = js.slice(js.indexOf('function renderPlace('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /openWork\(p\.workId\)/, 'the work that entry names');
-  assert.match(body, /openChapter\(p\.workId, Number\(p\.chapter\) \|\| 1\)/, 'that chapter');
+  assert.match(body, /openChapter\(p\.workId, Number\(p\.chapter\) \|\| 1, \{ transient: Boolean\(p\.transient\) \}\)/, 'that chapter');
   assert.match(body, /runSearch\(p\.query\)/, 'that search');
   assert.match(body, /Object\.assign\(view, p\.filters\)/, 'those filters');
 
@@ -2898,7 +2895,7 @@ test('going to a tab does not throw away the way you came', () => {
 
 test('the reader has a way into the app that is not the Back button', () => {
   assert.match(html, /id="reader-more"/, 'a chapter had no route out but Back, repeated');
-  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu"'));
   const body = menu.slice(0, menu.indexOf('</dialog>'));
   for (const where of ['home', 'library', 'activity', 'settings']) {
     assert.match(body, new RegExp(`data-go="${where}"`), `${where} is reachable from a chapter`);
@@ -3161,7 +3158,7 @@ test('the download badge belongs to the Downloads destination', () => {
  * moment, about the thing on screen.
  */
 test('a chapter can be given kudos, bookmarked and commented on', () => {
-  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu"'));
   const body = menu.slice(0, menu.indexOf('</dialog>'));
   for (const act of ['reader-kudos', 'reader-bookmark', 'reader-comment']) {
     assert.ok(body.includes(`id="${act}"`), `${act} is reachable from a chapter`);
@@ -3170,7 +3167,7 @@ test('a chapter can be given kudos, bookmarked and commented on', () => {
   /* And on the bar, for the screens with room for them. Whichever is
      pressed, the same thing happens: two copies would be two things to keep
      in step. */
-  const bar = html.slice(html.indexOf('<nav id="chapnav">'));
+  const bar = html.slice(html.indexOf('<nav id="chapnav"'));
   const bbody = bar.slice(0, bar.indexOf('</nav>'));
   for (const act of ['kudos-here', 'bookmark-here', 'comment-here']) {
     assert.ok(bbody.includes(`id="${act}"`), `${act} is on the bar`);
@@ -3234,7 +3231,7 @@ test('and a job changing anywhere else reaches the person it is about', () => {
 });
 
 test('a sheet of destinations has no row that is not one', () => {
-  const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
+  const menu = html.slice(html.indexOf('<dialog id="reader-menu"'));
   const body = menu.slice(0, menu.indexOf('</dialog>'));
 
   /* Pressing outside closes it, and so does Back. A button saying "stay

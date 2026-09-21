@@ -252,7 +252,9 @@ body {
 /* ---------------------------------------------------------------- reader */
 
 #reader { padding-bottom: 6rem; }
-#workskin {
+.ao3page #workskin {
+  overflow-x: clip;
+  touch-action: pan-y;
   max-width: var(--read-width);
   margin: 0 auto;
   padding: var(--read-vmargin) var(--read-margin);
@@ -322,13 +324,7 @@ body {
   backdrop-filter: blur(8px); border-top: 1px solid var(--rule);
   padding-block: .6rem;
   padding-bottom: max(.6rem, env(safe-area-inset-bottom));
-  /* The bar spans the window so its background does, but the controls belong
-     to the column of text above them. On a wide screen a full-width
-     space-between threw them to opposite edges with a void in the middle,
-     while the prose sat in a 40em measure up the centre. They keep to that
-     measure now, and a phone is unaffected because the window is narrower
-     than it. */
-  padding-inline: max(.8rem, calc((100% - var(--read-width)) / 2));
+  padding-inline: .5rem;
   transition: translate var(--dur) var(--ease-out);
 }
 /* Out of the way while the page moves forwards, back the moment it moves
@@ -1852,10 +1848,6 @@ button:disabled, .opt:disabled {
  * gets a scroller of its own instead, which is where the sideways gesture
  * belongs anyway and where the page turn correctly defers to it.
  */
-.ao3page #workskin {
-  overflow-x: clip;
-  touch-action: pan-y;
-}
 
 /* Turning a page replaces the whole document body. The browser's scroll
    anchoring then tries to keep what was on screen on screen — which for a
@@ -2554,7 +2546,7 @@ body:has(#reader:not([hidden])) #typo { display: none; }
 /* Equal side columns keep chapter navigation centred in the reading area. */
 .reader-navigation, .reader-tools { display: contents; }
 @media (min-width: 44.01rem) {
-  #chapnav { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 1rem; }
+  #chapnav .reader-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 1rem; }
   #chapnav .reader-navigation, #chapnav .reader-tools { display: flex; align-items: center; gap: .5rem; }
   #chapnav .reader-tools { justify-self: end; }
   #chapnav button { border-color: transparent; background: transparent; min-width: 2.75rem; }
@@ -2614,3 +2606,13 @@ body:has(#reader:not([hidden])) #typo { display: none; }
 .job-error-detail { margin: .4rem 0 0; font-size: .8rem; color: var(--no); overflow-wrap: anywhere; }
 .job-acts { flex-wrap: wrap; }
 .job-act:has(span) { width: auto; display: flex; gap: .3rem; align-items: center; padding-inline: .55rem; }
+
+#reader-context { flex: 1; min-width: 0; font-family: var(--read-face); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#reader-search { flex: 0 0 auto; order: 2; }
+#chapnav .reader-toolbar { display: flex; align-items: center; gap: .35rem; width: min(100%, var(--read-width), 44rem); margin-inline: auto; }
+@media (min-width: 44.01rem) {
+  #chapnav .reader-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: .75rem; }
+}
+:where(button, input, select, summary, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#search-scope { min-height: 1.75rem; }
+.sec-head, .opts button { min-height: 2.75rem; }
