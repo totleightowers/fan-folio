@@ -4,8 +4,8 @@ The UI assessment is accepted for implementation. Each feature receives its own 
 
 | Release | Feature | Status |
 |---|---|---|
-| 3.0.0 | Home / Library / Downloads navigation; account in Settings; collection shortcuts; unified Add entry | Implemented; 611 tests and phone/tablet browser checks passed |
-| 3.1.0 | Explicit search scope and reliable query/return state | Planned |
+| 3.0.0 | Home / Library / Downloads navigation; account in Settings; collection shortcuts; unified Add entry | [Released](https://github.com/totleightowers/fan-folio/releases/tag/v3.0.0), [PR #186](https://github.com/totleightowers/fan-folio/pull/186) |
+| 3.1.0 | Explicit search scope and reliable query/return state | Implemented; scoped search, Back and response-race checks |
 | 3.2.0 | Direct resume, reading state and work-page priorities | Planned |
 | 3.3.0 | Coherent Library presentation and filters | Planned |
 | 3.4.0 | Download progress and author management journeys | Planned |

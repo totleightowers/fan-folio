@@ -289,6 +289,12 @@ let suppressMotion = false;
 
 function show(name, motion = 'none') {
   if (name !== 'reader') keepAwake(false);
+  if (name !== 'results') {
+    clearTimeout(searchTimer);
+    searchRequest++;
+    searchChoice = null;
+    $('#q').value = '';
+  }
   paintChrome(name);
   clearBackPreview();
   const entering = $(`#${name}`);
@@ -358,6 +364,7 @@ function paintChrome(name) {
   $('#open-settings').hidden = name === 'settings' || !KEEPS_TABS.has(name);
   $('#typo').hidden = name !== 'reader';
   $('#q').hidden = !SEARCHABLE.has(name);
+  $('#search-field').hidden = $('#q').hidden;
   /* The box is what stretches the bar; without it the controls would bunch up
      against the Back button with the rest of the width left empty. */
   $('#bar-gap').hidden = !$('#q').hidden;
@@ -398,14 +405,15 @@ function here() {
   if (route === 'results') {
     params.query = $('#q').value;
     params.scope = searchInScope;
-    if (current.workId && (searchInScope === 'work' || searchInScope === 'text')) {
-      params.workId = String(current.workId);
-    }
+    params.workId = searchWorkId;
+    params.workTitle = searchWorkTitle;
+    params.filters = searchFilters;
+    params.origin = searchOrigin;
   }
   /* Not a reference: the filters go on changing after this is recorded, and a
      place that changes underneath you is not a place. */
   if (route === 'library') params.filters = JSON.parse(JSON.stringify(view));
-  return { route, params, scrollY: window.scrollY, query: $('#q').value };
+  return { route, params, tab: inTab, scrollY: window.scrollY, query: route === 'results' ? $('#q').value : '' };
 }
 
 /* True while a place is being built again, so rebuilding it does not look
@@ -427,6 +435,7 @@ function go(name, params = {}) {
  */
 function renderPlace(place, motion = 'back') {
   const p = place.params ?? {};
+  if (TABBED.has(place.tab)) inTab = place.tab;
   restoring = true;
   try {
     if (place.route === 'detail' && p.workId) {
@@ -438,6 +447,10 @@ function renderPlace(place, motion = 'back') {
     } else if (place.route === 'results' && p.query) {
       $('#q').value = p.query;
       searchInScope = p.scope || 'text';
+      searchWorkId = p.workId || '';
+      searchWorkTitle = p.workTitle || '';
+      searchFilters = p.filters || [];
+      searchOrigin = p.origin || 'home';
       show('results', motion);
       runSearch(p.query);
     } else if (place.route === 'author' && p.author) {
@@ -468,7 +481,7 @@ function renderPlace(place, motion = 'back') {
     restoring = false;
   }
 
-  $('#q').value = place.query ?? '';
+  $('#q').value = place.route === 'results' ? (place.query ?? place.params?.query ?? '') : '';
   paintSearchPlaceholder();
   requestAnimationFrame(() => window.scrollTo(0, place.scrollY ?? 0));
 }
@@ -4335,8 +4348,24 @@ for (const d of $$('dialog')) draggableSheet(d);
 /* ----------------------------------------------------------------- search */
 
 let searchTimer;
+let searchRequest = 0;
+let searchChoice = null;
+let searchWorkId = '';
+let searchWorkTitle = '';
+let searchFilters = [];
+
+$('#search-scope').onchange = () => {
+  const scope = $('#search-scope').value;
+  if (showing() === 'results') searchInScope = scope;
+  else searchChoice = scope;
+  paintSearchPlaceholder();
+  clearTimeout(searchTimer);
+  if ($('#q').value.trim()) runSearch($('#q').value.trim());
+  else $('#q').focus();
+};
 $('#q').addEventListener('input', (e) => {
   clearTimeout(searchTimer);
+  searchRequest++; // Older responses cannot repaint while a newer query is being typed.
   const q = e.target.value.trim();
   // a keystroke is not a query; 42 million words deserve a moment's patience
   searchTimer = setTimeout(() => (q ? runSearch(q) : leaveSearch()), 250);
@@ -4353,9 +4382,11 @@ $('#q').addEventListener('input', (e) => {
  */
 function searchScope() {
   const here = VIEWS.find((v) => !$(`#${v}`).hidden) ?? searchOrigin;
+  if (here === 'results') return searchInScope;
+  if (searchChoice) return searchChoice;
   if (here === 'reader' || here === 'detail') return currentWork ? 'work' : 'text';
   if (here === 'library') return 'meta';
-  if (here === 'home' || here === 'browse') return 'everything';
+  if (here === 'home' || here === 'browse' || here === 'author') return 'everything';
   return searchInScope;
 }
 
@@ -4371,7 +4402,12 @@ const SCOPE_PLACEHOLDER = {
 let searchInScope = 'text';
 
 function paintSearchPlaceholder() {
-  $('#q').placeholder = SCOPE_PLACEHOLDER[searchScope()] ?? SCOPE_PLACEHOLDER.text;
+  const scope = searchScope();
+  $('#q').placeholder = SCOPE_PLACEHOLDER[scope] ?? SCOPE_PLACEHOLDER.text;
+  $('#search-scope').value = scope;
+  const workAvailable = showing() === 'results' ? Boolean(searchWorkId)
+    : ['reader', 'detail'].includes(showing()) && Boolean(currentWork);
+  $('#search-scope option[value="work"]').disabled = !workAvailable;
 }
 
 /**
@@ -4702,31 +4738,43 @@ async function buildStartHere() {
 }
 
 async function runSearch(q) {
-  // remember where searching started, so clearing the box can return there
-  const showing = VIEWS.find((v) => !$(`#${v}`).hidden);
-  if (showing && showing !== 'results') searchOrigin = showing;
+  const token = ++searchRequest;
+  const origin = showing();
   const scope = searchScope();
+  if (origin !== 'results') {
+    searchOrigin = origin;
+    searchWorkId = ['reader', 'detail'].includes(origin) ? String(currentWork?.work_id ?? '') : '';
+    searchWorkTitle = searchWorkId ? currentWork.title : '';
+    searchFilters = [...filterParams()];
+  }
   searchInScope = scope;
   const box = $('#results');
   box.innerHTML = '<div class="count">Searching…</div>';
-  go('results', { query: q, scope, workId: current.workId ? String(current.workId) : '' });
+  if (origin !== 'results') go('results', { query: q, scope, workId: searchWorkId });
+  paintSearchPlaceholder();
 
   const params = new URLSearchParams({ q, scope });
-  // searching the library searches *this* library: whatever is already
-  // filtered out stays out, which is what makes the box feel like it belongs
-  // to the shelf rather than to the whole archive
-  if (scope === 'meta') for (const [k, v] of filterParams()) params.set(k, v);
-  if (scope === 'work') params.set('workId', currentWork.work_id);
+  if (scope === 'meta') for (const [k, v] of searchFilters) params.set(k, v);
+  if (scope === 'work') params.set('workId', searchWorkId);
+  const stillHere = () => token === searchRequest && showing() === 'results';
 
   let data;
   try {
     data = await api(`/api/search?${params}`);
   } catch (e) {
+    if (!stillHere()) return;
     box.innerHTML = '<p class="empty"></p>';
     box.querySelector('.empty').textContent = e.message;
     return;
   }
+  if (!stillHere()) return;
   box.textContent = '';
+  const context = document.createElement('p');
+  context.className = 'search-context';
+  context.textContent = scope === 'work' ? `In “${searchWorkTitle}” · current copy`
+    : scope === 'meta' ? 'In your library · current library filters apply'
+    : scope === 'text' ? 'In all downloaded text' : 'Across your saved works, tags and downloaded text';
+  box.append(context);
   if (data.error) {
     box.innerHTML = '<p class="empty">Keep typing — that isn\'t a complete search yet.</p>';
     return;
@@ -4755,7 +4803,7 @@ async function runSearch(q) {
       const wider = document.createElement('button');
       wider.className = 'primary';
       wider.textContent = 'Search everything held instead';
-      wider.onclick = () => { searchOrigin = 'results'; searchInScope = 'text'; runSearch(q); };
+      wider.onclick = () => { searchInScope = 'everything'; runSearch(q); };
       box.append(wider);
     }
   }
@@ -4951,6 +4999,7 @@ async function openWork(workId) {
   /* Opening a second work before the first has answered must not let the
      first overwrite the second when it lands. */
   const token = ++pending;
+  currentWork = null;
   go('detail', { workId: String(workId) });
   const box = $('#detail');
   box.replaceChildren(skeleton('title', 'line', 'line', 'meta', 'button'));
@@ -4965,6 +5014,7 @@ async function openWork(workId) {
   if (token !== pending) return;    // the reader has already gone elsewhere
 
   currentWork = w;
+  paintSearchPlaceholder();
   // the database is authoritative; the local cache only remembers the exact
   // scroll offset, which is not worth a column of its own
   if (w.at_chapter && (!positions[workId] || positions[workId].chapter !== w.at_chapter)) {
@@ -5259,6 +5309,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
      page is not: the swipe is already carrying the old page off, and a
      skeleton flashing behind it would be noise rather than feedback. */
   const arriving = showing() !== 'reader';
+  if (String(currentWork?.work_id) !== String(workId)) currentWork = null;
   if (arriving) {
     go('reader', { workId: String(workId), chapter: Number(number) || 1 });
     $('#workskin').replaceChildren(skeleton('line', 'line', 'line', 'line', 'line', 'line'));
@@ -5280,6 +5331,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
   if (token !== pending) return;
 
   currentWork = w;
+  paintSearchPlaceholder();
 
   /* A scroll write is queued 400ms after the last scroll and keyed on whatever
      `current` says when it fires. Changing `current` with one still pending

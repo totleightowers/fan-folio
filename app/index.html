@@ -106,7 +106,17 @@
 
 <header id="bar">
   <button id="back" class="icon" hidden aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
-  <input id="q" type="search" placeholder="Search your archive…" autocomplete="off" spellcheck="false">
+  <div id="search-field">
+    <label class="search-scope-label">Search
+      <select id="search-scope" aria-label="Search scope">
+        <option value="everything">Everything saved</option>
+        <option value="meta">Library · with filters</option>
+        <option value="text">All downloaded text</option>
+        <option value="work">This work</option>
+      </select>
+    </label>
+    <input id="q" type="search" aria-label="Search query" placeholder="Find a work, tag or phrase…" autocomplete="off" spellcheck="false">
+  </div>
   <!-- Holds the width open on the screens where the search box has no meaning
        and is not shown, so the controls stay where the hand expects them. -->
   <span id="bar-gap" hidden></span>

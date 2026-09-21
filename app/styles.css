@@ -2574,3 +2574,10 @@ body:has(#reader:not([hidden])) #typo { display: none; }
 #library-sync { margin-bottom: 1rem; }
 .add-sources { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--rule); }
 #bookmark-sync { scroll-margin-top: 5rem; }
+
+/* Scope stays visible after the placeholder has become a query. */
+#search-field { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: var(--r-panel); background: var(--sunken); padding: .2rem .65rem .35rem; }
+.search-scope-label { display: flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .72rem; }
+#search-scope { flex: 1; min-width: 0; max-width: 100%; font: inherit; color: var(--ink-mid); background: transparent; border: 0; padding: .15rem 0; }
+#search-field #q { box-sizing: border-box; width: 100%; border: 0; background: transparent; padding: .15rem 0; border-radius: 0; outline-offset: 2px; }
+.search-context { font-size: .85rem; color: var(--muted); margin: .7rem 0; overflow-wrap: anywhere; }

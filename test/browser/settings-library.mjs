@@ -31,6 +31,8 @@ db.prepare('INSERT INTO tags (work_id,kind,name) VALUES (?,?,?)')
   .run('1', 'relationship', 'Jeon Jungkook/Jung Hoseok | J-Hope/Kim Namjoon | RM/Min Yoongi | Suga/Park Jimin');
 db.prepare('UPDATE works SET summary=? WHERE work_id=?')
   .run('A long description with several sentences that should wrap naturally within the card. '.repeat(12) + 'The final sentence stays visible.', '1');
+db.exec("INSERT INTO chapter_fts(chapter_fts) VALUES('rebuild')");
+db.exec("INSERT INTO work_fts(rowid,work_id,title,authors,summary,tags) SELECT rowid,work_id,title,authors,summary,'' FROM works");
 db.close();
 const server = spawn(process.execPath, [new URL('../../tools/serve.mjs', import.meta.url).pathname], {
   cwd: dir, env: { ...process.env, FANFOLIO_DB: dbPath, PORT: '18766' }, stdio: ['ignore', 'pipe', 'inherit'],
@@ -244,6 +246,60 @@ try {
     await page.locator('#activity').waitFor({ state: 'visible' });
     await screenshot('v3-downloads-' + width);
   }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#tabs [data-tab="home"]').click();
+  await page.locator('#q').fill('Afternoon');
+  await page.locator('#results .hit').first().waitFor();
+  assert.equal(await page.locator('#search-scope').inputValue(), 'everything');
+  assert.equal(await page.locator('#search-scope option[value="work"]').evaluate(el=>el.disabled), true);
+  await page.locator('#search-scope').selectOption('meta');
+  await page.locator('#results .work-card').first().waitFor();
+  await page.locator('#tabs [data-tab="library"]').click();
+  assert.equal(await page.locator('#q').inputValue(), '', 'a tab does not wear an old search query');
+  await page.locator('#back').click();
+  await page.locator('#results .work-card').first().waitFor();
+  assert.equal(await page.locator('#q').inputValue(), 'Afternoon');
+  assert.equal(await page.locator('#tabs button.on').getAttribute('data-tab'), 'home', 'Back restores the originating section');
+  assert.equal(await page.locator('#search-scope').inputValue(), 'meta');
+  await page.locator('#results .work-title-link').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#detail .work-title').waitFor();
+  assert.equal(await page.locator('#search-scope').inputValue(), 'work');
+  assert.equal(await page.locator('#q').inputValue(), '');
+  await page.locator('#q').fill('Afternoon');
+  await page.locator('#results .hit').first().waitFor();
+  assert.equal(await page.locator('#results .hit').count(), 1);
+  assert.match(await page.locator('#results .search-context').innerText(), /Letters from the coast/);
+  await page.locator('#back').click();
+  await page.locator('#detail').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#q').inputValue(), '');
+  await page.locator('#back').click();
+  await page.locator('#results .work-card').first().waitFor();
+  assert.equal(await page.locator('#search-scope').inputValue(), 'meta');
+  await page.locator('#search-scope').selectOption('everything');
+  await page.locator('#results .hit').first().waitFor();
+  let releaseSlow;
+  const slow = new Promise(resolve => { releaseSlow = resolve; });
+  await page.route('**/api/search?**', async route => {
+    if (new URL(route.request().url()).searchParams.get('q') !== 'slow') return route.continue();
+    await slow;
+    return route.fulfill({ json: { works: [], tags: [], hits: [{ work_id: '1', number: 1, title: 'Stale response', snippet: 'Old result' }] } });
+  });
+  const requested = page.waitForRequest(r => r.url().includes('/api/search?') && new URL(r.url()).searchParams.get('q') === 'slow');
+  await page.locator('#q').fill('slow');
+  await requested;
+  await page.locator('#q').fill('Afternoon');
+  await page.locator('#results .hit').first().waitFor();
+  const replied = page.waitForResponse(r => r.url().includes('/api/search?') && new URL(r.url()).searchParams.get('q') === 'slow');
+  releaseSlow();
+  await replied;
+  await page.waitForTimeout(100);
+  assert.doesNotMatch(await page.locator('#results').innerText(), /Stale response/);
+  await screenshot('v3-search-phone', { fullPage: false });
+  await page.locator('#q').fill('harbour');
+  await page.locator('#tabs [data-tab="library"]').click();
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('#library').isVisible(), true, 'leaving cancels a pending search');
+  assert.equal(await page.locator('#q').inputValue(), '');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
