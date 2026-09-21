@@ -59,6 +59,10 @@ try {
     if (reading) await page.locator('#typography').evaluate(el => { el.scrollTop = 0; });
     await page.screenshot({ path: `ui-screenshots/${name}.png`, fullPage });
   };
+  const fillSearch = async (query) => {
+    if (!(await page.locator('#q').isVisible()) && await page.locator('#context-search').isVisible()) await page.locator('#context-search').click();
+    await page.locator('#q').fill(query);
+  };
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
@@ -79,11 +83,46 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#open-settings').click();
   await page.locator('#reading-summary').filter({ hasText: 'Georgia' }).waitFor();
+  await screenshot('settings-directory-phone');
+  for (const name of ['appearance', 'account', 'library', 'recovery']) {
+    await page.locator(`#settings [data-settings-page="${name}"]`).click();
+    await page.locator(`#settings-${name}`).waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#search-field').isVisible(), false);
+    if (name === 'appearance') {
+      await page.locator('#settings-appearance [data-theme-choice="sepia"]').click();
+      assert.equal(await page.locator('html').getAttribute('data-theme'), 'sepia');
+      await page.locator('#settings-appearance details summary').click();
+      await page.locator('[data-reading-pref="bg"]').fill('#f1e9da');
+      assert.equal(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(241, 233, 218)');
+      await page.locator('#settings-appearance [data-theme-choice="light"]').click();
+    }
+    if (name === 'library') {
+      assert.equal(await page.locator('#backup').isVisible(), true);
+      assert.equal(await page.locator('#import-replace').isVisible(), true);
+      assert.equal(await page.locator('#import-epubs').isVisible(), true);
+    }
+    if (name === 'recovery') {
+      await page.locator('#settings-recovery summary').first().click();
+      assert.equal(await page.locator('#blocked-list').isVisible(), true);
+    }
+    await screenshot(`settings-${name}-phone`, { fullPage: false });
+    await page.locator(`#settings-${name} [data-settings-home]`).click();
+    await page.locator('#settings').waitFor({ state: 'visible' });
+  }
+  await page.setViewportSize({ width: 900, height: 940 });
+  await screenshot('settings-directory-tablet', { fullPage: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#settings [data-settings-page="reading"]').click();
+  await page.locator('[data-reading-pref="size"]').focus();
+  await page.locator('[data-reading-pref="size"]').press('ArrowRight');
+  assert.equal(await page.locator('.reading-default-sample').evaluate(el => getComputedStyle(el).fontSize), '20px');
+  assert.equal(await page.locator('#size').inputValue(), '20', 'the reader sheet shares the defaults');
+  await page.locator('[data-reading-pref="size"]').press('ArrowLeft');
   await page.locator('#haptics').uncheck();
   await screenshot('settings-phone');
   await page.locator('#open-typo').click();
-  await page.locator('[data-theme-choice="sepia"]').click();
-  await page.locator('[data-face-choice="Literata"]').click();
+  await page.locator('#typography [data-theme-choice="sepia"]').click();
+  await page.locator('#typography [data-face-choice="Literata"]').click();
   await page.locator('#size').focus();
   for (let i = 0; i < 5; i++) await page.locator('#size').press('ArrowRight');
   assert.equal(await page.locator('#size-value').textContent(), '24px');
@@ -92,7 +131,7 @@ try {
   await page.locator('#reset-reading').click();
   assert.equal(await page.locator('#size').inputValue(), '19');
   assert.equal(await page.locator('#haptics').isChecked(), false, 'reading reset preserves haptics');
-  await page.locator('[data-theme-choice="dark"]').click();
+  await page.locator('#typography [data-theme-choice="dark"]').click();
   await page.locator('#typography [data-close]').first().click();
   await page.reload();
   await page.locator('#home').waitFor({ state: 'visible' });
@@ -129,18 +168,20 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#open-settings').click();
+  await page.locator('#settings [data-settings-page="reading"]').click();
   await page.locator('#open-typo').click();
   await page.emulateMedia({ colorScheme: 'dark' });
-  await page.locator('[data-theme-choice="black"]').click();
+  await page.locator('#typography [data-theme-choice="black"]').click();
   assert.equal(await page.locator('body').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(0, 0, 0)', 'Black stays black when the system is dark');
-  await page.locator('[data-theme-choice="light"]').click();
+  await page.locator('#typography [data-theme-choice="light"]').click();
   assert.equal(await page.locator('html').getAttribute('data-dark'), null, 'Light overrides the system dark theme');
-  await page.locator('[data-theme-choice="system"]').click();
+  await page.locator('#typography [data-theme-choice="system"]').click();
   assert.equal(await page.locator('html').getAttribute('data-dark'), '');
   await page.emulateMedia({ colorScheme: 'light' });
   await page.waitForFunction(() => !document.documentElement.hasAttribute('data-dark'));
-  await page.locator('[data-theme-choice="light"]').click();
+  await page.locator('#typography [data-theme-choice="light"]').click();
   await page.locator('#typography [data-close]').first().click();
+  await page.locator('#back').click();
   await page.locator('#back').click();
   await screenshot('library-light');
   await page.locator('#works .work-card').filter({ hasText: 'The long way home' }).locator('[data-act="open"]').click();
@@ -160,7 +201,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('#chapnav').classList.contains('away'));
   await page.locator('#reader-type').click();
   assert.ok(await page.locator('#typography').evaluate(el => el.classList.contains('from-reader')));
-  await page.locator('[data-face-choice="Literata"]').click();
+  await page.locator('#typography [data-face-choice="Literata"]').click();
   assert.ok((await page.locator('#workskin').evaluate(el => getComputedStyle(el).fontFamily)).includes('Literata'));
   assert.equal(await page.locator('#workskin').evaluate(el => getComputedStyle(el).fontSize), '19px', 'reading text uses the chosen size rather than archive defaults');
   await screenshot('reader-controls', { reading: true, fullPage: false });
@@ -202,7 +243,7 @@ try {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForFunction(() => !document.querySelector('#chapnav').classList.contains('away'));
   await page.locator('#reader-type').click();
-  await page.locator('[data-theme-choice="dark"]').click();
+  await page.locator('#typography [data-theme-choice="dark"]').click();
   await page.locator('#typography [data-close]').first().click();
   await page.locator('#typography').waitFor({ state: 'hidden' });
   await page.setViewportSize({ width: 900, height: 940 });
@@ -267,7 +308,8 @@ try {
     await page.locator('#activity').waitFor({ state: 'visible' });
     assert.equal(await page.locator('#sync-now').count(), 1);
     await page.locator('#open-settings').click();
-    assert.equal(await page.locator('#settings #account').isVisible(), true);
+    await page.locator('#settings [data-settings-page="account"]').click();
+    assert.equal(await page.locator('#settings-account #account').isVisible(), true);
     assert.equal(await page.locator('#tabs').isVisible(), true);
     await page.locator('#tabs [data-tab="library"]').click();
     await page.locator('[data-collection="bookmarked"]').click();
@@ -285,7 +327,7 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#tabs [data-tab="home"]').click();
-  await page.locator('#q').fill('Afternoon');
+  await fillSearch('Afternoon');
   await page.locator('#results .hit').first().waitFor();
   assert.equal(await page.locator('#search-scope').inputValue(), 'everything');
   assert.equal(await page.locator('#search-scope option[value="work"]').evaluate(el=>el.disabled), true);
@@ -302,7 +344,7 @@ try {
   await page.locator('#detail .work-title').waitFor();
   assert.equal(await page.locator('#search-scope').inputValue(), 'work');
   assert.equal(await page.locator('#q').inputValue(), '');
-  await page.locator('#q').fill('Afternoon');
+  await fillSearch('Afternoon');
   await page.locator('#results .hit').first().waitFor();
   assert.equal(await page.locator('#results .hit').count(), 1);
   assert.match(await page.locator('#results .search-context').innerText(), /Letters from the coast/);
@@ -322,9 +364,9 @@ try {
     return route.fulfill({ json: { works: [], tags: [], hits: [{ work_id: '1', number: 1, title: 'Stale response', snippet: 'Old result' }] } });
   });
   const requested = page.waitForRequest(r => r.url().includes('/api/search?') && new URL(r.url()).searchParams.get('q') === 'slow');
-  await page.locator('#q').fill('slow');
+  await fillSearch('slow');
   await requested;
-  await page.locator('#q').fill('Afternoon');
+  await fillSearch('Afternoon');
   await page.locator('#results .hit').first().waitFor();
   const replied = page.waitForResponse(r => r.url().includes('/api/search?') && new URL(r.url()).searchParams.get('q') === 'slow');
   releaseSlow();
@@ -332,7 +374,7 @@ try {
   await page.waitForTimeout(100);
   assert.doesNotMatch(await page.locator('#results').innerText(), /Stale response/);
   await screenshot('v3-search-phone', { fullPage: false });
-  await page.locator('#q').fill('harbour');
+  await fillSearch('harbour');
   await page.locator('#tabs [data-tab="library"]').click();
   await page.waitForTimeout(400);
   assert.equal(await page.locator('#library').isVisible(), true, 'leaving cancels a pending search');
@@ -506,7 +548,7 @@ try {
   assert.equal(await page.locator('#availability').inputValue(), 'held');
   await page.locator('#works .author-link').first().click();
   await page.locator('#author-sync-this').click();
-  await page.locator('#settings').waitFor({ state: 'visible' });
+  await page.locator('#settings-account').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#account').isVisible(), true, 'signed-out sync leads to the account');
   // Back to an earlier version preserves the copy and never changes current reading progress.
   await page.locator('#tabs [data-tab="library"]').click();
@@ -541,7 +583,7 @@ try {
     d.getAttribute('aria-labelledby') && document.getElementById(d.getAttribute('aria-labelledby'))?.textContent.trim())), true,
     'every dialog has an accessible name');
   await page.locator('#reader-search').click();
-  await page.locator('#q').fill('Afternoon');
+  await fillSearch('Afternoon');
   await page.locator('#results .hit').first().waitFor();
   assert.match(await page.locator('#results .search-context').innerText(), /current copy/);
   await page.locator('#back').click();
@@ -557,7 +599,7 @@ try {
   await page.evaluate(() => window.scrollTo(0, 125));
   await savedPlace;
   await page.locator('#reader-search').click();
-  await page.locator('#q').fill('Afternoon');
+  await fillSearch('Afternoon');
   await page.locator('#results .hit').first().click();
   await page.locator('#workskin .userstuff').waitFor();
   await page.evaluate(() => window.scrollTo(0, 550));

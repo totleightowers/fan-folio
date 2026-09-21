@@ -108,6 +108,7 @@
   <button id="back" class="icon" hidden aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
   <span id="bar-title">Fan Folio</span>
   <span id="reader-context" hidden>Reading</span>
+  <button id="context-search" class="icon" hidden aria-label="Search here" aria-expanded="false" aria-controls="search-field"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
   <button id="reader-search" class="icon" hidden aria-label="Search this work" aria-expanded="false" aria-controls="search-field"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
   <div id="search-field">
     <label class="search-scope-label">Search
@@ -253,50 +254,81 @@
   </section>
 
   <section id="settings" class="view" hidden>
-    <h2 class="settings-title">Settings</h2>
+    <header class="page-heading"><p class="eyebrow">Your space</p><h1>Make it yours.</h1></header>
+    <div class="settings-menu">
+<button class="settings-row" data-settings-page="appearance"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></span><span><strong>Appearance</strong><small>Light, dark, or colours of your own</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <button class="settings-row" data-settings-page="reading"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-text"/></svg></span><span><strong>Reading</strong><small><span id="reading-summary"></span></small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <button class="settings-row" data-settings-page="account"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-person"/></svg></span><span><strong>Archive account</strong><small>Sign in and manage your connection to AO3</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <button class="settings-row" data-settings-page="library"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg></span><span><strong>Library &amp; backup</strong><small><span id="library-summary">Keep a copy of your collection</span></small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+      <button class="settings-row" data-settings-page="recovery"><span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-work"/></svg></span><span><strong>Blocked &amp; removed</strong><small>Control what returns to your library</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    </div>
+    <div class="settings-download-link">      <button id="open-activity" class="settings-row"><span><strong>Downloads<span id="activity-here" hidden></span></strong><small id="downloads-summary">Nothing waiting</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    </div>
+    <p id="version" class="setting-note version"></p>
+  </section>
+  <section id="settings-appearance" class="view settings-destination" hidden>
+    <button class="linkish settings-return" data-settings-home><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Settings</button>
+    <header class="page-heading"><h1>Appearance</h1></header>
+    <p class="setting-note">Choose the colours you want to come back to. They apply across the app and your reading pages.</p>
+    <div class="theme-choices" role="group" aria-label="App theme"><button data-theme-choice="system"><span class="theme-swatch swatch-system">Aa</span>System</button>
+      <button data-theme-choice="light"><span class="theme-swatch swatch-light">Aa</span>Light</button>
+      <button data-theme-choice="sepia"><span class="theme-swatch swatch-sepia">Aa</span>Sepia</button>
+      <button data-theme-choice="dark"><span class="theme-swatch swatch-dark">Aa</span>Dark</button>
+      <button data-theme-choice="black"><span class="theme-swatch swatch-black">Aa</span>Black</button>
+    </div>
+    <div class="appearance-preview"><img src="/folio-mark.svg" width="44" height="44" alt=""><div><strong>A place for your stories.</strong><p>Comfortable pages, in your colours.</p></div></div>
+    <details class="settings-disclosure settings-custom"><summary>Choose your own colours</summary>
+      <label class="custom-colour">Page <input type="color" data-reading-pref="bg" aria-label="Custom page colour"></label>
+      <label class="custom-colour">Text <input type="color" data-reading-pref="fg" aria-label="Custom text colour"></label>
+      <p class="setting-note">Changing either colour selects your custom theme.</p>
+    </details>
+  </section>
+  <section id="settings-reading" class="view settings-destination" hidden>
+    <button class="linkish settings-return" data-settings-home><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Settings</button>
+    <header class="page-heading"><h1>Reading comfort</h1></header>
+    <blockquote class="reading-default-sample">Afternoon light filled the room. She turned the page and read on.</blockquote>
+    <h2 class="group">Typeface</h2><div class="font-choices" role="group" aria-label="Reading typeface"><button data-face-choice="Georgia">Georgia</button>
+      <button data-face-choice="Literata">Literata</button>
+      <button data-face-choice="System">System</button>
+      <button data-face-choice="Atkinson Hyperlegible">Atkinson</button>
+    </div>
+    <label class="reading-slider"><span>Text size <output></output></span><input type="range" data-reading-pref="size" min="12" max="34" step="1" aria-label="Default text size"></label>
+    <label class="reading-slider"><span>Line spacing <output></output></span><input type="range" data-reading-pref="lh" min="110" max="250" step="5" aria-label="Default line spacing"></label>
+    <button id="open-typo" class="settings-row"><span><strong>All reading options</strong><small>Margins, alignment, custom fonts and more</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    <div class="settings-panel">      <label class="settings-row setting-toggle">
+        <span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></span>
+        <span><strong>Page-turn vibration</strong><small>A gentle tick as you turn a page</small></span>
+        <input id="haptics" type="checkbox" role="switch">
+      </label></div>
+  </section>
+  <section id="settings-account" class="view settings-destination" hidden>
+    <button class="linkish settings-return" data-settings-home><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Settings</button>
+    <header class="page-heading"><h1>Archive account</h1></header>
     <div class="setting-group">
       <h3 class="group"><svg class="ic" aria-hidden="true"><use href="#i-person"/></svg> Archive account</h3>
       <p class="setting-note">Signing in lets Fan Folio download works, including ones only
         logged-in readers can see, and read your own bookmarks.</p>
       <button id="account" class="account-btn">Sign in</button>
     </div>
-
-
-    <div class="settings-panel">
-      <button id="open-typo" class="settings-row">
-        <span class="settings-symbol" aria-hidden="true">Aa</span>
-        <span><strong>Appearance &amp; reading</strong><small id="reading-summary"></small></span>
-        <svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg>
-      </button>
-      <label class="settings-row setting-toggle">
-        <span class="settings-symbol"><svg class="ic" aria-hidden="true"><use href="#i-bolt"/></svg></span>
-        <span><strong>Page-turn vibration</strong><small>A gentle tick as you turn a page</small></span>
-        <input id="haptics" type="checkbox" role="switch">
-      </label>
-    </div>
-    <h3 class="group">Your library</h3>
-    <div class="settings-panel">
-      <details class="settings-disclosure">
-        <summary><strong>Library &amp; backup</strong><small id="library-summary">Your books, kept on this phone</small></summary>
-        <div class="settings-content">
-          <dl id="library-facts" class="facts"></dl>
+  </section>
+  <section id="settings-library" class="view settings-destination" hidden>
+    <button class="linkish settings-return" data-settings-home><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Settings</button>
+    <header class="page-heading"><h1>Keep your library safe</h1></header>
+    <div class="settings-panel settings-content">          <dl id="library-facts" class="facts"></dl>
           <button id="backup" class="primary">Back up library</button>
           <p id="backup-state" class="setting-note" hidden></p>
           <p class="setting-note">Save a copy somewhere outside this phone.</p>
           <button id="import-replace" class="settings-row"><span><strong>Import library</strong><small>Merge a backup with this library</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
-          <p class="setting-note">Your reading positions and local activity are kept.</p>
-        </div>
-      </details>
-      <button id="import-epubs" class="settings-row"><span><strong>Import EPUBs</strong><small>Add books from files on your device</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+          <p class="setting-note">Your reading positions and local activity are kept.</p></div>
+    <div class="settings-panel">      <button id="import-epubs" class="settings-row"><span><strong>Import EPUBs</strong><small>Add books from files on your device</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
       <details class="settings-disclosure settings-help"><summary>How EPUB imports work</summary><p class="setting-note">If the archive's copy is already here, the EPUB is saved under Earlier versions. Otherwise it becomes the copy you read.</p></details>
-      <button id="open-activity" class="settings-row"><span><strong>Downloads<span id="activity-here" hidden></span></strong><small id="downloads-summary">Nothing waiting</small></span><svg class="ic settings-chevron" aria-hidden="true"><use href="#i-chevron"/></svg></button>
-    </div>
-    <h3 class="group">Manage your library</h3>
-    <div class="settings-panel">
-      <details class="settings-disclosure"><summary><strong>Blocked authors</strong><small>Manage whose works appear</small></summary><div id="blocked-list" class="settings-content"></div></details>
-      <details class="settings-disclosure"><summary><strong>Removed works</strong><small>Allow deleted works to be downloaded again</small></summary><div id="removed-list" class="settings-content"></div></details>
-    </div>
-    <p id="version" class="setting-note version"></p>
+</div>
+  </section>
+  <section id="settings-recovery" class="view settings-destination" hidden>
+    <button class="linkish settings-return" data-settings-home><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Settings</button>
+    <header class="page-heading"><h1>Blocked &amp; removed</h1></header>
+<p class="setting-note">Allowing something again makes it available to future downloads. It does not restore deleted text.</p><div class="settings-panel">      <details class="settings-disclosure"><summary><strong>Blocked authors</strong><small>Manage whose works appear</small></summary><div id="blocked-list" class="settings-content"></div></details>
+      <details class="settings-disclosure"><summary><strong>Removed works</strong><small>Allow deleted works to be downloaded again</small></summary><div id="removed-list" class="settings-content"></div></details></div>
   </section>
 
   <!--
@@ -601,7 +633,8 @@
 
 <dialog id="typography" aria-labelledby="reading-title">
   <div class="reading-preview">
-    <div class="reading-sheet-head"><h2 id="reading-title">Make yourself comfortable</h2><button class="close-x" data-close="typography" aria-label="Close reading settings">×</button></div>
+    <div class="reading-sheet-head"><h2 id="reading-title">Make yourself comfortable</h2><button class="close-x" data-close="typography" aria-label="Close reading settings">×</button>
+    </div>
     <p class="sample">Afternoon light filled the room. She turned the page and read on.</p>
   </div>
   <div class="reading-controls">
@@ -649,7 +682,9 @@
       <label>Text colour <input id="fg" type="color"></label>
       <p class="hint">Choosing a colour switches to a custom theme.</p>
     </details>
-    <div class="reading-sheet-foot"><button id="reset-reading" class="ghost">Reset reading settings</button><button class="primary" data-close="typography">Done</button></div>
+    <div class="reading-sheet-foot"><button id="reset-reading" class="ghost">Reset reading settings</button>
+      <button class="primary" data-close="typography">Done</button>
+    </div>
   </div>
 </dialog>
 

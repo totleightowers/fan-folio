@@ -2664,13 +2664,13 @@ test('what the app is doing has a place of its own', () => {
     assert.ok(!settings.includes(gone), `${gone} is not a setting`);
   }
   assert.ok(settings.includes('id="open-activity"'), 'but it is reachable from there');
-  assert.ok(settings.includes('id="library-facts"'), 'what the library holds can stay');
+  assert.ok(settings.includes('data-settings-page="library"'), 'library facts have a focused destination');
 });
 
 test('account, bookmark acquisition and collections have stable homes', () => {
   const section = (id) => html.slice(html.indexOf(`<section id="${id}"`),
     html.indexOf('</section>', html.indexOf(`<section id="${id}"`)));
-  assert.ok(section('settings').includes('id="account"'));
+  assert.ok(section('settings-account').includes('id="account"'));
   for (const id of ['sync-now', 'sync-all', 'job-list']) {
     assert.ok(section('activity').includes(`id="${id}"`));
   }
@@ -2842,7 +2842,7 @@ test('the reader does not offer to add a work', () => {
 test('the app is at least as reachable as its settings', () => {
   const chrome = js.slice(js.indexOf('function paintChrome(name)'));
   const body = chrome.slice(0, chrome.indexOf('\n}\n'));
-  assert.match(body, /\$\('#open-settings'\)\.hidden = name === 'settings' \|\| !KEEPS_TABS\.has\(name\)/,
+  assert.match(body, /\$\('#open-settings'\)\.hidden = name\.startsWith\('settings'\) \|\| !KEEPS_TABS\.has\(name\)/,
     'the cog is offered exactly where the tabs are, and nowhere they are not');
 
   const keeps = js.slice(js.indexOf('const KEEPS_TABS'));
@@ -3240,8 +3240,8 @@ test('a sheet of destinations has no row that is not one', () => {
  * can do. Brought in, they are works like any other.
  */
 test('EPUBs come in from Settings and show up as work being done', () => {
-  const settings = html.slice(html.indexOf('<section id="settings"'),
-    html.indexOf('</section>', html.indexOf('<section id="settings"')));
+  const settings = html.slice(html.indexOf('<section id="settings-library"'),
+    html.indexOf('</section>', html.indexOf('<section id="settings-library"')));
   assert.ok(settings.includes('id="import-epubs"'), 'where the library lives');
 
   /* Reading two hundred books takes long enough that a button which simply

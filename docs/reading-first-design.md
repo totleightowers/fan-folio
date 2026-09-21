@@ -35,3 +35,13 @@ Correct the imported-copy flag first, then deliver persisted per-work job result
 The larger layout work should be assessed as three complete loops: choose → preview → read → return; search/filter → preview → return to the same results; add/sync → job → arrived story → read. Phone and tablet should share the same meanings while using space differently. A collection of restyled screens is insufficient evidence.
 
 Before calling the wider redesign complete, demonstrate those loops with full summaries, a large filtered list, multiple in-progress works, an imported copy whose archive source is unavailable, a partly failed job, and an earlier version. Preserve all advanced filtering, source styling, offline images, polite fetching, foreground reading priority and recovery features. Validate Android-specific Back, link handoff and screen-size changes on a device rather than claiming browser coverage proves them.
+
+## Implemented departure
+
+The second pass implements the journeys above in addition to the earlier 3.0–3.5 changes. Saved-copy repair shipped in 3.5.1; persisted download results in 3.6.0; the reading desk, persistent return control, immersive tablet reader and new folded folio identity in 3.7.0. The collection preview and focused Settings destinations complete the implementation in the next two slices.
+
+The browser fixture now covers a 56-work filtered collection, moving between tablet previews, opening the saved imported copy, and returning from reading to that same preview and list position. Phone previews keep an explicit collection return. The independent reading and appearance pages share their preferences with the reader sheet. Backup/import, account and recovery retain their original handlers in named destinations.
+
+The app icon is generated from one shape definition into Android vectors, every legacy launcher density and the in-app SVG. It remains legible as a monochrome adaptive mark.
+
+Implementation and browser verification are complete; physical Android validation remains explicitly separate. No connected Android device was available in this environment, so native Back, launchers, link handoff and file-picker behavior are not claimed from the browser fixtures.

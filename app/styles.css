@@ -2696,3 +2696,32 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
   #preview-list { max-height: calc(100dvh - 17rem); overflow-y: auto; overscroll-behavior: contain; }
   .from-collection #preview-story { width: 100%; margin: 0; }
 }
+
+/* Settings is a short directory; each choice opens a focused destination. */
+#settings, .settings-destination { max-width: 48rem; margin-inline: auto; padding-inline: 1.1rem; }
+.settings-menu { display: grid; gap: .65rem; }
+.settings-menu .settings-row { border: 1px solid var(--line-soft); border-radius: 1rem; background: var(--surface); padding: 1.15rem; }
+.settings-menu .settings-row small { line-height: 1.5; margin-top: .2rem; }
+.settings-download-link { margin-top: 1.5rem; border-top: 1px solid var(--rule); }
+.settings-return { margin-top: .8rem; display: inline-flex; align-items: center; gap: .4rem; }
+.settings-destination .page-heading { margin-top: .8rem; }
+.settings-destination .theme-choices { margin-block: 1.5rem; }
+.appearance-preview { display: flex; align-items: center; gap: 1rem; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 1rem; padding: 1.3rem; margin-block: 1rem; }
+.appearance-preview strong { font-family: var(--title); font-weight: 500; font-size: 1.25rem; }
+.appearance-preview p { margin: .3rem 0 0; color: var(--muted); font-size: .85rem; }
+.settings-custom { margin-top: 1.5rem; }
+.custom-colour { display: flex; align-items: center; justify-content: space-between; min-height: 3.5rem; border-bottom: 1px solid var(--rule); }
+.custom-colour input { min-height: 2.75rem; width: 4rem; }
+.reading-default-sample { margin: 1rem 0 1.5rem; padding: 1.5rem; border: 1px solid var(--line-soft); border-radius: 1rem; background: var(--surface); font-family: var(--read-face); font-size: var(--read-size); line-height: var(--read-lh); overflow-wrap: anywhere; }
+.settings-destination .reading-slider { margin: 1.5rem 0; }
+.settings-destination .font-choices { margin: 1rem 0; }
+.settings-destination .settings-panel { margin-block: 1.2rem; }
+@media (min-width: 54rem) {
+  .settings-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-menu .settings-row { align-items: flex-start; min-height: 7rem; }
+}
+
+.settings-destination .reading-slider { display: block; }
+.settings-destination .reading-slider input { display: block; width: 100%; max-width: none; min-height: 2.75rem; }
+
+.settings-destination input[type=range] { accent-color: var(--accent); }

@@ -218,6 +218,11 @@ function paintReadingControls() {
     const output = $(`#${key}-value`);
     if (output) output.textContent = key === 'lh' ? `${(prefs.lh / 100).toFixed(2)}×` : `${prefs[key]}px`;
   }
+  for (const input of $$('[data-reading-pref]')) {
+    const key = input.dataset.readingPref; input.value = prefs[key];
+    const output = input.closest('label').querySelector('output');
+    if (output) output.textContent = key === 'lh' ? `${(prefs.lh / 100).toFixed(2)}×` : `${prefs[key]}px`;
+  }
   for (const button of $$('[data-theme-choice]')) button.setAttribute('aria-pressed', String(button.dataset.themeChoice === prefs.theme));
   for (const button of $$('[data-face-choice]')) button.setAttribute('aria-pressed', String(button.dataset.faceChoice === prefs.face));
 }
@@ -228,7 +233,8 @@ function paintReadingControls() {
    unhides the one it was asked for — so a view missing from here is a view
    that can never be shown, and asking for it blanks the screen instead. */
 const VIEWS = ['setup', 'home', 'library', 'author', 'activity',
-  'results', 'detail', 'reader', 'settings', 'download-job'];
+  'results', 'detail', 'reader', 'settings', 'download-job',
+  'settings-appearance', 'settings-reading', 'settings-account', 'settings-library', 'settings-recovery'];
 const stack = new History();
 
 /* Reading, finding and ongoing work each have a stable home. */
@@ -245,7 +251,8 @@ const TABBED = new Set(['home', 'library', 'activity']);
  *
  * Only the reader is immersive, and only setup has nothing to navigate yet.
  */
-const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author', 'settings', 'download-job']);
+const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author', 'settings', 'download-job',
+  'settings-appearance', 'settings-reading', 'settings-account', 'settings-library', 'settings-recovery']);
 
 /** The tab whose part of the app you are in, lit even a screen or two down. */
 let inTab = 'home';
@@ -290,12 +297,14 @@ const MOTION = { forward: 'in-forward', back: 'in-back', lateral: 'in-lateral' }
 let suppressMotion = false;
 let navigationGeneration = 0;
 let readerSearchOpen = false;
+let contextSearchOpen = false;
 
 function show(name, motion = 'none') {
   navigationGeneration++;
   let ready;
   if (name !== 'reader') { keepAwake(false); readerSearchOpen = false; }
   if (name !== 'results') {
+    contextSearchOpen = false;
     clearTimeout(searchTimer);
     searchRequest++;
     searchChoice = null;
@@ -369,14 +378,17 @@ const SEARCHABLE = new Set(['home', 'library', 'results', 'detail', 'reader', 'a
 function paintChrome(name) {
   $('#bar').hidden = name === 'setup';
   /* Adding a work is never part of reading one. */
-  $('#add').hidden = name === 'reader';
-  $('#open-settings').hidden = name === 'settings' || !KEEPS_TABS.has(name);
+  $('#add').hidden = name === 'reader' || name.startsWith('settings');
+  $('#open-settings').hidden = name.startsWith('settings') || !KEEPS_TABS.has(name);
   $('#typo').hidden = name !== 'reader';
   const reader = name === 'reader';
+  const contextual = name === 'detail' || name === 'author';
+  $('#context-search').hidden = !contextual;
+  $('#context-search').setAttribute('aria-expanded', String(contextual && contextSearchOpen));
   $('#reader-context').hidden = !reader || readerSearchOpen;
   $('#reader-search').hidden = !reader;
   $('#reader-search').setAttribute('aria-expanded', String(reader && readerSearchOpen));
-  $('#q').hidden = !SEARCHABLE.has(name) || (reader && !readerSearchOpen);
+  $('#q').hidden = !SEARCHABLE.has(name) || (reader && !readerSearchOpen) || (contextual && !contextSearchOpen);
   $('#search-field').hidden = $('#q').hidden;
   /* The box is what stretches the bar; without it the controls would bunch up
      against the Back button with the rest of the width left empty. */
@@ -385,7 +397,8 @@ function paintChrome(name) {
   else $('#bar').insertBefore($('#search-field'), $('#bar-gap'));
   $('#bar-title').hidden = reader || (!slot && !$('#q').hidden);
   $('#bar-title').textContent = ({ home: 'Fan Folio', library: 'Library', activity: 'Downloads',
-    'download-job': 'Downloads', settings: 'Settings' })[name] || 'Fan Folio';
+    'download-job': 'Downloads', detail: 'Story', author: 'Author', settings: 'Settings' })[name]
+    || (name.startsWith('settings-') ? 'Settings' : 'Fan Folio');
   $('#bar-gap').hidden = (!$('#q').hidden && !slot) || reader;
 }
 
@@ -400,6 +413,12 @@ function paintChrome(name) {
  * position. An entry now describes the place it came from, which is the only
  * thing Back ever needs to know.
  */
+$('#context-search').onclick = () => {
+  contextSearchOpen = !contextSearchOpen;
+  paintChrome(showing());
+  if (contextSearchOpen) { paintSearchPlaceholder(); $('#q').focus(); }
+};
+
 $('#reader-search').onclick = () => {
   readerSearchOpen = !readerSearchOpen;
   paintChrome('reader');
@@ -1903,6 +1922,20 @@ function paintStubs() {
 }
 
 $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
+for (const button of $$('[data-settings-page]')) button.onclick = () => {
+  go(`settings-${button.dataset.settingsPage}`); buildSettings();
+};
+for (const button of $$('[data-settings-home]')) button.onclick = () => {
+  const { popped } = stack.up(here(), { route: 'settings', params: {} });
+  if (popped) renderPlace(popped, 'back'); else show('settings', 'back');
+  buildSettings();
+};
+for (const input of $$('[data-reading-pref]')) input.oninput = () => {
+  const key = input.dataset.readingPref;
+  prefs[key] = input.type === 'range' ? Number(input.value) : input.value;
+  if (key === 'bg' || key === 'fg') prefs.theme = 'custom';
+  applyPrefs();
+};
 
 /* Settings keeps a shortcut to the same Downloads destination. */
 $('#open-activity').onclick = () => { go('activity'); buildActivity(); };
@@ -2587,7 +2620,7 @@ for (const button of $$('#library-collections [data-collection]')) {
 }
 
 function showAccountForDownloads() {
-  go('settings'); buildSettings();
+  go('settings-account'); buildSettings();
   $('#account').focus();
   toast('Sign in to the archive to start this download.');
 }
