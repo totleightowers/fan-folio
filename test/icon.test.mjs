@@ -93,22 +93,10 @@ test('a launcher that wants a round one is given a round one', () => {
  * export: two pictures of the same thing drift, and the one nobody looks at
  * drifts first.
  */
-test('the vector and the pixels are the same picture', () => {
-  const vector = readFileSync(res('drawable/ic_launcher_foreground.xml'), 'utf8');
-  const drawn = readFileSync(
-    fileURLToPath(new URL('../tools/make-icon.mjs', import.meta.url)), 'utf8');
-
-  for (const shared of ['M32,30', 'M37,42', 'M68,26']) {
-    assert.ok(vector.includes(shared), `${shared} is in the vector`);
-  }
-  for (const [inVector, inDrawing] of [
-    ['#8C3B2E', '0x8c, 0x3b, 0x2e'],
-    ['#D98A72', '0xd9, 0x8a, 0x72'],
-  ]) {
-    assert.ok(vector.includes(inVector) && drawn.includes(inDrawing),
-      `${inVector} is the same colour in both`);
-  }
-  const ground = readFileSync(res('values/ic_launcher_background.xml'), 'utf8');
-  assert.ok(ground.includes('#1A1C1E') && drawn.includes('0x1a, 0x1c, 0x1e'),
-    'and they stand on the same ground');
+test('native and web icons are generated from the same source as the pixels', () => {
+  const paths = [res('drawable/ic_launcher_foreground.xml'), res('values/ic_launcher_background.xml'),
+    fileURLToPath(new URL('../app/folio-mark.svg', import.meta.url))];
+  const before = paths.map(p => readFileSync(p, 'utf8'));
+  execFileSync(process.execPath, [fileURLToPath(new URL('../tools/make-icon.mjs', import.meta.url))]);
+  paths.forEach((p, i) => assert.equal(readFileSync(p, 'utf8'), before[i], `regenerate ${p}`));
 });

@@ -207,6 +207,8 @@ try {
   await page.locator('#typography').waitFor({ state: 'hidden' });
   await page.setViewportSize({ width: 900, height: 940 });
   await screenshot('reader-tablet-dark', { fullPage: false });
+  assert.equal(await page.locator('#tabs').isVisible(), false, 'tablet reading uses the whole screen');
+  assert.equal(await page.locator('#now-reading').isVisible(), false, 'no resume overlay over a chapter');
   assert.equal(await page.locator('#comment-here').isVisible(), true);
   assert.equal(await page.locator('#comment-here use').getAttribute('href'), '#i-comment');
   for (const id of ['kudos-here', 'bookmark-here', 'on-archive']) assert.equal(await page.locator('#' + id).isVisible(), false);
@@ -353,13 +355,21 @@ try {
   const resume = page.locator('.resume-card').filter({ hasText: 'The long way home' });
   await resume.filter({ hasText: 'Reading again' }).waitFor();
   assert.match(await resume.innerText(), /Reading again/);
-  assert.equal(await page.locator('.resume-card').first().evaluate(el => el.getBoundingClientRect().right <= el.nextElementSibling.getBoundingClientRect().left), true, 'resume cards occupy separate grid columns');
+  assert.equal(await page.locator('.resume-card').first().evaluate(el => el.getBoundingClientRect().bottom <= el.nextElementSibling.getBoundingClientRect().top), true, 'phone reading choices form a vertical desk');
   await screenshot('v3-resume-phone', { fullPage: false });
+  assert.equal(await page.locator('#now-reading').isVisible(), false, 'Home already offers Resume in the reading desk');
   await resume.locator('.resume-action').click();
   await page.locator('#reader').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#detail').isVisible(), false, 'Resume goes directly to reading');
   await page.locator('#back').click();
   await page.locator('#home').waitFor({ state: 'visible' });
+  await page.locator('#tabs [data-tab="activity"]').click();
+  assert.equal(await page.locator('#now-reading').isVisible(), true);
+  assert.match(await page.locator('#now-reading-title').innerText(), /The long way home/);
+  await page.locator('#now-reading').click();
+  await page.locator('#reader').waitFor({ state: 'visible' });
+  await page.locator('#back').click();
+  await page.locator('#activity').waitFor({ state: 'visible' });
   // Density never discards a description; independent filters survive the return journey.
   await page.locator('#tabs [data-tab="library"]').click();
   await page.locator('[data-collection="reading"]').click();

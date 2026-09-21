@@ -1633,23 +1633,11 @@ test('an unfolded screen stands the tabs on their edge', () => {
  * way out — the harshest transition in the app, for a strip of width the
  * prose does not use.
  */
-test('on a wide screen the rail stays up in the reader', () => {
-  assert.ok(!/'reader'/.test(js.slice(js.indexOf('const KEEPS_TABS'),
-    js.indexOf(');', js.indexOf('const KEEPS_TABS')))),
-    'the reader still does not keep the tabs by itself');
-
-  const paint = js.slice(js.indexOf('function paintTabs'));
-  const body = paint.slice(0, paint.indexOf('\n}'));
-  assert.match(body, /KEEPS_TABS\.has\(name\)/);
-  assert.match(body, /name === 'reader' && wideScreen\(\)/,
-    'and keeps them at a width where they cost nothing');
-
-  assert.match(js, /const WIDE = '\(min-width: 44\.01rem\)'/,
-    'the same breakpoint the stylesheet stands the tabs up at');
-  assert.match(js, /matchMedia\?\.\(WIDE\)\.addEventListener\('change', \(\) => paintTabs\(\)\)/,
-    'unfolding a phone mid-chapter is the one way this changes on its own');
-  assert.ok(!/addEventListener\('change', \(\) => show\(/.test(js),
-    'repainting the tabs, not re-showing the view: show() scrolls to the top');
+test('reading owns the screen on phones and tablets', () => {
+  const paint = js.slice(js.indexOf('function paintTabs'), js.indexOf('function paintNowReading'));
+  assert.match(paint, /hidden = !KEEPS_TABS.has\(name\)/);
+  assert.ok(!paint.includes('wideScreen'), 'a tablet does not regain the app rail mid-chapter');
+  assert.ok(!js.slice(js.indexOf('const KEEPS_TABS'), js.indexOf(');', js.indexOf('const KEEPS_TABS'))).includes("'reader'"));
 });
 
 /**
@@ -2917,7 +2905,7 @@ test('a box that would not know what it was searching is not shown', () => {
   const names = set.slice(0, set.indexOf(');'));
   assert.ok(!/'activity'|'settings'|'setup'/.test(names),
     'search fell through to whatever scope was last in force on these');
-  assert.match(js, /\$\('#bar-gap'\)\.hidden = !\$\('#q'\)\.hidden/,
+  assert.match(js, /\$\('#bar-gap'\)\.hidden = \(!\$\('#q'\)\.hidden && !slot\)/,
     'and the bar keeps its shape without it');
 });
 

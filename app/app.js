@@ -249,29 +249,26 @@ const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author', 'settings'
 
 /** The tab whose part of the app you are in, lit even a screen or two down. */
 let inTab = 'home';
+let nowReading = null;
 
-/**
- * Where there is room for the app to keep its shape.
- *
- * The same breakpoint the stylesheet uses to stand the tabs up as a rail. It
- * is asked here because one screen answers differently depending on it:
- * reading is immersive on a phone, where the tab bar would take the foot of
- * the screen, and is not on a tablet, where the rail costs a strip nothing
- * else wanted and leaving a work for a chapter of it otherwise threw the
- * whole app sideways.
- */
+/** Reading owns the screen at every size; the other destinations keep navigation. */
 const WIDE = '(min-width: 44.01rem)';
 const wideScreen = () => window.matchMedia?.(WIDE).matches ?? false;
-
-/** Whether the navigation stays up, on this screen, at this width. */
 function paintTabs(name = showing()) {
-  $('#tabs').hidden = !KEEPS_TABS.has(name) && !(name === 'reader' && wideScreen());
+  $('#tabs').hidden = !KEEPS_TABS.has(name);
+  paintNowReading(name);
 }
 
-/* Unfolding a phone mid-chapter is the one way this changes without anybody
-   navigating. Only the tabs are repainted: re-running show() here would send
-   the reader back to the top of the chapter for having opened the device. */
-window.matchMedia?.(WIDE).addEventListener('change', () => paintTabs());
+function paintNowReading(name = showing()) {
+  $('#now-reading').hidden = !nowReading || name === 'home' || !KEEPS_TABS.has(name);
+  if (!nowReading) return;
+  $('#now-reading-title').textContent = nowReading.title;
+  $('#now-reading-place').textContent = `Return to reading · Chapter ${nowReading.chapter}`;
+}
+$('#now-reading').onclick = () => {
+  if (nowReading) openChapter(nowReading.workId, nowReading.chapter);
+};
+$('#desk-downloads').onclick = () => goToTab('activity');
 
 /** The view currently on screen. */
 const showing = () => VIEWS.find((v) => !$(`#${v}`).hidden) ?? 'home';
@@ -383,7 +380,13 @@ function paintChrome(name) {
   $('#search-field').hidden = $('#q').hidden;
   /* The box is what stretches the bar; without it the controls would bunch up
      against the Back button with the rest of the width left empty. */
-  $('#bar-gap').hidden = !$('#q').hidden || reader;
+  const slot = name === 'home' ? $('#home-search-slot') : name === 'library' ? $('#library-search-slot') : null;
+  if (slot) slot.append($('#search-field'));
+  else $('#bar').insertBefore($('#search-field'), $('#bar-gap'));
+  $('#bar-title').hidden = reader || (!slot && !$('#q').hidden);
+  $('#bar-title').textContent = ({ home: 'Fan Folio', library: 'Library', activity: 'Downloads',
+    'download-job': 'Downloads', settings: 'Settings' })[name] || 'Fan Folio';
+  $('#bar-gap').hidden = (!$('#q').hidden && !slot) || reader;
 }
 
 /**
@@ -2544,6 +2547,8 @@ function paintActivityBadge() {
       : held ? `${active} download job${active === 1 ? '' : 's'} paused`
       : failed ? 'Some downloads need attention' : 'Nothing waiting';
   }
+  $('#desk-downloads').hidden = !state;
+  $('#desk-downloads').textContent = `${summary?.textContent || 'Downloads'} →`;
   dot.hidden = !state;
   dot.dataset.state = state;
   dot.setAttribute('aria-label', state === 'busy' ? 'Downloading'
@@ -4796,6 +4801,13 @@ async function buildHome() {
   }
 
   if (request !== homeRequest) return;
+  const reading = data.shelves?.find(s => s.key === 'reading')?.works.find(w => w.has_text);
+  // Use the saved position, never a transient search passage or earlier version.
+  if (showing() !== 'reader') {
+    nowReading = reading ? { workId: String(reading.work_id), title: reading.title,
+      chapter: Number(reading.at_chapter) || 1 } : null;
+    paintNowReading();
+  }
   const stats = $('#stats');
   stats.textContent = '';
   for (const [key, label] of STAT_LABELS) {
@@ -4816,7 +4828,7 @@ async function buildHome() {
   const shelves = data.shelves ?? [];
   for (const [i, shelf] of shelves.entries()) {
     const section = document.createElement('section');
-    section.className = 'shelf';
+    section.className = shelf.key === 'reading' ? 'shelf reading-desk' : 'shelf';
     section.innerHTML = '<div class="shelf-head"><h2></h2><span class="shelf-n"></span>'
       + '<button></button></div><div class="rail"></div>';
     section.querySelector('h2').textContent = shelf.title;
@@ -4841,7 +4853,15 @@ async function buildHome() {
     };
     const rail = section.querySelector('.rail');
     rail.classList.toggle('resume-rail', shelf.key === 'reading');
-    for (const w of shelf.works) rail.append(shelf.key === 'reading' ? resumeCard(w) : workCard(w));
+    for (const [index, w] of shelf.works.entries()) {
+      const card = shelf.key === 'reading' ? resumeCard(w) : workCard(w);
+      if (shelf.key === 'reading' && index === 0) {
+        card.classList.add('desk-lead');
+        const label = document.createElement('p'); label.className = 'eyebrow'; label.textContent = 'Pick up where you left off';
+        card.prepend(label);
+      }
+      rail.append(card);
+    }
     box.append(section);
     /* Collection totals follow the reading choices rather than interrupting them. */
     if (i === shelves.length - 1) box.append(stats);
@@ -5731,6 +5751,9 @@ async function openChapter(workId, number, { transient = false } = {}) {
    */
   markOpened(workId);
   if (!transient) saveProgress(workId, number, offset);
+  if (!transient) {
+    nowReading = { workId: String(workId), title: w.title || '(untitled)', chapter: Number(number) || 1 };
+  }
   collectImages(workId);
 }
 
@@ -5965,6 +5988,7 @@ addEventListener('scroll', () => {
       readingIsTransient = false;
     }
     if (readingIsTransient) return;
+    nowReading = { workId: String(current.workId), title: currentWork?.title || '(untitled)', chapter: current.chapter };
     positions[current.workId] = {
       chapter: current.chapter, y: Math.round(window.scrollY), at: Date.now(),
     };

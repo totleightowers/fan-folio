@@ -106,6 +106,7 @@
 
 <header id="bar">
   <button id="back" class="icon" hidden aria-label="Back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg></button>
+  <span id="bar-title">Fan Folio</span>
   <span id="reader-context" hidden>Reading</span>
   <button id="reader-search" class="icon" hidden aria-label="Search this work" aria-expanded="false" aria-controls="search-field"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></button>
   <div id="search-field">
@@ -127,6 +128,7 @@
   <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
 </header>
 
+<button id="now-reading" class="now-reading" hidden><svg class="ic" aria-hidden="true"><use href="#i-bookmark"/></svg><span><small id="now-reading-place">Return to reading</small><strong id="now-reading-title"></strong></span><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg></button>
 <main id="main">
 
   <!-- first run: there is no archive to read yet -->
@@ -149,6 +151,8 @@
 
   <!-- Fandom browsing first, followed by reading shelves and library totals. -->
   <section id="home" class="view" hidden>
+    <header class="desk-heading"><div><p class="eyebrow">Your reading desk</p><h1>A little time for a story.</h1></div><img src="/folio-mark.svg" class="folio-mark" alt="" width="56" height="56"></header>
+    <div id="home-search-slot" class="page-search"></div>
     <div id="fandoms" class="fandom-block"></div>
     <div id="shelves"></div>
     <!--
@@ -163,6 +167,7 @@
     -->
     <div id="stats" class="stats"></div>
     <div id="starthere"></div>
+    <button id="desk-downloads" class="linkish" hidden></button>
   </section>
 
 
@@ -331,7 +336,8 @@
   </section>
 
   <section id="library" class="view" hidden>
-    <h2 class="library-title">Your library</h2>
+    <header class="page-heading"><p class="eyebrow">Your collection</p><h1 class="library-title">Find your next story.</h1></header>
+    <div id="library-search-slot" class="page-search"></div>
     <div id="library-collections" class="collection-tabs" role="group" aria-label="Library collections">
       <button class="chip" data-collection="all">All works</button>
       <button class="chip" data-collection="reading">Reading</button>
