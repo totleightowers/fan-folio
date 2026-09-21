@@ -222,21 +222,12 @@ function paintReadingControls() {
 /* Every section that is a view, because show() hides the ones it knows and
    unhides the one it was asked for — so a view missing from here is a view
    that can never be shown, and asking for it blanks the screen instead. */
-const VIEWS = ['setup', 'home', 'library', 'author', 'you', 'activity',
+const VIEWS = ['setup', 'home', 'library', 'author', 'activity',
   'results', 'detail', 'reader', 'settings'];
 const stack = new History();
 
-/** Views the tab bar owns; anything deeper hides it and shows Back instead. */
-/* Search is an action from wherever you are, not a place to go — the box in
-   the top bar already changes what it searches according to the screen. Its
-   results are a child of that screen, reached and left like any other. What
-   deserved a tab was the thing with no home at all: what the app is doing. */
-/* Activity had the third tab. A queue is something the app is doing, and it
-   belongs with the app's own affairs under Settings; what had no home at all
-   was the reader themselves — signed in as, bookmarked, meant to get to,
-   finished. Those were reachable only as filter combinations somebody had to
-   know how to build. */
-const TABBED = new Set(['home', 'library', 'you']);
+/* Reading, finding and ongoing work each have a stable home. */
+const TABBED = new Set(['home', 'library', 'activity']);
 
 /**
  * Where the app still looks like the app.
@@ -249,7 +240,7 @@ const TABBED = new Set(['home', 'library', 'you']);
  *
  * Only the reader is immersive, and only setup has nothing to navigate yet.
  */
-const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author']);
+const KEEPS_TABS = new Set([...TABBED, 'detail', 'results', 'author', 'settings']);
 
 /** The tab whose part of the app you are in, lit even a screen or two down. */
 let inTab = 'home';
@@ -335,6 +326,7 @@ function show(name, motion = 'none') {
     b.classList.toggle('on', b.dataset.tab === (TABBED.has(name) ? name : inTab));
   }
   paintSearchPlaceholder();
+  paintCollections();
   paintActivityBadge();
   window.scrollTo(0, 0);
 }
@@ -363,7 +355,8 @@ function paintChrome(name) {
   $('#bar').hidden = name === 'setup';
   /* Adding a work is never part of reading one. */
   $('#add').hidden = name === 'reader';
-  $('#open-settings').hidden = !KEEPS_TABS.has(name);
+  $('#open-settings').hidden = name === 'settings' || !KEEPS_TABS.has(name);
+  $('#typo').hidden = name !== 'reader';
   $('#q').hidden = !SEARCHABLE.has(name);
   /* The box is what stretches the bar; without it the controls would bunch up
      against the Back button with the rest of the width left empty. */
@@ -1682,7 +1675,9 @@ async function buildSettings() {
 function buildActivity() {
   paintJobs();
   paintStubs();
+  paintSyncButtons();
 }
+
 
 /**
  * Works read off somebody's index and never fetched.
@@ -1767,7 +1762,7 @@ function paintStubs() {
 
 $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
 
-/* Activity is a screen inside Settings rather than a tab. */
+/* Settings keeps a shortcut to the same Downloads destination. */
 $('#open-activity').onclick = () => { go('activity'); buildActivity(); };
 function openReadingSettings() {
   const dialog = $('#typography');
@@ -2416,9 +2411,7 @@ function paintActivityBadge() {
   dot.setAttribute('aria-label', state === 'busy' ? 'Downloading'
     : state === 'held' ? 'Paused' : state === 'failed' ? 'Needs attention' : '');
 
-  /* Activity is a screen inside Settings now, so the cog carries the same
-     news the tab used to — otherwise an hour of downloading happens two taps
-     down with nothing on the way there to say so. */
+  /* The Settings shortcut mirrors the Downloads tab. */
   const here = $('#activity-here');
   if (here) {
     here.hidden = !state;
@@ -2426,72 +2419,24 @@ function paintActivityBadge() {
   }
 }
 
-/**
- * What is yours, rather than what is here.
- *
- * Signing in lived under the cog, which is where a thing goes when nobody has
- * decided it matters. The counts beside it were reachable only as filter
- * combinations somebody had to know how to build: "bookmarked", "marked for
- * later", "finished" are facts about a reader rather than about a library.
- */
-async function buildYou() {
-  paintAccount();
-  paintSyncButtons();
-
-  const box = $('#you-counts');
-  if (!box) return;
-  box.textContent = '';
-
-  const counts = yourCounts();
-  const rows = [
-    ['Bookmarked', counts.bookmarked, { state: 'bookmarked' }],
-    ['Marked for later', counts.later, { state: 'later' }],
-    ['Finished', counts.finished, { state: 'finished' }],
-  ];
-
-  for (const [label, n, patch] of rows) {
-    const row = document.createElement('button');
-    row.className = 'you-row';
-    row.innerHTML = '<span class="you-label"></span><span class="you-n"></span>';
-    row.querySelector('.you-label').textContent = label;
-    /* Nought is a row worth seeing too: it says the question has been asked
-       and answered, where a missing row says nothing at all. */
-    row.querySelector('.you-n').textContent = fmt(n);
-    row.onclick = () => openLibraryAs(patch);
-    box.append(row);
+function paintCollections() {
+  for (const button of $$('#library-collections [data-collection]')) {
+    const selected = button.dataset.collection === view.state;
+    button.classList.toggle('on', selected);
+    button.setAttribute('aria-pressed', String(selected));
   }
-
-  const blocked = document.createElement('button');
-  blocked.className = 'you-row';
-  blocked.innerHTML = '<span class="you-label">Blocked authors</span><span class="you-n"></span>';
-  blocked.querySelector('.you-n').textContent = fmt(counts.blocked);
-  blocked.onclick = () => goToTab('activity');
-  box.append(blocked);
+  $('#library-sync').hidden = view.state !== 'bookmarked';
 }
 
-/** The three questions a reader asks about themselves, counted. */
-function yourCounts() {
-  const out = { bookmarked: 0, later: 0, finished: 0, blocked: 0 };
-  if (!nativeStatus().hasDatabase) return out;
-  const one = (sql) => {
-    try {
-      const got = JSON.parse(window.ArchiveNative.query(sql, '[]'));
-      return Number(got.rows?.[0]?.n ?? 0);
-    } catch {
-      return 0;
-    }
-  };
-  out.bookmarked = one(
-    'SELECT count(*) AS n FROM works '
-    + 'WHERE COALESCE(in_bookmarks, 0) = 1 AND COALESCE(hidden, 0) = 0');
-  out.later = one('SELECT count(*) AS n FROM reading WHERE COALESCE(marked_later, 0) = 1');
-  out.finished = one(
-    'SELECT count(*) AS n FROM works w JOIN reading r ON r.work_id = w.work_id '
-    + 'WHERE COALESCE(w.hidden, 0) = 0 AND COALESCE(r.chapters_read, 0) >= '
-    + 'COALESCE(NULLIF(w.chapter_count, 0), 1)');
-  out.blocked = one('SELECT count(*) AS n FROM blocked');
-  return out;
+for (const button of $$('#library-collections [data-collection]')) {
+  button.onclick = () => openLibraryAs({ state: button.dataset.collection });
 }
+
+function openBookmarkSync() {
+  goToTab('activity');
+  $('#bookmark-sync').scrollIntoView({ block: 'start' });
+}
+$('#library-sync').onclick = openBookmarkSync;
 
 /**
  * Land in the library, narrowed to one thing about yourself.
@@ -2503,12 +2448,14 @@ function openLibraryAs(patch) {
   Object.assign(view, {
     state: 'all', include: [], exclude: [], rating: [], author: [],
     bookmarkedBy: '', complete: '', language: '', wordsMin: '', wordsMax: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   }, patch);
   save(VIEW_KEY, view);
   paintActiveFilters();
   offset = 0;
   loadMore(true);
   go('library', { filters: JSON.parse(JSON.stringify(view)) });
+  paintCollections();
 }
 
 /**
@@ -5954,7 +5901,6 @@ function goToTab(tab) {
   if (showing() !== route) stack.go(here(), { route, params: {} });
 
   if (route === 'settings') { show('settings', 'lateral'); buildSettings(); return; }
-  if (route === 'you') { show('you', 'lateral'); buildYou(); return; }
   if (route === 'activity') { show('activity', 'lateral'); buildActivity(); return; }
   if (route === 'results') {
     /* The results screen is one reused element, so arriving at it with an
@@ -6022,6 +5968,8 @@ window.__signedIn = (ok) => {
 /* ------------------------------------------------------------ add a work */
 
 const addDialog = $('#addwork');
+$('#add-epubs').onclick = () => { closeSheet(addDialog); $('#import-epubs').click(); };
+$('#add-bookmarks').onclick = () => { closeSheet(addDialog); openBookmarkSync(); };
 
 $('#add').onclick = async () => {
   $('#addwork-status').hidden = true;

@@ -16,10 +16,8 @@ No v3 UI work goes into this baseline. Any later maintenance decision must leave
 
 ## New v3 experience
 
-The separate `v3` branch begins at v2.10.4. Its first work is the [UI and journey assessment](v3-ui-assessment.md), with documentation and baseline screenshots only. `main` remains at the v2 baseline during this assessment.
+The next major version is **3**. It is implemented in feature slices, each with a reviewed pull request, checks and a release. See the [rollout record](v3-rollout.md). `main` carries released work; `v3` follows the new major. The original [assessment](v3-ui-assessment.md) records the v2 baseline and design rationale.
 
-The redesigned experience belongs to major version **3**, with its first stable release intended as **3.0.0**. There is no v3 APK or release tag yet. APK versions are derived from release tags; starting the design branch does not require shipping a renamed copy of v2.
-
-Before a v3 build is distributed, decide its Android package/install relationship to v2 and verify backup/import and database compatibility. A downloadable old APK is not a promise that Android can downgrade a later installation or that an older app can read a newer database.
+v3 uses the same Android package and signing key as v2, so it updates the installed app and retains its data. The first navigation release changes no database schema or stored reading settings. The preserved v2 APK remains available; reinstalling an older APK over a later installation is not a supported downgrade path. Keep a library backup when switching installations.
 
 Commits and tags must be signed with the owner's key. When v3 is eventually integrated, preserve those signed commits; do not squash or use a server-side rebase that rewrites them.

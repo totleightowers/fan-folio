@@ -221,6 +221,29 @@ try {
   await page.locator('#library').waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 3);
   assert.equal(await page.locator('#works .work-card').count(), 3, 'fandom browse clears the previous reading-only filter');
+  // Main destinations and collection entry points remain available on both sizes.
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 940 });
+    await page.locator('#tabs [data-tab="activity"]').click();
+    await page.locator('#activity').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#sync-now').count(), 1);
+    await page.locator('#open-settings').click();
+    assert.equal(await page.locator('#settings #account').isVisible(), true);
+    assert.equal(await page.locator('#tabs').isVisible(), true);
+    await page.locator('#tabs [data-tab="library"]').click();
+    await page.locator('[data-collection="bookmarked"]').click();
+    await page.locator('#library-sync').click();
+    await page.locator('#activity').waitFor({ state: 'visible' });
+    await page.locator('#tabs [data-tab="library"]').click();
+    await page.locator('[data-collection="all"]').click();
+    await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 3);
+    assert.equal(await page.locator('#active').innerText(), '');
+    await page.locator('#add').click();
+    assert.equal(await page.locator('#add-epubs').isVisible(), true);
+    await page.locator('#add-bookmarks').click();
+    await page.locator('#activity').waitFor({ state: 'visible' });
+    await screenshot('v3-downloads-' + width);
+  }
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

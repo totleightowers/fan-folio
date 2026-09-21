@@ -2682,25 +2682,22 @@ test('what the app is doing has a place of its own', () => {
   assert.ok(settings.includes('id="library-facts"'), 'what the library holds can stay');
 });
 
-test('your own bookmarks are about you, not about the queue', () => {
-  /* Checking the archive for bookmarks you made is a fact about a reader.
-     It sat in Activity because that is where the job it starts shows up,
-     which is where the work goes rather than where the question belongs. */
-  const you = html.slice(html.indexOf('<section id="you"'),
-    html.indexOf('</section>', html.indexOf('<section id="you"')));
-  for (const mine of ['id="account"', 'id="sync-now"', 'id="sync-all"', 'id="you-counts"']) {
-    assert.ok(you.includes(mine), `${mine} belongs to You`);
+test('account, bookmark acquisition and collections have stable homes', () => {
+  const section = (id) => html.slice(html.indexOf(`<section id="${id}"`),
+    html.indexOf('</section>', html.indexOf(`<section id="${id}"`)));
+  assert.ok(section('settings').includes('id="account"'));
+  for (const id of ['sync-now', 'sync-all', 'job-list']) {
+    assert.ok(section('activity').includes(`id="${id}"`));
   }
+  assert.ok(section('library').includes('id="library-collections"'));
+  assert.ok(!html.includes('data-tab="you"'));
 });
 
-test('search is an action, not a destination', () => {
-  assert.match(js, /const TABBED = new Set\(\['home', 'library', 'you'\]\)/,
-    'the box in the top bar already searches whatever screen you are on');
+test('main navigation reaches reading, the collection and ongoing work', () => {
   const tabsAt = html.indexOf('<nav id="tabs"');
   const tabs = html.slice(tabsAt, html.indexOf('</nav>', tabsAt));
-  assert.ok(!tabs.includes('data-tab="search"'), 'so it does not also need a tab');
-  assert.ok(tabs.includes('data-tab="you"'));
-  assert.ok(!tabs.includes('data-tab="activity"'), 'a queue is not a place you go');
+  for (const route of ['home', 'library', 'activity']) assert.ok(tabs.includes(`data-tab="${route}"`));
+  assert.ok(!tabs.includes('data-tab="search"'));
 });
 
 test('a download notification lands on the downloads', () => {
@@ -2860,7 +2857,7 @@ test('the reader does not offer to add a work', () => {
 test('the app is at least as reachable as its settings', () => {
   const chrome = js.slice(js.indexOf('function paintChrome(name)'));
   const body = chrome.slice(0, chrome.indexOf('\n}\n'));
-  assert.match(body, /\$\('#open-settings'\)\.hidden = !KEEPS_TABS\.has\(name\)/,
+  assert.match(body, /\$\('#open-settings'\)\.hidden = name === 'settings' \|\| !KEEPS_TABS\.has\(name\)/,
     'the cog is offered exactly where the tabs are, and nowhere they are not');
 
   const keeps = js.slice(js.indexOf('const KEEPS_TABS'));
@@ -2903,7 +2900,7 @@ test('the reader has a way into the app that is not the Back button', () => {
   assert.match(html, /id="reader-more"/, 'a chapter had no route out but Back, repeated');
   const menu = html.slice(html.indexOf('<dialog id="reader-menu">'));
   const body = menu.slice(0, menu.indexOf('</dialog>'));
-  for (const where of ['home', 'library', 'you', 'settings']) {
+  for (const where of ['home', 'library', 'activity', 'settings']) {
     assert.match(body, new RegExp(`data-go="${where}"`), `${where} is reachable from a chapter`);
   }
   assert.match(js, /\$\('#reader-more'\)\.onclick = \(\) => openSheet/);
@@ -3146,20 +3143,13 @@ test('and every view the app knows about is on the page', () => {
  * stayed behind on the tab that took its place — so You wore a badge for a
  * download that has nothing to do with anything on that screen.
  */
-test('the badge is on the way to what it is about', () => {
+test('the download badge belongs to the Downloads destination', () => {
   const tabsAt = html.indexOf('<nav id="tabs"');
   const tabs = html.slice(tabsAt, html.indexOf('</nav>', tabsAt));
-  assert.ok(!tabs.includes('activity-dot'),
-    'a tab that shows none of this does not wear its badge');
-
+  assert.ok(tabs.includes('activity-dot'));
   const cog = html.slice(html.indexOf('<button id="open-settings"'));
-  assert.ok(cog.slice(0, cog.indexOf('</button>') + 9).includes('id="activity-dot"'),
-    'the cog leads to Activity, so the cog carries the news');
-
-  /* And the row inside Settings says it too, so the last step of the way
-     there is signposted like the first. */
+  assert.ok(!cog.slice(0, cog.indexOf('</button>')).includes('activity-dot'));
   assert.ok(html.includes('id="activity-here"'));
-  assert.match(js, /const here = \$\('#activity-here'\)/);
 });
 
 /**

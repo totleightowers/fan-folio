@@ -7,7 +7,7 @@ all — and searchable in a way the sites it came from are not.
 
 The existing UI is preserved as **v2.10.4**: [download the APK](https://github.com/totleightowers/fan-folio/releases/download/v2.10.4/fanfolio.apk). The frozen source is on `frozen/v2`.
 
-This `v3` branch starts the next major version with a [UI and journey assessment](docs/v3-ui-assessment.md). No redesigned build has been released. See the [version policy](docs/version-policy.md) for both tracks.
+Version 3 develops the [UI and journey assessment](docs/v3-ui-assessment.md) in independently released features. Follow the [rollout record](docs/v3-rollout.md) and [version policy](docs/version-policy.md).
 
 ## Why
 

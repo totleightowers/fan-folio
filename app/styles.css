@@ -2566,3 +2566,11 @@ body:has(#reader:not([hidden])) #typo { display: none; }
   #chapnav #comment-here { display: inline-flex; align-items: center; justify-content: center; }
   #reader-comment { display: none; }
 }
+
+/* v3: collection views and acquisition share the app's existing controls. */
+.collection-tabs { display: flex; gap: .5rem; overflow-x: auto; padding: .2rem 0 .8rem; scrollbar-width: thin; }
+.collection-tabs .chip { flex: 0 0 auto; min-height: var(--control); }
+.collection-tabs .chip.on { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
+#library-sync { margin-bottom: 1rem; }
+.add-sources { margin-top: 1rem; padding-top: .8rem; border-top: 1px solid var(--rule); }
+#bookmark-sync { scroll-margin-top: 5rem; }

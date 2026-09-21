@@ -76,6 +76,7 @@
     </symbol>
     <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.4 2.8 6.2 13.4h5l-1.6 7.8 7.2-10.6h-5z"/></symbol>
     <!-- A person, for the tab that is about one. -->
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4"/></symbol>
     <symbol id="i-person" viewBox="0 0 24 24">
       <circle cx="12" cy="8" r="3.4"/>
       <path d="M5.4 20.2a6.6 6.6 0 0 1 13.2 0"/>
@@ -109,14 +110,9 @@
   <!-- Holds the width open on the screens where the search box has no meaning
        and is not shown, so the controls stay where the hand expects them. -->
   <span id="bar-gap" hidden></span>
-  <button id="add" class="icon" aria-label="Add a work from a link"><svg class="ic" aria-hidden="true"><use href="#i-add"/></svg></button>
+  <button id="add" class="icon" aria-label="Add works"><svg class="ic" aria-hidden="true"><use href="#i-add"/></svg></button>
   <button id="typo" class="icon" aria-label="Reading settings"><svg class="ic" aria-hidden="true"><use href="#i-text"/></svg></button>
-  <!--
-      The dot follows the work. Activity moved under the cog, and the dot
-      stayed on the tab it used to share — so You wore a badge for a download
-      that has nothing to do with anything on it.
-  -->
-  <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg><span id="activity-dot" hidden></span></button>
+  <button id="open-settings" class="icon" aria-label="Settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg></button>
 </header>
 
 <main id="main">
@@ -159,58 +155,11 @@
     <div id="starthere"></div>
   </section>
 
-  <!--
-      What is yours.
 
-      Signing in lived under the cog. The counts beside it were reachable only
-      as filter combinations somebody had to know how to build — "bookmarked",
-      "marked for later", "finished" are facts about a reader rather than
-      about a library, and they had nowhere of their own.
-  -->
-  <section id="you" class="view" hidden>
-    <div class="setting-group">
-      <h3 class="group">Archive account</h3>
-      <p class="setting-note">Signing in lets Fan Folio download works, including ones only
-        logged-in readers can see, and read your own bookmarks.</p>
-      <button id="account" class="account-btn">Sign in</button>
-    </div>
 
-    <div id="you-account" class="you-account"></div>
-    <div id="you-counts" class="you-counts"></div>
-
-    <div class="setting-group">
-      <h3 class="group">Your bookmarks on the archive</h3>
-      <p class="setting-note">Checks for bookmarks you have made since the last time, and
-        downloads those works.</p>
-      <button id="sync-now" class="primary">Check for new bookmarks</button>
-      <button id="sync-stop" class="linkish" hidden>Stop</button>
-      <p id="sync-status" class="setting-note" hidden></p>
-      <!--
-          Checking for new ones reads the newest pages and stops where they
-          stop being new, which is quick and can only add. Removing a bookmark
-          on the archive is the absence of something, and absence cannot be
-          seen a page at a time — so putting that right means reading the whole
-          list, which is slow enough to be its own deliberate act.
-      -->
-      <p class="setting-note">Removing a bookmark on the archive cannot be noticed by checking
-        for new ones. Reading the whole list puts that right — it takes as long as your
-        bookmarks are long, and it only changes which works are marked, never what is
-        downloaded.</p>
-      <button id="sync-all" class="ghost">Read the whole bookmark list</button>
-    </div>
-  </section>
-
-  <!--
-      What the app is doing, and what it has done.
-
-      This was all inside Settings, which is where preferences go. A queue of
-      hours of work, a bookmark sync and a backlog of undownloaded works are
-      not preferences — they are the app's activity, and the question they
-      answer is "what is Fan Folio doing", which nobody thinks to look for
-      under a cog.
-  -->
   <section id="activity" class="view" hidden>
-    <h2 class="settings-title">Activity</h2>
+    <h2 class="settings-title">Downloads</h2>
+    <p class="setting-note">Your downloads and archive checks, in one place.</p>
 
     <div class="setting-group">
       <h3 class="group">Downloads</h3>
@@ -243,10 +192,38 @@
         Fan&nbsp;Folio open to finish.</p>
     </div>
 
+    <div id="bookmark-sync" class="setting-group">
+      <h3 class="group">Your bookmarks on the archive</h3>
+      <p class="setting-note">Checks for bookmarks you have made since the last time, and
+        downloads those works.</p>
+      <button id="sync-now" class="primary">Check for new bookmarks</button>
+      <button id="sync-stop" class="linkish" hidden>Stop</button>
+      <p id="sync-status" class="setting-note" hidden></p>
+      <!--
+          Checking for new ones reads the newest pages and stops where they
+          stop being new, which is quick and can only add. Removing a bookmark
+          on the archive is the absence of something, and absence cannot be
+          seen a page at a time — so putting that right means reading the whole
+          list, which is slow enough to be its own deliberate act.
+      -->
+      <p class="setting-note">Removing a bookmark on the archive cannot be noticed by checking
+        for new ones. Reading the whole list puts that right — it takes as long as your
+        bookmarks are long, and it only changes which works are marked, never what is
+        downloaded.</p>
+      <button id="sync-all" class="ghost">Read the whole bookmark list</button>
+    </div>
   </section>
 
   <section id="settings" class="view" hidden>
     <h2 class="settings-title">Settings</h2>
+    <div class="setting-group">
+      <h3 class="group"><svg class="ic" aria-hidden="true"><use href="#i-person"/></svg> Archive account</h3>
+      <p class="setting-note">Signing in lets Fan Folio download works, including ones only
+        logged-in readers can see, and read your own bookmarks.</p>
+      <button id="account" class="account-btn">Sign in</button>
+    </div>
+
+
     <div class="settings-panel">
       <button id="open-typo" class="settings-row">
         <span class="settings-symbol" aria-hidden="true">Aa</span>
@@ -318,6 +295,14 @@
 
   <section id="library" class="view" hidden>
     <h2 class="library-title">Your library</h2>
+    <div id="library-collections" class="collection-tabs" role="group" aria-label="Library collections">
+      <button class="chip" data-collection="all">All works</button>
+      <button class="chip" data-collection="reading">Reading</button>
+      <button class="chip" data-collection="later">For later</button>
+      <button class="chip" data-collection="finished">Finished</button>
+      <button class="chip" data-collection="bookmarked">AO3 bookmarks</button>
+    </div>
+    <button id="library-sync" class="ghost" hidden>Check your AO3 bookmarks</button>
     <div id="toolbar">
       <div class="toolrow">
         <button id="open-filters" class="filter-btn">
@@ -416,22 +401,7 @@
 <nav id="tabs" hidden>
   <button data-tab="home" class="on"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
   <button data-tab="library"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
-  <!--
-      What is yours rather than what is here.
-
-      Signing in lived behind the cog, which is where a thing goes when
-      nobody has decided it matters — and it is the gate for half of what
-      this app can do. What you have bookmarked, what you meant to get to
-      and what you have finished are facts about you rather than about the
-      library, and were reachable only as filter combinations somebody had
-      to know how to build.
-
-      Activity had this slot. A queue is something the app is doing, and it
-      belongs with the rest of the app's own affairs, under Settings — and the
-      dot that says an hour of downloading is happening went with it, to the
-      cog, rather than staying here on a screen it says nothing about.
-  -->
-  <button data-tab="you"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-person"/></svg>You</button>
+  <button data-tab="activity"><svg class="ic ic-tab" aria-hidden="true"><use href="#i-download"/></svg>Downloads<span id="activity-dot" hidden></span></button>
 </nav>
 
 <dialog id="chapters-dialog">
@@ -454,7 +424,7 @@
   <div class="menu-list">
     <button data-go="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg>Home</button>
     <button data-go="library"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg>Library</button>
-    <button data-go="you"><svg class="ic" aria-hidden="true"><use href="#i-person"/></svg>You</button>
+    <button data-go="activity"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg>Downloads</button>
     <button data-go="settings"><svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
   </div>
   <!--
@@ -465,8 +435,8 @@
 </dialog>
 
 <dialog id="addwork">
-  <h2>Add a work</h2>
-  <p class="addwork-hint">Paste a link to a work. A chapter link is fine.</p>
+  <h2>Add to your library</h2>
+  <p class="addwork-hint">Paste an AO3 work, chapter or series link.</p>
   <input id="addwork-url" type="url" inputmode="url" spellcheck="false"
          autocomplete="off" placeholder="https://…/works/12345">
   <p id="addwork-status" class="addwork-status" hidden></p>
@@ -476,7 +446,11 @@
   </div>
   <div class="addwork-actions">
     <button class="close" data-close="addwork">Cancel</button>
-    <button id="addwork-go" class="primary">Add</button>
+    <button id="addwork-go" class="primary">Add link</button>
+  </div>
+  <div class="add-sources">
+    <button id="add-epubs" class="settings-row"><span><strong>Import EPUBs</strong><small>Choose files from your device</small></span><svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    <button id="add-bookmarks" class="settings-row"><span><strong>From your AO3 bookmarks</strong><small>Check for new works or reconcile the whole list</small></span><svg class="ic" aria-hidden="true"><use href="#i-chevron"/></svg></button>
   </div>
 </dialog>
 
