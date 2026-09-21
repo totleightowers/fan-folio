@@ -3500,3 +3500,16 @@ test('a leftover import comes back as a record, not as work in hand', () => {
     'and it never reaches the walker');
 });
 
+
+
+test('work cards use the same explicit archive handoff as work details', () => {
+  const row = js.slice(js.indexOf('function workRow('), js.indexOf('async function loadMore('));
+  assert.match(row, /ao3: \(\) => openOnArchive\(`/);
+  assert.ok(!row.includes('window.open('), 'native work cards do not ask WebView to create a popup');
+  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const start = java.indexOf('boolean shouldOverrideUrlLoading(');
+  const handler = java.slice(start, java.indexOf('root.addView(web', start));
+  assert.ok(handler.indexOf('!r.isForMainFrame() || !r.hasGesture()') < handler.indexOf('startActivity('),
+    'external handoff requires a deliberate top-level link tap');
+  assert.match(handler, /u.getScheme\(\)/, 'blank popup navigation cannot open the browser');
+});

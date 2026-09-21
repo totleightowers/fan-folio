@@ -188,3 +188,18 @@ test('backup imports preserve completion from before a reread', () => {
   assert.equal(d.prepare('SELECT completed_before FROM reading WHERE work_id = ?').get('1').completed_before, 1);
   assert.equal(d.prepare('SELECT chapters_read FROM reading WHERE work_id = ?').get('1').chapters_read, 0);
 });
+
+
+test('imported chapters are available regardless of a missing or stale incoming flag', () => {
+  const d = merge((device, incoming) => {
+    addWork(device, '1', 'Already described');
+    addWork(incoming, '1', 'Already described');
+    addWork(incoming, '2', 'New EPUB');
+    addWork(incoming, '3', 'Description only');
+    for (const id of ['1', '2']) addChapter(incoming, id, 1, '<p>Saved words.</p>');
+    incoming.exec("UPDATE works SET has_text=1 WHERE work_id='3'");
+  });
+  assert.deepEqual(d.prepare('SELECT work_id,has_text FROM works ORDER BY work_id').all().map(r => [r.work_id,r.has_text]),
+    [['1',1],['2',1],['3',0]]);
+  d.close();
+});

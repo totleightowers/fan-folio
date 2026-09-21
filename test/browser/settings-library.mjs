@@ -35,6 +35,8 @@ db.exec("INSERT INTO chapter_fts(chapter_fts) VALUES('rebuild')");
 db.exec("INSERT INTO work_fts(rowid,work_id,title,authors,summary,tags) SELECT rowid,work_id,title,authors,summary,'' FROM works");
 db.prepare(`INSERT INTO chapter_versions (id,work_id,number,title,html,text,words,reason,archived_at)
   VALUES (1,'1',1,'Earlier opening','<p>The older beginning.</p>','The older beginning.',4,'content','2026-08-01')`).run();
+// Reproduce an older EPUB import: the text is present but its flag was never set.
+db.exec("UPDATE works SET has_text=0, source='epub' WHERE work_id='epub-demo'");
 db.close();
 const server = spawn(process.execPath, [new URL('../../tools/serve.mjs', import.meta.url).pathname], {
   cwd: dir, env: { ...process.env, FANFOLIO_DB: dbPath, PORT: '18766' }, stdio: ['ignore', 'pipe', 'inherit'],
@@ -99,6 +101,16 @@ try {
   await page.locator('.work-title-link').first().waitFor();
   assert.ok(await page.locator('#works .not-held').count());
   assert.equal(await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).locator('[data-act="ao3"]').count(), 0);
+  const imported = page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' });
+  assert.equal(await imported.locator('.not-held').count(), 0, 'an imported saved copy is available');
+  await imported.locator('.work-title-link').click();
+  await page.locator('#detail .actions .primary').filter({ hasText: 'Read' }).click();
+  await page.locator('#reader').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.querySelector('#workskin').textContent.includes('Afternoon light'));
+  assert.equal(browser.contexts()[0].pages().length, 1, 'reading a saved EPUB opens no browser tab');
+  await page.locator('#back').click();
+  await page.locator('#back').click();
+  await page.locator('#works .work-title-link').first().waitFor();
   for (const [width, height, name] of [[390,844,'phone'], [320,720,'narrow'], [582,1280,'large-phone'], [900,900,'tablet']]) {
     await page.setViewportSize({ width, height });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'no horizontal page overflow');

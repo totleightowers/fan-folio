@@ -16,6 +16,8 @@
  * `incoming`.
  */
 
+import { REPAIR_AVAILABILITY } from './availability.js';
+
 /** Columns describing the work itself, which the incoming copy is authoritative for. */
 const WORK_COLUMNS = [
   'title', 'authors', 'summary', 'rating', 'language', 'published', 'updated',
@@ -87,6 +89,9 @@ export const MERGE_STEPS = [
   `DELETE FROM chapters WHERE work_id IN (SELECT work_id FROM incoming.works)`,
   `INSERT INTO chapters (work_id, number, title, html, text, words, content_hash)
      SELECT work_id, number, title, html, text, words, content_hash FROM incoming.chapters`,
+
+  // The imported flag may be absent or stale. Derive it from the merged text.
+  REPAIR_AVAILABILITY,
 
   `INSERT OR IGNORE INTO images (work_id, url, sha256, mime, bytes, status, fetched_at)
      SELECT work_id, url, sha256, mime, bytes, status, fetched_at FROM incoming.images`,

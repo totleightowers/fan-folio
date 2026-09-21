@@ -6,6 +6,8 @@
  * One schema, so what the ingest writes is exactly what the reader queries.
  */
 
+import { REPAIR_AVAILABILITY } from './availability.js';
+
 export const SCHEMA = `
 PRAGMA journal_mode = WAL;
 
@@ -251,6 +253,11 @@ export function ensureColumns(db) {
       db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${ddl}`);
       added.push(name);
     }
+  }
+  // Older imports saved chapters without setting has_text. Repair existing
+  // libraries too, not just databases gaining the column for the first time.
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chapters'").get()) {
+    db.exec(REPAIR_AVAILABILITY);
   }
   return added;
 }

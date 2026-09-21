@@ -831,7 +831,7 @@ function workRow(w) {
       ? readWork(w)
       : openWork(w.work_id),
     // the one place the app leaves itself: the work as AO3 has it now
-    ao3: () => window.open(`https://archiveofourown.org/works/${w.work_id}`, '_blank', 'noopener'),
+    ao3: () => openOnArchive(`/works/${w.work_id}`),
   };
   for (const b of node.querySelectorAll('.rowactions button')) {
     b.onclick = (e) => { e.stopPropagation(); act[b.dataset.act](); };

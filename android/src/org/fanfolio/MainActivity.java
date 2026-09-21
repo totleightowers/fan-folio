@@ -106,6 +106,12 @@ public class MainActivity extends Activity {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
                 if (HOST.equals(u.getHost())) return false;
+                // A saved chapter or redirect must not launch another app.
+                // Explicit archive buttons use the dedicated browser bridge.
+                if (!r.isForMainFrame() || !r.hasGesture()) return true;
+                if (!"https".equalsIgnoreCase(u.getScheme())
+                        && !"http".equalsIgnoreCase(u.getScheme())
+                        && !"mailto".equalsIgnoreCase(u.getScheme())) return true;
                 try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) {}
                 return true;
             }
@@ -509,6 +515,12 @@ public class MainActivity extends Activity {
                      + "ON bookmarked_by(work_id)");
         } catch (Exception ignored) { }
         repairCompleteness(db);
+        try {
+            // The same repair used for imports and tested against old libraries.
+            db.execSQL(readAsset("web/availability.sql"));
+        } catch (IOException e) {
+            throw new IllegalStateException("Missing availability repair", e);
+        }
     }
 
     /**

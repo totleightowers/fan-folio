@@ -12,6 +12,7 @@ import { parseEpub } from '../app/core/epub.js';
 import { readZip } from '../app/core/zip.js';
 import { createHash } from 'node:crypto';
 import { SCHEMA, ensureColumns } from '../app/core/store/schema.js';
+import { REPAIR_AVAILABILITY } from '../app/core/store/availability.js';
 
 const dir = process.argv[2];
 const dbPath = process.argv[3] || 'data/fanfolio.db';
@@ -149,6 +150,7 @@ for (const name of files) {
 }
 db.exec('COMMIT');
 
+db.exec(REPAIR_AVAILABILITY);
 console.log('building the full-text index…');
 db.exec("INSERT INTO chapter_fts(chapter_fts) VALUES('rebuild')");
 db.exec('ANALYZE');
