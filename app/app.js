@@ -511,9 +511,10 @@ function renderPlace(place, motion = 'back') {
   paintSearchPlaceholder();
   const expectedRoute = place.route;
   const expectedNavigation = navigationGeneration;
+  const expectedContent = pending;
   Promise.resolve(ready).then(() => {
     requestAnimationFrame(() => {
-      if (showing() !== expectedRoute || navigationGeneration !== expectedNavigation) return;
+      if (showing() !== expectedRoute || navigationGeneration !== expectedNavigation || pending !== expectedContent) return;
       window.scrollTo(0, place.scrollY ?? 0);
       if (expectedRoute === 'reader' && readingIsTransient) transientFrom = window.scrollY;
     });

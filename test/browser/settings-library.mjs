@@ -453,8 +453,14 @@ try {
   await page.locator('#reader').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#search-field').isVisible(), false);
   // A search peek remains transient when returning at a different viewport height.
-  await fetch('http://127.0.0.1:18766/api/progress?workId=1&chapter=2&offset=125', { method: 'POST' });
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#rh-chapter').filter({ hasText: 'Chapter 1' }).waitFor();
+  await page.locator('#next').click();
+  await page.locator('#rh-chapter').filter({ hasText: 'Chapter 2' }).waitFor();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const savedPlace = page.waitForResponse(r => r.url().includes('/api/progress?workId=1&chapter=2&offset=125') && r.status() === 200);
+  await page.evaluate(() => window.scrollTo(0, 125));
+  await savedPlace;
   await page.locator('#reader-search').click();
   await page.locator('#q').fill('Afternoon');
   await page.locator('#results .hit').first().click();
