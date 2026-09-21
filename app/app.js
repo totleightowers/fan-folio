@@ -9,7 +9,7 @@
 
 import { History, openingOffset } from './core/nav.js';
 import { parseEpub } from './core/epub.js';
-import { reachedTheEnd, chromeHidden } from './core/reading.js';
+import { reachedTheEnd, chromeHidden, readingStatus } from './core/reading.js';
 import { isHidden, worksByPattern } from './core/store/blocked.js';
 import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
@@ -22,7 +22,7 @@ import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
+import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
@@ -286,8 +286,11 @@ const MOTION = { forward: 'in-forward', back: 'in-back', lateral: 'in-lateral' }
    already carrying the page off. A view transition on top would be two
    animations disagreeing about the same movement. */
 let suppressMotion = false;
+let navigationGeneration = 0;
 
 function show(name, motion = 'none') {
+  navigationGeneration++;
+  let ready;
   if (name !== 'reader') keepAwake(false);
   if (name !== 'results') {
     clearTimeout(searchTimer);
@@ -324,7 +327,7 @@ function show(name, motion = 'none') {
    * The queries behind it are a handful of indexed reads, and this only fires
    * on actually arriving, not on every redraw.
    */
-  if (name === 'home' && changing) refresh({ force: true });
+  if (name === 'home' && changing) ready = refresh({ force: true });
   /* A work opened from the library is still the library, and the tab bar says
      so rather than going blank the moment you touch anything. */
   if (TABBED.has(name)) inTab = name;
@@ -335,6 +338,7 @@ function show(name, motion = 'none') {
   paintCollections();
   paintActivityBadge();
   window.scrollTo(0, 0);
+  return ready;
 }
 
 /**
@@ -437,13 +441,14 @@ function renderPlace(place, motion = 'back') {
   const p = place.params ?? {};
   if (TABBED.has(place.tab)) inTab = place.tab;
   restoring = true;
+  let ready;
   try {
     if (place.route === 'detail' && p.workId) {
       show('detail', motion);
-      openWork(p.workId);
+      ready = openWork(p.workId);
     } else if (place.route === 'reader' && p.workId) {
       show('reader', motion);
-      openChapter(p.workId, Number(p.chapter) || 1);
+      ready = openChapter(p.workId, Number(p.chapter) || 1);
     } else if (place.route === 'results' && p.query) {
       $('#q').value = p.query;
       searchInScope = p.scope || 'text';
@@ -452,7 +457,7 @@ function renderPlace(place, motion = 'back') {
       searchFilters = p.filters || [];
       searchOrigin = p.origin || 'home';
       show('results', motion);
-      runSearch(p.query);
+      ready = runSearch(p.query);
     } else if (place.route === 'author' && p.author) {
       show('author', motion);
       authorShowing = {
@@ -463,7 +468,7 @@ function renderPlace(place, motion = 'back') {
       };
       currentAuthor = p.author;
       paintAuthor();
-      loadAuthorWorks(true);
+      ready = loadAuthorWorks(true);
     } else if (place.route === 'library') {
       if (p.filters) {
         Object.assign(view, p.filters);
@@ -471,11 +476,11 @@ function renderPlace(place, motion = 'back') {
         paintActiveFilters();
         $('#sort').value = view.sort;
         offset = 0;
-        loadMore(true);
+        ready = loadMore(true);
       }
       show('library', motion);
     } else {
-      show(place.route, motion);
+      ready = show(place.route, motion);
     }
   } finally {
     restoring = false;
@@ -483,7 +488,11 @@ function renderPlace(place, motion = 'back') {
 
   $('#q').value = place.route === 'results' ? (place.query ?? place.params?.query ?? '') : '';
   paintSearchPlaceholder();
-  requestAnimationFrame(() => window.scrollTo(0, place.scrollY ?? 0));
+  const expectedRoute = place.route;
+  const expectedNavigation = navigationGeneration;
+  Promise.resolve(ready).then(() => {
+    if (showing() === expectedRoute && navigationGeneration === expectedNavigation) requestAnimationFrame(() => window.scrollTo(0, place.scrollY ?? 0));
+  });
 }
 
 function goBack() {
@@ -599,10 +608,34 @@ const authorsOf = (raw) => { try { return JSON.parse(raw || '[]'); } catch { ret
 
 /** "3 of 12 read" is more use than a bare percentage when chapters are long. */
 function progressOf(w) {
-  const total = Number(w.chapter_count) || 0;
-  const read = Number(w.chapters_read) || 0;
-  if (!total || !read) return null;
-  return { read, total, pct: Math.min(100, Math.round((read / total) * 100)) };
+  const progress = readingStatus(w);
+  return progress.started ? progress : null;
+}
+
+async function startAgain(w) {
+  try {
+    clearTimeout(posTimer);
+    await restartReading(w.work_id);
+    positions[w.work_id] = { chapter: 1, y: 0 };
+    save(POS_KEY, positions);
+    currentWork = null;
+    finishedThisVisit = null;
+    await openChapter(w.work_id, 1);
+  } catch (e) { toast(`Could not start again: ${e.message}`); }
+}
+
+function readingAction(w) {
+  const state = readingStatus(w);
+  return state.done ? 'Read again' : state.started ? 'Resume' : 'Read';
+}
+function readWork(w) {
+  return readingStatus(w).done ? startAgain(w) : openChapter(w.work_id, readingStatus(w).at);
+}
+
+function readingLabel(w) {
+  const s = readingStatus(w);
+  if (s.done) return w.complete ? 'Finished' : 'Caught up · waiting for more chapters';
+  return `${s.rereading ? 'Reading again · ' : ''}Chapter ${s.at} of ${s.total}`;
 }
 
 /* ---------------------------------------------------------------- library */
@@ -718,7 +751,7 @@ function workRow(w) {
     ${p ? `<div class="bar"><div style="width:${p.pct}%"></div></div>
            <div class="progress-note">${p.read} of ${p.total} chapters read</div>` : ''}
     <div class="rowactions">
-      <button data-act="open">${!w.has_text ? 'Download' : p ? 'Continue' : 'Read'}</button>
+      <button data-act="open">${!w.has_text ? 'Download' : readingAction(w)}</button>
       ${/^\d+$/.test(String(w.work_id)) ? '<button data-act="ao3">On AO3 ↗</button>' : ''}
     </div>`;
 
@@ -754,7 +787,7 @@ function workRow(w) {
 
   const act = {
     open: () => w.has_text
-      ? openChapter(w.work_id, p ? (w.at_chapter ?? 1) : 1)
+      ? readWork(w)
       : openWork(w.work_id),
     // the one place the app leaves itself: the work as AO3 has it now
     ao3: () => window.open(`https://archiveofourown.org/works/${w.work_id}`, '_blank', 'noopener'),
@@ -1918,7 +1951,7 @@ function archiveActions(w) {
 
   const comment = document.createElement('button');
   comment.className = 'archive-act';
-  comment.append(icon('chapters', 'ic ic-inline'), document.createTextNode('Comment'));
+  comment.append(icon('comment', 'ic ic-inline'), document.createTextNode('Comment'));
   comment.onclick = () => {
     $('#cm-text').value = '';
     $('#cm-status').hidden = true;
@@ -4474,16 +4507,41 @@ function workCard(w) {
   return card;
 }
 
+function resumeCard(w) {
+  const card = document.createElement('article');
+  card.className = 'card resume-card';
+  card.style.setProperty('--spine', spineColour(w.fandom || w.title));
+  const title = document.createElement('button');
+  title.className = 'work-title-link';
+  title.textContent = w.title || '(untitled)';
+  title.onclick = () => openWork(w.work_id);
+  const by = document.createElement('p');
+  by.className = 'by';
+  by.textContent = authorsOf(w.authors).join(', ') || 'Anonymous';
+  const position = document.createElement('p');
+  position.className = 'resume-position';
+  position.textContent = readingLabel(w);
+  const resume = document.createElement('button');
+  resume.className = 'primary resume-action';
+  resume.textContent = w.has_text ? 'Resume' : 'Download to resume';
+  resume.onclick = () => w.has_text ? readWork(w) : openWork(w.work_id);
+  card.append(title, by, position, resume);
+  return card;
+}
+
 const STAT_LABELS = [
   ['works', 'works'], ['words', 'words'], ['finished', 'finished'],
   ['later', 'for later'], ['wordsRead', 'words read'],
 ];
 
+let homeRequest = 0;
 async function buildHome() {
+  const request = ++homeRequest;
   let data;
   try {
     data = await api('/api/home');
   } catch (e) {
+    if (request !== homeRequest) return;
     // say what actually went wrong; a blank home screen teaches nobody anything
     $('#shelves').innerHTML = '<p class="empty"></p>';
     $('#shelves .empty').textContent = `Home could not load: ${e.message}`;
@@ -4491,6 +4549,7 @@ async function buildHome() {
     return;
   }
 
+  if (request !== homeRequest) return;
   const stats = $('#stats');
   stats.textContent = '';
   for (const [key, label] of STAT_LABELS) {
@@ -4544,12 +4603,11 @@ async function buildHome() {
       show('library');
     };
     const rail = section.querySelector('.rail');
-    for (const w of shelf.works) rail.append(workCard(w));
+    rail.classList.toggle('resume-rail', shelf.key === 'reading');
+    for (const w of shelf.works) rail.append(shelf.key === 'reading' ? resumeCard(w) : workCard(w));
     box.append(section);
-    /* The counts, directly under the thing somebody came back for. Left at
-       the foot of the document they were below every shelf and the whole of
-       Browse, which is present and out of sight. */
-    if (i === 0) box.append(stats);
+    /* Collection totals follow the reading choices rather than interrupting them. */
+    if (i === shelves.length - 1) box.append(stats);
   }
   /* Emptying the shelves takes the counts with them, since that is where they
      now live. A library with no shelves at all still has counts. */
@@ -5070,22 +5128,27 @@ async function openWork(workId) {
   box.append(workFacts(w));
 
   const saved = positions[workId];
+  const reading = readingStatus(w);
+  const status = document.createElement('p');
+  status.className = 'work-reading-state';
+  status.textContent = w.has_text ? readingLabel(w) : 'Downloading this work for offline reading…';
+  head.append(status);
   const actions = document.createElement('div');
   actions.className = 'actions';
   const read = document.createElement('button');
   read.className = 'primary';
-  read.textContent = saved?.chapter ? `Continue chapter ${saved.chapter}` : 'Read';
-  read.onclick = () => openChapter(workId, saved?.chapter ?? 1);
+  read.textContent = readingAction(w);
+  read.onclick = () => readWork(w);
   if (!w.has_text) {
     read.disabled = true;
     read.textContent = 'Fetching…';
   }
   actions.append(read);
-  if (saved?.chapter && w.has_text) {
+  if (reading.started && !reading.done && w.has_text) {
     const restart = document.createElement('button');
     restart.className = 'linkish';
     restart.textContent = 'Start again';
-    restart.onclick = () => openChapter(workId, 1);
+    restart.onclick = () => startAgain(w);
     actions.append(restart);
   }
   /* Finished is a state somebody is allowed to simply declare. The reader
@@ -5107,7 +5170,7 @@ async function openWork(workId) {
     };
     actions.append(finish);
   }
-  box.append(actions);
+  head.append(actions);
 
   box.append(archiveActions(w));
 

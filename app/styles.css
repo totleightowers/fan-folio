@@ -2581,3 +2581,11 @@ body:has(#reader:not([hidden])) #typo { display: none; }
 #search-scope { flex: 1; min-width: 0; max-width: 100%; font: inherit; color: var(--ink-mid); background: transparent; border: 0; padding: .15rem 0; }
 #search-field #q { box-sizing: border-box; width: 100%; border: 0; background: transparent; padding: .15rem 0; border-radius: 0; outline-offset: 2px; }
 .search-context { font-size: .85rem; color: var(--muted); margin: .7rem 0; overflow-wrap: anywhere; }
+
+.rail.resume-rail { grid-auto-columns: min(19rem, 82vw); }
+.resume-card { min-width: 0; width: 100%; min-height: 0; height: auto; padding: 1rem; align-items: stretch; text-align: left; }
+.resume-card .work-title-link { overflow-wrap: anywhere; font-family: var(--read-face); font-size: 1.1rem; line-height: 1.4; }
+.resume-card .by { margin: .4rem 0; }
+.resume-position, .work-reading-state { color: var(--muted); font-size: .85rem; }
+.resume-action { align-self: flex-start; margin-top: .5rem; min-height: var(--control); }
+.work-head .actions { margin: .7rem 0 1rem; }

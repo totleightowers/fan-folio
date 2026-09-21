@@ -78,6 +78,7 @@ export const STARTED = '(r.opened_at IS NOT NULL OR COALESCE(r.offset, 0) > 0 '
 
 /** Every chapter accounted for. */
 export const FINISHED = `COALESCE(r.chapters_read, 0) >= ${CHAPTERS}`;
+export const COMPLETED = `(${FINISHED} OR COALESCE(r.completed_before, 0) = 1)`;
 
 /**
  * The same question, asked only of what a blocked author has not taken out.
@@ -92,13 +93,13 @@ export const shown = (where) => `COALESCE(w.hidden, 0) = 0 AND (${where})`;
 
 /** Reading state, which lives in the reading table rather than on the work. */
 /* One definition each, used everywhere: Home, the Library filter, the shelf's
-   See all and the counts beside them all ask these and nothing else. The three
-   partition the library — started and unfinished, not started, finished. */
+   See all and the counts beside them all ask these and nothing else. A reread can be both currently reading and previously finished; earlier
+   completion is independent of progress through the current reading. */
 export const STATES = {
   all: '1=1',
   reading: `${STARTED} AND NOT (${FINISHED})`,
   unread: `NOT ${STARTED}`,
-  finished: FINISHED,
+  finished: COMPLETED,
   later: 'r.marked_later = 1',
   rec: 'w.rec = 1',
   /* Whether the text is actually here. A listing describes thousands of works
@@ -295,6 +296,7 @@ export function buildWorksQuery(filters = {}) {
                  w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
                  w.kudos, w.bookmark_count, w.hits, w.has_text,
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+                 r.opened_at, r.offset, r.completed_before,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
           ${from} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`,

@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS reading (
   chapter        INTEGER,     -- furthest chapter with any progress
   offset         REAL,        -- scroll position within that chapter
   chapters_read  INTEGER,
+  completed_before INTEGER DEFAULT 0, -- a previous completed reading survives starting again
   chapter_count  INTEGER,
   marked_later   INTEGER DEFAULT 0,
   imported_from  TEXT,

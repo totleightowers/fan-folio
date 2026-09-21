@@ -2122,7 +2122,7 @@ test('one primary action, and the rest are not', () => {
 test('arriving at home rebuilds it', () => {
   const fn = js.slice(js.indexOf('function show(name, motion'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /if \(name === 'home' && changing\) refresh\(\{ force: true \}\)/,
+  assert.match(body, /if \(name === 'home' && changing\) ready = refresh\(\{ force: true \}\)/,
     'on arriving, not on every redraw, and by the same route as everything else');
 });
 
@@ -2290,7 +2290,7 @@ test('tapping a work shows the work, wherever it is tapped', () => {
   const body = row.slice(0, row.indexOf('\n}\n'));
   assert.match(body, /node\.onclick = \(\) => openWork\(w\.work_id\);/,
     'and so does the library row');
-  assert.match(body, /open: \(\) => w\.has_text\s*\? openChapter\(w\.work_id, p \? \(w\.at_chapter \?\? 1\) : 1\)\s*: openWork\(w\.work_id\)/,
+  assert.match(body, /open: \(\) => w\.has_text\s*\? readWork\(w\)\s*: openWork\(w\.work_id\)/,
     'while Read and Continue are the ways into the reader, and say so');
 });
 

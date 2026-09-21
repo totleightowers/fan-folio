@@ -465,6 +465,7 @@ public class MainActivity extends Activity {
         {"chapter", "INTEGER"},
         {"offset", "REAL"},
         {"chapters_read", "INTEGER"},
+        {"completed_before", "INTEGER DEFAULT 0"},
         {"chapter_count", "INTEGER"},
         {"marked_later", "INTEGER DEFAULT 0"},
         {"imported_from", "TEXT"},
@@ -2224,6 +2225,18 @@ public class MainActivity extends Activity {
                 return "{\"ok\":true}";
             } catch (Exception e) {
                 return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            }
+        }
+
+        @JavascriptInterface
+        public String restartReading(String workId) {
+            mustBeOurPage();
+            if (db == null) return "{\"error\":\"no database\"}";
+            try {
+                db.execSQL(readAsset("web/restart-reading.sql"), new Object[]{ workId });
+                return "{\"ok\":true}";
+            } catch (Exception e) {
+                return errorJson(String.valueOf(e.getMessage()));
             }
         }
 

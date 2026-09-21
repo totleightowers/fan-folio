@@ -131,6 +131,7 @@ CREATE TABLE IF NOT EXISTS reading (
   chapter        INTEGER,
   offset         REAL,
   chapters_read  INTEGER,
+  completed_before INTEGER DEFAULT 0,
   chapter_count  INTEGER,
   marked_later   INTEGER DEFAULT 0,
   imported_from  TEXT,

@@ -178,3 +178,13 @@ test('a merge that cannot finish changes nothing', async () => {
   assert.ok(!/new FileOutputStream\(databaseFile\(\)\)/.test(body),
     'and never writes over the library directly, which is what lost everything before');
 });
+
+
+test('backup imports preserve completion from before a reread', () => {
+  const d = merge((device, incoming) => {
+    addWork(incoming, '1', 'Rereading');
+    incoming.exec("INSERT INTO reading(work_id,chapter,chapters_read,completed_before,opened_at) VALUES('1',1,0,1,'2026-09-21')");
+  });
+  assert.equal(d.prepare('SELECT completed_before FROM reading WHERE work_id = ?').get('1').completed_before, 1);
+  assert.equal(d.prepare('SELECT chapters_read FROM reading WHERE work_id = ?').get('1').chapters_read, 0);
+});

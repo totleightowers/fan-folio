@@ -300,6 +300,31 @@ try {
   await page.waitForTimeout(400);
   assert.equal(await page.locator('#library').isVisible(), true, 'leaving cancels a pending search');
   assert.equal(await page.locator('#q').inputValue(), '');
+  // Starting a finished work again resets this reading and preserves earlier completion.
+  await fetch('http://127.0.0.1:18766/api/finished?workId=1', { method: 'POST' });
+  await page.locator('#works .work-title-link').filter({ hasText: 'The long way home' }).click();
+  await page.locator('#detail .actions .primary').filter({ hasText: 'Read again' }).waitFor();
+  assert.ok(await page.locator('#detail').evaluate(el =>
+    el.querySelector('.actions').getBoundingClientRect().top < el.querySelector('.work-summary').getBoundingClientRect().top),
+    'reading is reachable before the full description');
+  await page.locator('#detail .actions .primary').click();
+  await page.locator('#workskin .userstuff').waitFor();
+  const restarted = await (await fetch('http://127.0.0.1:18766/api/works/1')).json();
+  assert.equal(restarted.chapters_read, 0);
+  assert.equal(restarted.completed_before, 1);
+  assert.equal(restarted.at_chapter, 1);
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-menu [data-go="home"]').click();
+  const resume = page.locator('.resume-card').filter({ hasText: 'The long way home' });
+  await resume.filter({ hasText: 'Reading again' }).waitFor();
+  assert.match(await resume.innerText(), /Reading again/);
+  assert.equal(await page.locator('.resume-card').first().evaluate(el => el.getBoundingClientRect().right <= el.nextElementSibling.getBoundingClientRect().left), true, 'resume cards occupy separate grid columns');
+  await screenshot('v3-resume-phone', { fullPage: false });
+  await resume.locator('.resume-action').click();
+  await page.locator('#reader').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#detail').isVisible(), false, 'Resume goes directly to reading');
+  await page.locator('#back').click();
+  await page.locator('#home').waitFor({ state: 'visible' });
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

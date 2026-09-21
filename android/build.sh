@@ -41,6 +41,7 @@ node ../tools/emit-merge-sql.mjs > assets/web/merge.sql
 # And the shape of a new one, so a first run does not need a file from
 # somewhere else before the app can be used at all.
 node ../tools/emit-schema-sql.mjs > assets/web/schema.sql
+node ../tools/emit-reading-sql.mjs > assets/web/restart-reading.sql
 
 echo "2/7  compile resources"
 aapt2 compile --dir res -o build/compiled/res.zip

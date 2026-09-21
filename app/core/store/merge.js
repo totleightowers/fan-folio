@@ -98,9 +98,9 @@ export const MERGE_STEPS = [
      backup puts you at the top of a chapter you were halfway down, and without
      the second every work falls off the Continue reading shelf. */
   `INSERT INTO reading (work_id, chapter, offset, chapters_read, marked_later,
-                        updated_at, opened_at)
+                        updated_at, opened_at, completed_before)
      SELECT r.work_id, r.chapter, r.offset, r.chapters_read, r.marked_later,
-            r.updated_at, r.opened_at
+            r.updated_at, r.opened_at, r.completed_before
        FROM incoming.reading r
       WHERE NOT EXISTS (SELECT 1 FROM reading m WHERE m.work_id = r.work_id)`,
 ];

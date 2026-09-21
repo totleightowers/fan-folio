@@ -15,10 +15,15 @@ import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { INDEX_FIRST, deleteStatements, TOMBSTONE } from '../app/core/store/delete.js';
 import { isHidden, worksByPattern } from '../app/core/store/blocked.js';
 import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, FINISHED, CHAPTERS, shown } from '../app/core/query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, COMPLETED, CHAPTERS, shown } from '../app/core/query.js';
+
+import { RESTART_READING } from '../app/core/store/reading.js';
+import { ensureColumns } from '../app/core/store/schema.js';
 
 const PORT = Number(process.env.PORT || 8080);
 const db = new DatabaseSync(process.env.FANFOLIO_DB || 'data/fanfolio.db');
+
+ensureColumns(db);
 
 /* The shape the shared query modules expect: one function, SQL and arguments
    in, rows out. On the phone the same signature runs against Android's
@@ -134,6 +139,7 @@ function home() {
     SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count, w.complete, w.rating,
            w.rec,
            r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+             r.opened_at, r.offset, r.completed_before, w.has_text,
            (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
     FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
     WHERE ${shown(where)} ORDER BY ${order} LIMIT ?`).all(limit),
@@ -146,8 +152,8 @@ function home() {
            COALESCE(sum(chapter_count), 0) AS chapters FROM works w
     WHERE COALESCE(w.hidden, 0) = 0`).get();
   const read = db.prepare(`
-    SELECT COALESCE(sum(CASE WHEN ${FINISHED} THEN w.words ELSE 0 END), 0) AS words,
-           count(CASE WHEN ${FINISHED} THEN 1 END) AS finished
+    SELECT COALESCE(sum(CASE WHEN ${COMPLETED} THEN w.words ELSE 0 END), 0) AS words,
+           count(CASE WHEN ${COMPLETED} THEN 1 END) AS finished
     FROM works w JOIN reading r ON r.work_id = w.work_id
     WHERE COALESCE(w.hidden, 0) = 0`).get();
 
@@ -268,6 +274,13 @@ createServer(async (req, res) => {
           : buildFacetQuery(filters, kind, 60, needle);
         return json(res, { items: db.prepare(built.sql).all(...built.args) });
       } catch { return json(res, { items: [] }); }
+    }
+
+    if (p === '/api/restart' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId');
+      if (!workId) return json(res, { error: 'no work' }, 400);
+      db.prepare(RESTART_READING).run(workId);
+      return json(res, { ok: true });
     }
 
     if (p === '/api/progress' && req.method === 'POST') {
@@ -436,11 +449,14 @@ createServer(async (req, res) => {
       let authors = [];
       try { authors = JSON.parse(work.authors || '[]'); } catch { authors = []; }
       const progress = db.prepare(
-        'SELECT chapter, offset, chapters_read FROM reading WHERE work_id = ?').get(m[1]);
+        'SELECT chapter, offset, chapters_read, opened_at, completed_before FROM reading WHERE work_id = ?').get(m[1]);
       return json(res, {
         ...work,
         at_chapter: progress?.chapter ?? null,
         chapters_read: progress?.chapters_read ?? 0,
+      offset: progress?.offset ?? 0,
+      opened_at: progress?.opened_at ?? null,
+      completed_before: progress?.completed_before ?? 0,
         // AO3's own markup, generated from stored data so it works for every
         // work in the library rather than only the ones fetched from AO3
           // author-written HTML reaching innerHTML gets the same treatment as a

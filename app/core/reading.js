@@ -75,3 +75,15 @@ export function chromeHidden({ scrollY, lastY, innerHeight, scrollHeight, hidden
      the bar in and out on the movement of somebody's hand. */
   return Boolean(hidden);
 }
+
+/** A reading position and earlier completion are independent facts. */
+export function readingStatus(work) {
+  const total = Math.max(1, Number(work.chapter_count) || work.chapters?.length || 1);
+  const read = Math.max(0, Number(work.chapters_read) || 0);
+  const chapter = Math.max(1, Number(work.at_chapter) || 1);
+  const started = Boolean(work.opened_at || Number(work.offset) > 0 || chapter > 1 || read > 0);
+  const done = read >= total;
+  const at = Math.min(total, read >= chapter && !done ? read + 1 : chapter);
+  return { total, read, started, done, at, rereading: Boolean(work.completed_before) && !done,
+    pct: Math.min(100, Math.round(read / total * 100)) };
+}
