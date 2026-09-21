@@ -509,3 +509,16 @@ test('recent reading follows opening time, with legacy update time as fallback',
   db.exec("UPDATE reading SET opened_at=NULL, updated_at='2026-09-18' WHERE work_id='3'");
   assert.deepEqual(run(db, { sort: 'recent' }), ['1', '3', '2']);
 });
+
+test('reading, offline availability and collection membership are independent', () => {
+  const db = library();
+  db.exec("UPDATE works SET has_text=1, in_bookmarks=1 WHERE work_id='1'");
+  db.exec("UPDATE works SET in_bookmarks=1 WHERE work_id='2'");
+  assert.deepEqual(run(db, { state: 'reading', availability: 'held', collection: 'bookmarked' }), ['1']);
+  assert.deepEqual(run(db, { state: 'reading', availability: 'known', collection: 'bookmarked' }), []);
+  assert.deepEqual(run(db, { state: 'unread', availability: 'known', collection: 'bookmarked' }), ['2']);
+  assert.deepEqual(run(db, { availability: 'known', collection: 'later' }), ['3']);
+  assert.equal(count(db, { state: 'reading', availability: 'held', collection: 'bookmarked' }), 1);
+  db.exec("UPDATE works SET hidden=1 WHERE work_id='1'");
+  assert.deepEqual(run(db, { state: 'reading', availability: 'held', collection: 'bookmarked' }), []);
+});

@@ -203,7 +203,7 @@ try {
   await page.locator('#library').waitFor({ state: 'visible' });
   await page.locator('#works .work-card').filter({ hasText: 'A little light in the afternoon' }).waitFor();
   assert.equal(await page.locator('#sort').inputValue(), 'recent');
-  await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).locator('.work-title-link').click();
   await page.locator('#detail [data-filter="author"]').first().click();
   await page.locator('#author').waitFor({ state: 'visible' });
   for (const width of [390, 900]) {
@@ -325,6 +325,51 @@ try {
   assert.equal(await page.locator('#detail').isVisible(), false, 'Resume goes directly to reading');
   await page.locator('#back').click();
   await page.locator('#home').waitFor({ state: 'visible' });
+  // Density never discards a description; independent filters survive the return journey.
+  await page.locator('#tabs [data-tab="library"]').click();
+  await page.locator('[data-collection="reading"]').click();
+  await page.locator('#availability').selectOption('held');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
+  assert.equal(await page.locator('#active').innerText().then(s => /Reading/.test(s) && /Downloaded/.test(s)), true);
+  await page.locator('#library-density').selectOption('compact');
+  const story = page.locator('#works .work-card').filter({ hasText: 'The long way home' });
+  assert.equal(await story.locator('.sum').isVisible(), false);
+  await story.locator('.work-description summary').click();
+  assert.equal(await story.locator('.sum').isVisible(), true);
+  assert.match(await story.locator('.sum').innerText(), /The final sentence stays visible/);
+  await story.locator('.author-link').click();
+  await page.locator('#author').waitFor({ state: 'visible' });
+  await page.locator('#back').click();
+  await page.locator('#library').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
+  assert.equal(await page.locator('#availability').inputValue(), 'held');
+  assert.equal(await page.locator('#library-density').inputValue(), 'compact');
+  for (const width of [390, 900]) {
+    await page.setViewportSize({ width, height: 940 });
+    await screenshot('v3-library-compact-' + width, { fullPage: false });
+  }
+  // A slow old filter response cannot replace the latest collection.
+  let oldResponse;
+  const oldArrived = new Promise(resolve => { oldResponse = resolve; });
+  await page.route('**/api/works?*', async route => {
+    if (new URL(route.request().url()).searchParams.get('availability') === 'known') {
+      const response = await route.fetch(); oldResponse();
+      await new Promise(resolve => setTimeout(resolve, 450));
+      await route.fulfill({ response });
+    } else await route.continue();
+  });
+  await page.locator('#availability').selectOption('known');
+  await oldArrived;
+  await page.locator('#availability').selectOption('held');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
+  await page.waitForTimeout(550);
+  assert.equal(await page.locator('#works .work-card').count(), 2);
+  await page.unroute('**/api/works?*');
+  await page.reload();
+  await page.locator('#tabs [data-tab="library"]').click();
+  assert.equal(await page.locator('#library-density').inputValue(), 'compact', 'density choice persists');
+  assert.equal(await page.locator('#availability').inputValue(), 'held', 'availability persists');
+  await page.locator('#library-density').selectOption('expanded');
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

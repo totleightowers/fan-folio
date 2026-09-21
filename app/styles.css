@@ -2589,3 +2589,16 @@ body:has(#reader:not([hidden])) #typo { display: none; }
 .resume-position, .work-reading-state { color: var(--muted); font-size: .85rem; }
 .resume-action { align-self: flex-start; margin-top: .5rem; min-height: var(--control); }
 .work-head .actions { margin: .7rem 0 1rem; }
+
+/* Library entries read in one direction at every size, with deliberate density. */
+#works.list, #author-works.list { grid-template-columns: minmax(0, 1fr); max-width: 64rem; margin-inline: auto; }
+.work-card .rowactions { justify-content: flex-start; flex-wrap: wrap; margin: .35rem 0 .8rem; }
+.work-card .tagpill { white-space: normal; overflow-wrap: anywhere; text-align: left; min-height: 2.75rem; }
+.author-link { font: inherit; color: var(--accent); background: none; border: 0; text-decoration: underline; text-underline-offset: .2em; padding: .3rem .15rem; min-height: 2.75rem; cursor: pointer; }
+.work-description { margin-top: .8rem; border-top: 1px solid var(--line-soft); }
+.work-description > summary { color: var(--accent); font-size: .85rem; cursor: pointer; padding-block: .65rem; min-height: 2.75rem; }
+.work-description .sum { max-width: 75ch; margin-bottom: .5rem; opacity: 1; }
+.library-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin-top: .7rem; }
+.library-options label { display: grid; min-width: 0; gap: .2rem; font-size: .8rem; color: var(--muted); }
+.library-options select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r-field); min-height: 2.75rem; min-width: 0; padding: .4rem; flex: 1; }
+.author-link:active, .work-description:active > summary { opacity: .75; }

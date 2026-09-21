@@ -161,6 +161,8 @@ export function buildWorksQuery(filters = {}) {
   where.push('COALESCE(w.hidden, 0) = 0');
 
   where.push(STATES[filters.state] ?? STATES.all);
+  if (['held', 'known'].includes(filters.availability)) where.push(STATES[filters.availability]);
+  if (['later', 'bookmarked', 'history', 'rec'].includes(filters.collection)) where.push(STATES[filters.collection]);
 
   /* Included tags are an AND: "alpha/beta/omega" *and* "slow burn" is a much
      more useful question than either alone, and it is the one AO3's own filters

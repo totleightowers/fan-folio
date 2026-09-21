@@ -6,8 +6,8 @@ The UI assessment is accepted for implementation. Each feature receives its own 
 |---|---|---|
 | 3.0.0 | Home / Library / Downloads navigation; account in Settings; collection shortcuts; unified Add entry | [Released](https://github.com/totleightowers/fan-folio/releases/tag/v3.0.0), [PR #186](https://github.com/totleightowers/fan-folio/pull/186) |
 | 3.1.0 | Explicit search scope and reliable query/return state | [Released](https://github.com/totleightowers/fan-folio/releases/tag/v3.1.0), [PR #187](https://github.com/totleightowers/fan-folio/pull/187) |
-| 3.2.0 | Direct resume, reading state and work-page priorities | Implemented; release validation |
-| 3.3.0 | Coherent Library presentation and filters | Planned |
+| 3.2.0 | Direct resume, reading state and work-page priorities | [Released](https://github.com/totleightowers/fan-folio/releases/tag/v3.2.0), [PR #188](https://github.com/totleightowers/fan-folio/pull/188) |
+| 3.3.0 | Coherent Library presentation and filters | In validation |
 | 3.4.0 | Download progress and author management journeys | Planned |
 | 3.5.0 | Reader controls, settings and final journey/accessibility pass | Planned |
 

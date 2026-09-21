@@ -76,12 +76,16 @@ const READING_DEFAULTS = {
 const prefs = load(PREFS_KEY, READING_DEFAULTS);
 /* The full filter set, kept together so it can be sent, saved and shown as one. */
 const view = load(VIEW_KEY, {
-  sort: 'title', state: 'all',
+  sort: 'title', state: 'all', availability: '', collection: '',
   include: [], exclude: [], rating: [], author: [],
   complete: '', language: '', wordsMin: '', wordsMax: '',
   chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
   otp: '',
 });
+// Carry older saved views into the independent filter dimensions.
+if (['held', 'known'].includes(view.state)) { view.availability = view.state; view.state = 'all'; }
+if (['later', 'bookmarked', 'history', 'rec'].includes(view.state)) { view.collection = view.state; view.state = 'all'; }
+const libraryDisplay = load('archive.library-display', { density: 'expanded' });
 let positions = load(POS_KEY, {});
 
 /* -------------------------------------------------------------- typography */
@@ -416,7 +420,7 @@ function here() {
   }
   /* Not a reference: the filters go on changing after this is recorded, and a
      place that changes underneath you is not a place. */
-  if (route === 'library') params.filters = JSON.parse(JSON.stringify(view));
+  if (route === 'library') { params.filters = JSON.parse(JSON.stringify(view)); params.loaded = offset; }
   return { route, params, tab: inTab, scrollY: window.scrollY, query: route === 'results' ? $('#q').value : '' };
 }
 
@@ -476,7 +480,7 @@ function renderPlace(place, motion = 'back') {
         paintActiveFilters();
         $('#sort').value = view.sort;
         offset = 0;
-        ready = loadMore(true);
+        ready = restoreLibrary(Math.max(50, Number(p.loaded) || 50));
       }
       show('library', motion);
     } else {
@@ -648,15 +652,14 @@ const FILTER_LABELS = {
 let offset = 0;
 let total = 0;
 let loading = false;
+let libraryRequest = 0;
 
 /**
  * One work in the library list.
  *
  * Modelled on what a reader actually scans for: the title, who wrote it, which
  * fandom and pairing, then the numbers that decide whether tonight is the
- * night — rating, length, chapters, whether it is finished. The summary comes
- * last and is clamped, because it is the slowest thing to read and the least
- * decisive.
+ * night — rating, length, chapters, whether it is finished. The full summary remains available in both expanded and compact views.
  */
 /**
  * One of the sprite's icons, as an element.
@@ -744,7 +747,7 @@ function workRow(w) {
   node.innerHTML = `
     <h3><button class="work-title-link"></button></h3>
     <div class="by"></div>
-    ${w.summary ? '<p class="sum"></p>' : ''}
+    ${w.summary ? '<details class="work-description"><summary>Full description</summary><p class="sum"></p></details>' : ''}
     <div class="tagrow"></div>
     <div class="statline"></div>
     <div class="work-when"></div>
@@ -770,7 +773,22 @@ function workRow(w) {
     ghost.textContent = 'not downloaded';
     node.querySelector('.statline')?.append(ghost);
   }
-  node.querySelector('.by').textContent = 'by ' + (authorsOf(w.authors).join(', ') || 'Anonymous');
+  const by = node.querySelector('.by');
+  by.append('by ');
+  const authors = authorsOf(w.authors);
+  if (!authors.length) by.append('Anonymous');
+  authors.forEach((name, i) => {
+    if (i) by.append(', ');
+    const author = document.createElement('button'); author.className = 'author-link'; author.textContent = name;
+    author.onclick = e => { e.stopPropagation(); openAuthor(name); }; by.append(author);
+  });
+  const description = node.querySelector('.work-description');
+  if (description) {
+    description.open = libraryDisplay.density !== 'compact';
+    description.onclick = e => e.stopPropagation();
+    node.append(description);
+  }
+  by.after(node.querySelector('.rowactions'));
 
   const when = whenOf(w);
   if (when) node.querySelector('.work-when').append(...whenParts(when));
@@ -799,14 +817,16 @@ function workRow(w) {
   return node;
 }
 
-async function loadMore(reset = false) {
-  if (loading) return;
+async function loadMore(reset = false, limit = 50) {
+  if (loading && !reset) return;
+  const request = ++libraryRequest;
   loading = true;
   if (reset) { offset = 0; $('#works').textContent = ''; }
   $('#more').textContent = 'Loading…';
   try {
-    const params = filterParams({ limit: '50', offset: String(offset) });
+    const params = filterParams({ limit: String(limit), offset: String(offset) });
     const { works, total: n } = await api(`/api/works?${params}`);
+    if (request !== libraryRequest) return;
     total = n;
     const box = $('#works');
     for (const w of works) box.append(workRow(w));
@@ -824,12 +844,24 @@ async function loadMore(reset = false) {
       box.innerHTML = '<p class="empty">No works match this filter.</p>';
     }
   } catch (e) {
+    if (request !== libraryRequest) return;
     $('#more').textContent = '';
     $('#count').textContent = '';
     $('#works').innerHTML = '<p class="empty"></p>';
     $('#works .empty').textContent = e.message;
   } finally {
-    loading = false;
+    if (request === libraryRequest) loading = false;
+  }
+}
+
+async function restoreLibrary(loaded) {
+  let expected = libraryRequest + 1;
+  await loadMore(true, Math.min(200, loaded));
+  while (libraryRequest === expected && offset < loaded && offset < total) {
+    expected++;
+    const before = offset;
+    await loadMore(false, Math.min(200, loaded - offset));
+    if (offset <= before) break;
   }
 }
 
@@ -837,6 +869,16 @@ new IntersectionObserver((entries) => {
   if (entries[0].isIntersecting && offset < total && !loading) loadMore();
 }).observe($('#more'));
 
+$('#library-density').value = libraryDisplay.density;
+$('#library-density').onchange = () => {
+  libraryDisplay.density = $('#library-density').value;
+  save('archive.library-display', libraryDisplay);
+  for (const description of $$('.work-description')) description.open = libraryDisplay.density !== 'compact';
+};
+$('#availability').value = view.availability || '';
+$('#availability').onchange = () => {
+  view.availability = $('#availability').value; save(VIEW_KEY, view); paintActiveFilters(); loadMore(true);
+};
 $('#sort').value = view.sort;
 $('#sort').onchange = () => {
   view.sort = $('#sort').value;
@@ -848,7 +890,7 @@ $('#sort').onchange = () => {
 
 /** Lists travel tab-separated: a tab cannot appear in an AO3 tag. */
 function filterParams(extra = {}) {
-  const p = new URLSearchParams({ sort: view.sort, state: view.state, ...extra });
+  const p = new URLSearchParams({ sort: view.sort, state: view.state, availability: view.availability || '', collection: view.collection || '', ...extra });
   for (const key of ['include', 'exclude', 'rating', 'author']) {
     if (view[key]?.length) p.set(key, view[key].join('\t'));
   }
@@ -869,7 +911,7 @@ const activeCount = () =>
   + (view.chaptersMin || view.chaptersMax ? 1 : 0)
   + (view.updatedAfter || view.updatedBefore ? 1 : 0)
   + (view.crossover ? 1 : 0) + (view.otp ? 1 : 0)
-  + (view.state !== 'all' ? 1 : 0);
+  + (view.state !== 'all' ? 1 : 0) + (view.availability ? 1 : 0) + (view.collection ? 1 : 0);
 
 /** Tri-state: off → include → exclude → off. */
 function cycleTag(name) {
@@ -888,16 +930,13 @@ function cycleTag(name) {
    starred bookmark — the strongest signal in the library of what was good. */
 const STATE_LABELS = {
   all: 'All',
-  rec: '\u2605 Recs',
-  held: 'Downloaded',
-  known: 'Not downloaded',
   reading: 'Reading',
   unread: 'Unread',
   finished: 'Finished',
-  later: 'Marked for later',
-  bookmarked: 'Bookmarked',
-  history: 'In history',
 };
+
+const COLLECTION_LABELS = { '': 'Any collection', later: 'For later', bookmarked: 'AO3 bookmarks', rec: 'Recommended on AO3', history: 'AO3 history' };
+const AVAILABILITY_LABELS = { '': 'Any availability', held: 'Downloaded', known: 'Not downloaded' };
 
 const FILTER_SECTIONS = [
   ['fandom', 'Fandoms'], ['relationship', 'Relationships'], ['character', 'Characters'],
@@ -1034,7 +1073,17 @@ async function buildFilterPanel() {
     box.append(opts);
   });
 
-  section('status', 'Status', view.complete ? [view.complete === '1' ? 'Complete' : 'WIP'] : [], (box) => {
+  for (const [key, title, labels] of [['availability', 'Offline availability', AVAILABILITY_LABELS], ['collection', 'Collection', COLLECTION_LABELS]]) {
+    section(key, title, view[key] ? [labels[view[key]]] : [], box => {
+      const opts = document.createElement('div'); opts.className = 'opts';
+      for (const [value, label] of Object.entries(labels)) opts.append(chip(label, null, (view[key] || '') === value ? 'on' : '', () => {
+        view[key] = value; save(VIEW_KEY, view);
+      }));
+      box.append(opts);
+    });
+  }
+
+  section('status', 'Archive completion', view.complete ? [view.complete === '1' ? 'Complete' : 'WIP'] : [], (box) => {
     const opts = document.createElement('div');
     opts.className = 'opts';
     for (const [value, label] of [['', 'Any'], ['1', 'Complete'], ['0', 'Work in progress']]) {
@@ -1341,6 +1390,8 @@ async function buildFilterPanelKeepingScroll() {
 
 /** The filters currently in force, each removable in one tap. */
 function paintActiveFilters() {
+  paintCollections();
+  $('#availability').value = view.availability || '';
   const box = $('#active');
   box.textContent = '';
   const badge = $('#filter-count');
@@ -1363,6 +1414,8 @@ function paintActiveFilters() {
   if (view.state !== 'all') {
     pill(STATE_LABELS[view.state] ?? view.state, 'state', () => { view.state = 'all'; });
   }
+  if (view.availability) pill(AVAILABILITY_LABELS[view.availability], 'state', () => { view.availability = ''; });
+  if (view.collection) pill(COLLECTION_LABELS[view.collection], 'state', () => { view.collection = ''; });
   for (const t of view.include) pill(t, 'in', () => { view.include = view.include.filter((x) => x !== t); });
   for (const t of view.exclude) pill(`not ${t}`, 'out', () => { view.exclude = view.exclude.filter((x) => x !== t); });
   for (const r of view.rating) pill(r, 'in', () => { view.rating = view.rating.filter((x) => x !== r); });
@@ -1413,7 +1466,7 @@ $('#clear-filters').onclick = async () => {
   /* Every filter the panel can set. Miss one and Clear leaves it on, with the
      count in the header disagreeing with the list underneath it. */
   Object.assign(view, {
-    state: 'all', include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
+    state: 'all', availability: '', collection: '', include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
     complete: '', language: '', wordsMin: '', wordsMax: '',
     chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   });
@@ -2467,15 +2520,18 @@ function paintActivityBadge() {
 
 function paintCollections() {
   for (const button of $$('#library-collections [data-collection]')) {
-    const selected = button.dataset.collection === view.state;
+    const selected = button.dataset.collection === (view.collection || view.state);
     button.classList.toggle('on', selected);
     button.setAttribute('aria-pressed', String(selected));
   }
-  $('#library-sync').hidden = view.state !== 'bookmarked';
+  $('#library-sync').hidden = view.collection !== 'bookmarked';
 }
 
 for (const button of $$('#library-collections [data-collection]')) {
-  button.onclick = () => openLibraryAs({ state: button.dataset.collection });
+  button.onclick = () => {
+    const key = button.dataset.collection;
+    openLibraryAs(['later', 'bookmarked'].includes(key) ? { collection: key } : { state: key });
+  };
 }
 
 function openBookmarkSync() {
@@ -2491,8 +2547,11 @@ $('#library-sync').onclick = openBookmarkSync;
  * every other way into the library works.
  */
 function openLibraryAs(patch) {
+  const source = here();
+  if (['later', 'bookmarked', 'rec', 'history'].includes(patch.state)) patch = { ...patch, collection: patch.state, state: 'all' };
+  if (['held', 'known'].includes(patch.state)) patch = { ...patch, availability: patch.state, state: 'all' };
   Object.assign(view, {
-    state: 'all', include: [], exclude: [], rating: [], author: [],
+    state: 'all', availability: '', collection: '', include: [], exclude: [], rating: [], author: [],
     bookmarkedBy: '', complete: '', language: '', wordsMin: '', wordsMax: '',
     chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   }, patch);
@@ -2500,7 +2559,9 @@ function openLibraryAs(patch) {
   paintActiveFilters();
   offset = 0;
   loadMore(true);
-  go('library', { filters: JSON.parse(JSON.stringify(view)) });
+  if (!restoring) stack.go(source, { route: 'library', params: { filters: JSON.parse(JSON.stringify(view)) } });
+  show('library', 'forward');
+  $('#sort').value = view.sort;
   paintCollections();
 }
 
@@ -4590,17 +4651,8 @@ async function buildHome() {
     section.querySelector('.shelf-head button').onclick = () => {
       /* The same question the shelf asked, or See all shows a different set of
          works from the one it was pressed under. */
-      Object.assign(view, {
-        state: 'all', include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
-        complete: '', language: '', wordsMin: '', wordsMax: '',
-        chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
-      }, SHELF_VIEW[shelf.key] ?? {});
       currentAuthor = null;
-      save(VIEW_KEY, view);
-      $('#sort').value = view.sort;
-      paintActiveFilters();
-      loadMore(true);
-      show('library');
+      openLibraryAs(SHELF_VIEW[shelf.key] ?? {});
     };
     const rail = section.querySelector('.rail');
     rail.classList.toggle('resume-rail', shelf.key === 'reading');
@@ -4722,12 +4774,13 @@ const FILTERS = {
 const ABOUT_A_PERSON = new Set(['author', 'bookmarkedBy']);
 
 function filterBy(kind, value) {
+  const source = here();
   const apply = FILTERS[kind];
   if (!apply || !value) return;
   // filtering by anything else means we are no longer looking at a person
   if (!ABOUT_A_PERSON.has(kind)) currentAuthor = null;
   Object.assign(view, {
-    state: 'all', include: [], exclude: [], rating: [], author: [],
+    state: 'all', availability: '', collection: '', include: [], exclude: [], rating: [], author: [],
     /* Cleared here rather than only when leaving a person: switching from
        their bookmarks back to their works would otherwise ask for both at
        once, which is the handful of works they wrote and also bookmarked. */
@@ -4740,7 +4793,8 @@ function filterBy(kind, value) {
   paintActiveFilters();
   offset = 0;
   loadMore(true);
-  go('library', { filters: JSON.parse(JSON.stringify(view)) });
+  if (!restoring) stack.go(source, { route: 'library', params: { filters: JSON.parse(JSON.stringify(view)) } });
+  show('library', 'forward');
 }
 
 /* Every value on a work page carries what it filters by, so one listener
