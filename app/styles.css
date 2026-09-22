@@ -2691,6 +2691,9 @@ button.primary, button.ghost, .filter-btn { border-radius: .55rem; }
 .resume-fandom { display: flex; gap: .4rem; align-items: baseline; font-size: .7rem; color: var(--muted); margin: 0 0 .7rem; overflow-wrap: anywhere; }
 .resume-fandom::before { content: ''; flex: 0 0 .4rem; height: .4rem; border-radius: 50%; background: var(--spine); }
 .resume-card .work-title-link { font-family: var(--title); font-size: 1.2rem; font-weight: 450; }
+/* Extend the title's native button across the card; Resume stays above it. */
+.resume-card .work-title-link::after { content: ''; position: absolute; inset: 0; }
+.resume-card .resume-action { position: relative; z-index: 1; }
 .resume-card .by { font-size: .8rem; color: var(--muted); margin: .25rem 0 .5rem; overflow-wrap: anywhere; }
 .resume-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; margin-top: auto; padding-top: .6rem; }
 .resume-position { font-size: .75rem; margin: 0; }

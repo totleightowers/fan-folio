@@ -416,7 +416,42 @@ try {
   }), true, 'phone reading choices share a compact horizontal shelf');
   await screenshot('v3-resume-phone', { fullPage: false });
   assert.equal(await page.locator('#now-reading').isVisible(), false, 'Home already offers the reading shelf');
-  await resume.locator('.resume-action').click();
+  // The whole reading card previews the work; Resume remains a distinct action.
+  const returnToReadingShelf = async () => {
+    const previousCard = await resume.elementHandle();
+    await page.locator('#back').click();
+    // Home replaces its shelf after refreshing; interact with the new cards.
+    await page.waitForFunction(card => !card.isConnected, previousCard);
+    await previousCard.dispose();
+    await resume.waitFor({ state: 'visible' });
+  };
+  for (const width of [390, 900, 1225]) {
+    await page.setViewportSize({ width, height: 940 });
+    for (const target of ['padding', '.by', '.resume-position', '.bar']) {
+      await resume.scrollIntoViewIfNeeded();
+      const position = target === 'padding' ? { x: 8, y: 8 } : await resume.evaluate((el, selector) => {
+        const card = el.getBoundingClientRect(), part = el.querySelector(selector).getBoundingClientRect();
+        return { x: part.left - card.left + part.width / 2, y: part.top - card.top + part.height / 2 };
+      }, target);
+      await resume.tap({ position });
+      await page.locator('#detail').waitFor({ state: 'visible', timeout: 5000 });
+      await page.locator('#detail .work-title').filter({ hasText: 'The long way home' }).waitFor({ state: 'visible' });
+      assert.equal(await page.locator('#reader').isVisible(), false, 'the card previews, not resumes');
+      await returnToReadingShelf();
+    }
+    // Keep both native buttons keyboard accessible, with a single navigation each.
+    await resume.locator('.work-title-link').focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#detail').waitFor({ state: 'visible' });
+    await returnToReadingShelf();
+    await resume.locator('.resume-action').tap();
+    await page.locator('#reader').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#detail').isVisible(), false, 'Resume goes directly to reading');
+    await returnToReadingShelf();
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await resume.locator('.resume-action').focus();
+  await page.keyboard.press('Space');
   await page.locator('#reader').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#detail').isVisible(), false, 'Resume goes directly to reading');
   await page.locator('#back').click();
