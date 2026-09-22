@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS images (
   sha256    TEXT,
   mime      TEXT,
   bytes     BLOB,
-  status    TEXT,               -- stored | dead | pending
+  status    TEXT,               -- stored | failed (retryable) | dead (legacy) | pending
   fetched_at TEXT,
   PRIMARY KEY (work_id, url)
 ) WITHOUT ROWID;

@@ -2398,15 +2398,11 @@ test('tag groups label above, not beside', () => {
  * archive, its chapters point at remote hosts instead — and nothing fetched
  * those, so the pictures vanished and left a column of empty boxes.
  */
-test('a chapter collects the pictures it is missing', () => {
-  const fn = js.slice(js.indexOf('async function collectImages('));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /img\[data-remote-src\]/, 'it looks for what did not load');
-  assert.match(body, /await fetchNextImage\(workId\)/,
-    'the shell is asked for the next one; no address crosses the bridge');
-  assert.match(body, /img\.src = `\/img\/\$\{out\.sha256\}`/,
-    'the picture arrives in place, without rebuilding the page under the reader');
-  assert.match(body, /current\.workId !== workId/, 'and stops if they have gone elsewhere');
+test('image arrivals update the current chapter without rebuilding it', () => {
+  assert.match(js, /createImageCollector\(/);
+  assert.match(js, /img\[data-remote-src\]/);
+  assert.match(js, /img\.src = `\/img\/\$\{out\.sha256\}`/);
+  assert.match(js, /current\.workId === workId && current\.chapter === chapter/);
 });
 
 test('the session never travels to an image host', () => {
@@ -2420,34 +2416,16 @@ test('the session never travels to an image host', () => {
     'and nothing sets one before that gate');
 });
 
-test('only pictures are stored, and not enormous ones', () => {
+test('image requests use the native request thread and stored chapter URLs', () => {
   const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const fn = java.slice(java.indexOf('public String fetchNextImage('));
-  const body = fn.slice(0, fn.indexOf('\n        }\n'));
-  assert.match(body, /mime\.startsWith\("image\/"\)/,
-    'an error page stored where an image should be renders as a broken one for ever');
-  assert.match(body, /12 \* 1024 \* 1024/, 'and one picture cannot fill the library');
-  assert.match(body, /storeDead\(/, 'what cannot be had is remembered, not asked for for ever');
-});
-
-test('the page cannot say where an image request goes', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const fn = java.slice(java.indexOf('public String fetchNextImage('));
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  assert.match(api, /await fetch\(`\/\_\_images\/next/);
+  assert.doesNotMatch(api, /native\.fetchNextImage/);
+  const fn = java.slice(java.indexOf('private String fetchNextImage('));
   const signature = fn.slice(0, fn.indexOf('{'));
-  const body = fn.slice(0, fn.indexOf('\n        }\n'));
-
-  /* Images may come from anywhere, which is a deliberate loosening: an author
-     puts them where they like. What stops that being "the page may ask for any
-     address at all" is that no address crosses the bridge — the shell reads the
-     next one out of chapter text it already holds. Checking a caller-supplied
-     address and hoping the check holds is the weaker arrangement, and it is
-     the one CodeQL objected to on the write path for the same reason. */
-  assert.ok(!/String\s+\w*[Uu]rl/.test(signature), `the page passes no address: ${signature}`);
-  assert.match(body, /nextImageFor\(workId\)/, 'the shell chooses which picture');
-
-  const finder = java.slice(java.indexOf('private String nextImageFor('));
-  assert.match(finder.slice(0, finder.indexOf('\n    }\n')), /FROM chapters WHERE work_id = \?/,
-    'from the work itself, with the id bound rather than pasted');
+  assert.ok(!/String\s+\w*[Uu]rl/.test(signature), 'the caller passes no image address');
+  assert.match(fn, /nextImageFor\(workId, chapter\)/);
+  assert.match(java, /FROM chapters WHERE work_id = \? AND number = \?/);
 });
 /*
  * The tests here read the app as text, to assert things about how it is
@@ -2873,7 +2851,7 @@ test('the reader has a way into the app that is not the Back button', () => {
   for (const where of ['home', 'library', 'activity', 'settings']) {
     assert.match(body, new RegExp(`data-go="${where}"`), `${where} is reachable from a chapter`);
   }
-  assert.match(js, /\$\('#reader-more'\)\.onclick = \(\) => openSheet/);
+  assert.match(js, /\$\('#reader-more'\)\.onclick = \(\) => \{[^}]*openSheet\(\$\('#reader-menu'\)\)/);
 });
 
 test('the way back to the work is not the library icon', () => {

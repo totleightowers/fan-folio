@@ -42,7 +42,9 @@ jobs:
       - name: Exercise settings and library
         env:
           PLAYWRIGHT_MODULE: /tmp/folio-browser/node_modules/playwright/index.mjs
-        run: node test/browser/settings-library.mjs
+        run: |
+          node test/browser/settings-library.mjs
+          node test/browser/image-recovery.mjs
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

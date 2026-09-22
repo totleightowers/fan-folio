@@ -72,7 +72,9 @@ public class MainActivity extends Activity {
     private WebView web;
     private WebView signInView;
     private FrameLayout root;
-    private SQLiteDatabase db;
+    private volatile SQLiteDatabase db;
+    private final Object imageLock = new Object();
+    private String imageUserAgent;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -82,6 +84,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(0xFF000000);
 
         web = new WebView(this);
+        imageUserAgent = WebSettings.getDefaultUserAgent(this);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -403,6 +406,7 @@ public class MainActivity extends Activity {
             db = SQLiteDatabase.openDatabase(f.getPath(), null,
                     SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.NO_LOCALIZED_COLLATORS);
             migrate();
+            discardImagePlaceholders();
         } catch (Exception e) {
             db = null;
         }
@@ -682,6 +686,18 @@ public class MainActivity extends Activity {
         String path = uri.getPath() == null ? "/" : uri.getPath();
         try {
             if (path.startsWith("/__net/")) return proxy(uri.getQueryParameter("url"));
+            if (path.equals("/__images/next") || path.equals("/__images/retry")) {
+                String workId = uri.getQueryParameter("workId");
+                int chapter = Math.max(1, Integer.parseInt(uri.getQueryParameter("chapter")));
+                String result;
+                synchronized (imageLock) {
+                    result = path.endsWith("/retry") ? retryImages(workId)
+                        : fetchNextImage(workId, chapter, !"false".equals(uri.getQueryParameter("proxy")));
+                }
+                Map<String, String> h = headers(); h.put("Cache-Control", "no-store");
+                return new WebResourceResponse("application/json", "utf-8", 200, "OK", h,
+                    new ByteArrayInputStream(result.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            }
             if (path.startsWith("/img/")) return image(path.substring(5));
             return asset(path);
         } catch (Exception e) {
@@ -987,21 +1003,18 @@ public class MainActivity extends Activity {
      * is what keeps the address out of the page's hands: nothing chooses where
      * a request goes except the work itself.
      */
-    private String nextImageFor(String workId) {
+    private String nextImageFor(String workId, int chapter) {
         java.util.Set<String> seen = new java.util.HashSet<>();
-        try (Cursor c = db.rawQuery("SELECT url FROM images WHERE work_id = ?",
+        // New failures cool down for a day. Legacy dead rows get another chance.
+        try (Cursor c = db.rawQuery("SELECT url FROM images WHERE work_id = ? AND "
+                + "(status = 'stored' OR (status = 'failed' AND julianday(fetched_at) > julianday('now', '-1 day')))",
                 new String[]{ workId })) {
             while (c.moveToNext()) seen.add(c.getString(0));
-        } catch (Exception ignored) {
-            return null;
         }
-
-        java.util.regex.Pattern img =
-            java.util.regex.Pattern.compile("<img\\b[^>]*\\bsrc=\"(https://[^\"]+)\"",
-                java.util.regex.Pattern.CASE_INSENSITIVE);
-        try (Cursor c = db.rawQuery(
-                "SELECT html FROM chapters WHERE work_id = ? ORDER BY number",
-                new String[]{ workId })) {
+        java.util.regex.Pattern img = java.util.regex.Pattern.compile(
+            "<img\\b[^>]*\\bsrc=\"(https?://[^\"]+)\"", java.util.regex.Pattern.CASE_INSENSITIVE);
+        try (Cursor c = db.rawQuery("SELECT html FROM chapters WHERE work_id = ? AND number = ?",
+                new String[]{ workId, String.valueOf(chapter) })) {
             while (c.moveToNext()) {
                 String html = c.getString(0);
                 if (html == null) continue;
@@ -1011,23 +1024,74 @@ public class MainActivity extends Activity {
                     if (!seen.contains(url)) return url;
                 }
             }
-        } catch (Exception ignored) {
-            return null;
         }
         return null;
     }
 
-    /** Remember that a picture cannot be had, so it is not asked for for ever. */
-    private String storeDead(String workId, String url, String why) {
+    private void discardImagePlaceholders() {
+        if (db != null) db.delete("images", "sha256 IN (?, ?)",
+            new String[]{ ImageFetcher.REGION_IMAGE, ImageFetcher.REMOVED_IMAGE });
+    }
+
+    private String retryImages(String workId) {
+        if (db == null) return errorJson("No library open");
+        int count = db.delete("images", "work_id = ? AND (status IS NULL OR status != 'stored' OR sha256 IN (?, ?))",
+            new String[]{ workId, ImageFetcher.REGION_IMAGE, ImageFetcher.REMOVED_IMAGE });
+        return "{\"reset\":" + count + "}";
+    }
+
+    /** Runs on WebView's request thread, so a slow host cannot freeze the reader. */
+    private String fetchNextImage(String workId, int chapter, boolean allowProxy) {
+        if (db == null) return errorJson("No library open");
+        SQLiteDatabase library = db;
+        String target = nextImageFor(workId, chapter);
+        if (target == null) return "{\"done\":true}";
         try {
+            ImageFetcher fetcher = new ImageFetcher(new ImageFetcher.Connections() {
+                @Override public HttpURLConnection open(URL url) throws IOException {
+                    return (HttpURLConnection) url.openConnection();
+                }
+            }, imageUserAgent);
+            ImageFetcher.Picture picture = fetcher.fetch(target, allowProxy);
+            if (db != library || !library.isOpen()) return errorJson("Library changed while loading image");
+            String stored = storeImageResult(library, workId, target, picture);
+            if (stored == null) return "{\"done\":true}";
+            org.json.JSONObject out = new org.json.JSONObject();
+            out.put("url", target); out.put("sha256", stored); out.put("proxied", picture.proxied);
+            return out.toString();
+        } catch (Exception e) {
+            String stored = storeImageResult(library, workId, target, null);
+            if (stored != null) return "{\"url\":" + org.json.JSONObject.quote(target)
+                + ",\"sha256\":" + org.json.JSONObject.quote(stored) + "}";
+            return "{\"url\":" + org.json.JSONObject.quote(target)
+                + ",\"error\":" + org.json.JSONObject.quote(String.valueOf(e.getMessage())) + "}";
+        }
+    }
+
+    /** A late response cannot overwrite an imported copy or recreate a deleted work. */
+    private String storeImageResult(SQLiteDatabase library, String workId, String target, ImageFetcher.Picture picture) {
+        if (db != library || !library.isOpen()) return null;
+        library.beginTransaction();
+        try {
+            try (Cursor c = library.rawQuery("SELECT 1 FROM works WHERE work_id = ?", new String[]{ workId })) {
+                if (!c.moveToFirst()) return null;
+            }
+            try (Cursor c = library.rawQuery("SELECT sha256 FROM images WHERE work_id = ? AND url = ? "
+                    + "AND status = 'stored' AND sha256 IS NOT NULL AND length(bytes) > 0",
+                    new String[]{ workId, target })) {
+                if (c.moveToFirst() && !ImageFetcher.placeholder(c.getString(0))) return c.getString(0);
+            }
             android.content.ContentValues v = new android.content.ContentValues();
-            v.put("work_id", workId);
-            v.put("url", url);
-            v.put("status", "dead");
-            v.put("fetched_at", nowIso());
-            db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
-        } catch (Exception ignored) {}
-        return errorJson(why);
+            v.put("work_id", workId); v.put("url", target); v.put("fetched_at", nowIso());
+            if (picture == null) v.put("status", "failed");
+            else {
+                v.put("status", "stored"); v.put("sha256", picture.sha256);
+                v.put("mime", picture.mime); v.put("bytes", picture.bytes);
+            }
+            library.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
+            library.setTransactionSuccessful();
+            return picture == null ? null : picture.sha256;
+        } finally { library.endTransaction(); }
     }
 
     private static String sha256Hex(byte[] bytes) throws Exception {
@@ -1509,84 +1573,6 @@ public class MainActivity extends Activity {
                 return errorJson(String.valueOf(e.getMessage()));
             }
             return "{\"added\":" + added + "}";
-        }
-
-        /**
-         * Fetch the next picture this work is still missing.
-         *
-         * The page does not say which. It asks the shell to get on with the
-         * next one, and the address comes out of the chapter text already
-         * held — so there is no address crossing the bridge for anything to
-         * choose. Checking a caller-supplied URL and hoping the check holds is
-         * the weaker arrangement, and it is the one CodeQL objected to on the
-         * write path for the same reason.
-         *
-         * Images may come from anywhere, which is a deliberate loosening: an
-         * author puts them where they like. The rule that does not bend is the
-         * cookie — open() attaches the session only to the archive.
-         */
-        @JavascriptInterface
-        public String fetchNextImage(String workId) {
-            mustBeOurPage();
-            if (db == null) return errorJson("no library open");
-            String target = nextImageFor(workId);
-            if (target == null) return "{\"done\":true}";
-
-            HttpURLConnection c = null;
-            try {
-                URL u = new URL(target);
-                if (!"https".equalsIgnoreCase(u.getProtocol())) {
-                    return storeDead(workId, target, "https only");
-                }
-                c = open(u);
-                c.setRequestProperty("Accept", "image/avif,image/webp,image/*,*/*;q=0.8");
-                c.setRequestProperty("Sec-Fetch-Dest", "image");
-                c.setRequestProperty("Sec-Fetch-Mode", "no-cors");
-
-                int status = c.getResponseCode();
-                if (status != 200) return storeDead(workId, target, "answered " + status);
-
-                String mime = c.getContentType();
-                mime = mime == null ? "" : mime.split(";")[0].trim().toLowerCase(Locale.ROOT);
-                /* Only pictures. An error page stored where an image should be
-                   renders as a broken one for ever. */
-                if (!mime.startsWith("image/")) return storeDead(workId, target, "not an image");
-
-                java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
-                byte[] chunk = new byte[1 << 15];
-                int read;
-                try (InputStream in = c.getInputStream()) {
-                    while ((read = in.read(chunk)) > 0) {
-                        buf.write(chunk, 0, read);
-                        // one picture should not be able to fill the library
-                        if (buf.size() > 12 * 1024 * 1024) {
-                            return storeDead(workId, target, "too large");
-                        }
-                    }
-                }
-                byte[] bytes = buf.toByteArray();
-                if (bytes.length == 0) return storeDead(workId, target, "empty");
-
-                String sha = sha256Hex(bytes);
-                android.content.ContentValues v = new android.content.ContentValues();
-                v.put("work_id", workId);
-                v.put("url", target);
-                v.put("sha256", sha);
-                v.put("mime", mime);
-                v.put("bytes", bytes);
-                v.put("status", "stored");
-                v.put("fetched_at", nowIso());
-                db.insertWithOnConflict("images", null, v, SQLiteDatabase.CONFLICT_REPLACE);
-
-                org.json.JSONObject out = new org.json.JSONObject();
-                out.put("url", target);
-                out.put("sha256", sha);
-                return out.toString();
-            } catch (Exception e) {
-                return storeDead(workId, target, String.valueOf(e.getMessage()));
-            } finally {
-                if (c != null) c.disconnect();
-            }
         }
 
         /**
@@ -2717,6 +2703,7 @@ public class MainActivity extends Activity {
             return;
         }
 
+        discardImagePlaceholders();
         staged.delete();
         web.reload();
     }

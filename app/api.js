@@ -549,10 +549,21 @@ export function saveStubs(works) {
  * chapter text it already holds. Returns the url it dealt with and the hash it
  * was stored under, or done when there is nothing left.
  */
-export async function fetchNextImage(workId) {
+export async function fetchNextImage(workId, { chapter = 1, proxy = true } = {}) {
   if (!isNative) return { done: true };
-  const out = JSON.parse(native.fetchNextImage(String(workId)));
-  if (out.error) return { error: out.error };
+  const params = new URLSearchParams({ workId: String(workId), chapter: String(chapter), proxy: String(proxy) });
+  const response = await fetch(`/__images/next?${params}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Images could not be loaded');
+  return response.json();
+}
+
+export async function retryImages(workId, chapter = 1) {
+  if (!isNative) throw new Error('Image recovery needs the Android app');
+  const params = new URLSearchParams({ workId: String(workId), chapter: String(chapter) });
+  const response = await fetch(`/__images/retry?${params}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Images could not be retried');
+  const out = await response.json();
+  if (out.error) throw new Error(out.error);
   return out;
 }
 

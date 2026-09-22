@@ -298,6 +298,10 @@
         <span><strong>Page-turn vibration</strong><small>A gentle tick as you turn a page</small></span>
         <input id="haptics" type="checkbox" role="switch">
       </label></div>
+    <div class="settings-panel"><label class="settings-row setting-toggle">
+      <span><strong>Recover blocked Imgur images</strong><small>Try rimgo.nohost.network when Imgur fails. The proxy receives the image address and your IP, never your AO3 login. Recovered images are saved on this device.</small></span>
+      <input id="imgur-proxy" type="checkbox" role="switch">
+    </label></div>
   </section>
   <section id="settings-account" class="view settings-destination" hidden>
     <button class="linkish settings-return" data-settings-home><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Settings</button>
@@ -505,6 +509,8 @@
     <button id="reader-comment"><svg class="ic" aria-hidden="true"><use href="#i-comment"/></svg>Leave a comment</button>
   </div>
 
+  <div class="menu-list"><button id="reader-images">Retry missing images</button></div>
+  <p id="reader-images-status" class="setting-note" role="status"></p>
   <h2>Go to</h2>
   <div class="menu-list">
     <button data-go="home"><svg class="ic" aria-hidden="true"><use href="#i-home"/></svg>Home</button>

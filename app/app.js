@@ -7,6 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
+import { createImageCollector } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
 import { jobSource } from './core/sync/job-source.js';
 import { History, openingOffset } from './core/nav.js';
@@ -23,7 +24,7 @@ import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
-import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
+import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, retryImages, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
@@ -73,7 +74,7 @@ const READING_DEFAULTS = {
   theme: 'system', bg: '#fbf9f5', fg: '#1b1a17',
   face: 'Georgia', weight: 400, size: 19, lh: 170,
   margin: 20, vmargin: 24, align: 'start',
-  haptics: true,
+  haptics: true, imgurProxy: true,
 };
 const prefs = load(PREFS_KEY, READING_DEFAULTS);
 /* The full filter set, kept together so it can be sent, saved and shown as one. */
@@ -1828,6 +1829,10 @@ async function buildSettings() {
     if (haptics.checked) tick('commit');    // show what was just turned on
   };
 
+  const proxy = $('#imgur-proxy');
+  proxy.checked = prefs.imgurProxy !== false;
+  proxy.onchange = () => { prefs.imgurProxy = proxy.checked; save(PREFS_KEY, prefs); };
+
   paintReadingControls();
   paintActivityBadge();
   const backup = load('archive.backup', {});
@@ -3304,40 +3309,47 @@ function resumeJobs() {
   }
 }
 
-/**
- * Collect the pictures a chapter is missing, while it is being read.
- *
- * A work fetched from the archive points at images on other hosts, and nothing
- * was fetching them — so a work that came from an EPUB with its pictures
- * stored lost them the moment it was refetched, and showed a column of empty
- * boxes instead.
- *
- * Fetched as the chapter is looked at rather than in a sweep: only the works
- * actually read cost anything, and the picture arrives in place without the
- * page being rebuilt underneath the reader.
- */
-async function collectImages(workId) {
-  if (!isNative) return;
-  for (let i = 0; i < 60; i++) {
-    if (current.workId !== workId) return;        // they have gone elsewhere
-    const out = await fetchNextImage(workId);
-    if (out.done) return;
-    if (out.url && out.sha256) {
-      /* Put in place rather than re-rendering: the reader is looking at this
-         page, and rebuilding it under them to show a picture is worse than
-         the picture arriving. */
-      for (const img of $$(`#workskin img[data-remote-src]`)) {
-        if (img.dataset.remoteSrc !== out.url) continue;
-        img.src = `/img/${out.sha256}`;
-        img.removeAttribute('data-remote-src');
-        img.classList.remove('ar-missing-image');
-        img.removeAttribute('alt');
-      }
+/** Saved image arrivals update the page in place, preserving the reading position. */
+const imageCollector = createImageCollector({
+  fetchNext: fetchNextImage,
+  isCurrent: (workId, chapter) => showing() === 'reader' && !viewingArchive
+    && current.workId === workId && current.chapter === chapter,
+  proxy: () => prefs.imgurProxy !== false,
+  wait: untilDue,
+  onImage(out) {
+    for (const img of $$('#workskin img[data-remote-src]')) {
+      if (img.dataset.remoteSrc !== out.url) continue;
+      img.src = `/img/${out.sha256}`;
+      img.dataset.stored = '1';
+      img.classList.remove('ar-missing-image');
     }
-    // an error is already recorded by the shell as not worth asking for again
-    await new Promise((r) => setTimeout(r, 250));
-  }
+  },
+  onProgress(result) {
+    $('#reader-images-status').textContent = imageResult(result);
+  },
+});
+function imageResult({ saved, failed }) {
+  return `${saved} image${saved === 1 ? '' : 's'} saved${failed ? ` · ${failed} still unavailable` : ''}`;
 }
+async function collectImages(workId) {
+  if (!isNative || viewingArchive) return { saved: 0, failed: 0 };
+  return imageCollector.start(workId, current.chapter);
+}
+$('#reader-images').onclick = async () => {
+  closeSheet($('#reader-menu'));
+  const workId = current.workId, chapter = current.chapter;
+  const button = $('#reader-images');
+  button.disabled = true;
+  try {
+    await imageCollector.cancel();
+    if (showing() !== 'reader' || current.workId !== workId || current.chapter !== chapter || viewingArchive) return;
+    await retryImages(workId, chapter);
+    toast('Retrying missing images…');
+    const result = await collectImages(workId);
+    if (!result.cancelled) toast(result.saved || result.failed ? imageResult(result) : 'No missing images in this chapter');
+  } catch (e) { toast(e.message); }
+  finally { button.disabled = false; }
+};
 
 /* ------------------------------------------------------------------ author */
 
@@ -5911,7 +5923,10 @@ async function openChapter(workId, number, { transient = false } = {}) {
   if (!transient) {
     nowReading = { workId: String(workId), title: w.title || '(untitled)', chapter: Number(number) || 1 };
   }
-  collectImages(workId);
+  $('#reader-images-status').textContent = '';
+  collectImages(workId).catch(e => {
+    if (current.workId === workId && current.chapter === number) $('#reader-images-status').textContent = e.message;
+  });
 }
 
 // moving by hand is deliberate, so the bookmark starts following again
@@ -6382,8 +6397,8 @@ for (const button of $$('[data-face-choice]')) {
   button.onclick = () => { prefs.face = button.dataset.faceChoice; applyPrefs(); };
 }
 $('#reset-reading').onclick = () => {
-  const haptics = prefs.haptics;
-  Object.assign(prefs, READING_DEFAULTS, { haptics });
+  const { haptics, imgurProxy } = prefs;
+  Object.assign(prefs, READING_DEFAULTS, { haptics, imgurProxy });
   applyPrefs();
   toast('Reading settings reset');
 };
@@ -6462,7 +6477,10 @@ function goToTab(tab) {
 
 for (const b of $$('#tabs [data-tab]')) b.onclick = () => goToTab(b.dataset.tab);
 
-$('#reader-more').onclick = () => openSheet($('#reader-menu'));
+$('#reader-more').onclick = () => {
+  $('#reader-images').hidden = !isNative || viewingArchive;
+  openSheet($('#reader-menu'));
+};
 for (const b of $$('#reader-menu [data-go]')) {
   b.onclick = () => { closeSheet($('#reader-menu')); goToTab(b.dataset.go); };
 }
