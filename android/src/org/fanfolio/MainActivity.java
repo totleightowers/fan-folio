@@ -221,6 +221,7 @@ public class MainActivity extends Activity {
         if (self == null || self.web == null || self.isDestroyed()) return;
         self.web.post(new Runnable() {
             @Override public void run() {
+                if (self.isDestroyed() || self.web == null) return;
                 self.web.evaluateJavascript("window.__tick && window.__tick()",
                     new android.webkit.ValueCallback<String>() {
                         @Override public void onReceiveValue(String value) {
@@ -1461,11 +1462,11 @@ public class MainActivity extends Activity {
 
                         android.content.ContentValues v = new android.content.ContentValues();
                         v.put("work_id", id);
-                        v.put("title", b.optString("title", null));
+                        v.put("title", b.isNull("title") ? null : b.optString("title", null));
                         v.put("authors", b.optString("authors", "[]"));
-                        v.put("summary", b.optString("summary", null));
-                        v.put("rating", b.optString("rating", null));
-                        v.put("language", b.optString("language", null));
+                        v.put("summary", b.isNull("summary") ? null : b.optString("summary", null));
+                        v.put("rating", b.isNull("rating") ? null : b.optString("rating", null));
+                        v.put("language", b.isNull("language") ? null : b.optString("language", null));
                         v.put("complete", b.optBoolean("complete") ? 1 : 0);
                         v.put("words", b.optInt("words"));
                         v.put("chapter_count", b.optInt("chapters"));

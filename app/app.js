@@ -7,7 +7,8 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { downloadStatus } from './core/downloads.js';
+import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
+import { jobSource } from './core/sync/job-source.js';
 import { History, openingOffset } from './core/nav.js';
 import { parseEpub } from './core/epub.js';
 import { reachedTheEnd, chromeHidden, readingStatus } from './core/reading.js';
@@ -2165,18 +2166,19 @@ function archiveActions(w) {
   const upkeep = document.createElement('div');
   upkeep.className = 'actions archive-upkeep';
   upkeep.append(onArchive, refetch, remove);
-  if (w.versions > 0) {
-    const earlier = document.createElement('button');
-    earlier.className = 'archive-act';
-    earlier.append(icon('chapters', 'ic ic-inline'),
-      document.createTextNode(`Earlier versions (${w.versions})`));
-    earlier.onclick = () => showVersions(w.work_id);
-    upkeep.append(earlier);
-  }
+
 
   const both = document.createDocumentFragment();
   both.append(row, upkeep);
   return both;
+}
+
+function earlierVersionsButton(w) {
+  const button = document.createElement('button');
+  button.className = 'linkish';
+  button.append(icon('chapters', 'ic ic-inline'), document.createTextNode(`Earlier versions (${Number(w.versions) || 0})`));
+  button.onclick = () => showVersions(w.work_id);
+  return button;
 }
 
 /**
@@ -2670,22 +2672,46 @@ function openLibraryAs(patch) {
  * worked out again from what the job was, because a record that cannot be
  * acted on is only half a record.
  */
-function runAgain(job) {
-  if (job.unfinished && jobs.rerun(job.id)) return;
-  if (isStubsJob(job)) {
+async function runAgain(job) {
+  const source = jobSource(job);
+  if (source.kind === 'epub') { $('#import-epubs').click(); return; }
+  if (isStubsJob(job) || source.kind === 'saved') {
     const queued = stubIds();
     if (!queued.length) { toast('Everything described has been downloaded'); paintStubs(); return; }
     jobs.add({ ...STUBS_JOB, workIds: queued });
     toast(`Queued ${fmt(queued.length)} works`);
     return;
   }
+  if (source.kind === 'works') {
+    const ids = jobs.details(job.id)?.items.map(i => i.workId) ?? [];
+    if (!ids.length) { toast('This older job did not keep its work list. Add its link again.'); return; }
+    jobs.add({ author: job.author || 'Selected works', part: job.part || 'downloads', source, workIds: ids });
+    return;
+  }
   if (!isNative || !signedIn()) { showAccountForDownloads(); return; }
-  const part = job.part === 'bookmarks' ? 'bookmarks' : 'works';
-  const id = jobs.add({ author: job.author, part, workIds: [], open: true });
-  walkAuthor(job.author, { listing: part, jobId: id })
-    .catch(() => {})
-    .finally(() => jobs.seal(id));
-  toast(`Reading ${job.author}'s ${part} again`);
+  try {
+    if (source.kind === 'bookmarks-new') { await syncBookmarks(); return; }
+    if (source.kind === 'bookmarks-all') { await reconcileAllBookmarks(); return; }
+    if (source.kind === 'series') {
+      const id = jobs.add({ author: `Series ${source.seriesId}`, part: 'works', source, workIds: [], open: true });
+      try {
+        const plan = await addWork(`${AO3}/series/${source.seriesId}`);
+        if (!queueSeries(plan)) jobs.note(id, { say: 'The available works in this series are already saved' });
+      } catch (error) { jobs.note(id, { issue: error.message }); throw error; }
+      finally { jobs.seal(id); }
+      return;
+    }
+    const id = jobs.add({ author: source.author, part: source.part, source, workIds: [], open: true });
+    toast(`Reading ${source.author}'s ${source.part} again`);
+    await walkAuthor(source.author, { listing: source.part, jobId: id }).finally(() => jobs.seal(id));
+  } catch (error) { toast(error.message); }
+}
+
+function retryJobItems(id, workIds = null) {
+  const selected = workIds ?? jobs.details(id)?.items.filter(i => ['failed', 'stopped'].includes(i.state)).map(i => i.workId) ?? [];
+  if (!selected.length) { toast('This job has no recorded failures to retry'); return; }
+  if (jobs.retry(id, selected)) toast(`Queued ${fmt(selected.length)} work${selected.length === 1 ? '' : 's'} to retry`);
+  else toast('Wait for the current request to finish, then try again');
 }
 
 /*
@@ -2745,7 +2771,7 @@ function sayWhatIsHappening() {
        */
       const mine = list.filter((j) => runJobs.has(j.id));
       const added = mine.reduce((n, j) => n + (Number(j.added) || 0), 0);
-      const missing = mine.reduce((n, j) => n + Math.max(Number(j.failed) || 0, Number(j.unfinished) || 0), 0);
+      const missing = mine.reduce((n, j) => n + Math.max(Number(j.failed) || 0, Number(j.unfinished) || 0) + (Number(j.stopped) || 0), 0);
       const outcome = mine.map((j) => j.say).filter(Boolean).at(-1);
       runJobs = new Set();
       if (mine.some(j => j.issue)) {
@@ -2839,7 +2865,7 @@ let jobShowing = { id: null, filter: 'all', page: 0 };
 let jobDetailRequest = 0;
 const JOB_PAGE_SIZE = 50;
 const jobItemGroup = item => ['downloaded', 'version'].includes(item.state) ? 'downloaded'
-  : item.state === 'failed' ? 'failed' : 'waiting';
+  : ['failed', 'stopped'].includes(item.state) ? 'failed' : 'waiting';
 
 function openJob(id) {
   go('download-job', { id });
@@ -2860,12 +2886,12 @@ async function paintJobDetail() {
     return;
   }
   $('#job-filters').hidden = false;
-  $('#job-title').textContent = `${job.author} · ${job.part}`;
+  $('#job-title').textContent = `${job.author || 'Download job'} · ${job.part || 'works'}`;
   const counts = { downloaded: 0, waiting: 0, failed: 0 };
   for (const item of job.items) counts[jobItemGroup(item)]++;
   const status = downloadStatus([job], { coolUntil });
   $('#job-summary').textContent = isEpubJob(job) && job.say ? job.say
-    : `${status.title} · ${counts.downloaded} downloaded · ${counts.waiting} in progress · ${counts.failed} need attention`;
+    : `${status.title} · ${counts.downloaded} downloaded · ${counts.waiting} pending · ${counts.failed} need attention`;
   if (job.issue) $('#job-summary').textContent += ` · ${job.issue}`;
   $('#job-history-note').hidden = job.historyComplete;
   $('#job-history-note').textContent = 'This older job did not retain its complete work list. Only recorded works can be shown; the summary on Downloads still has its original counts.';
@@ -2876,13 +2902,17 @@ async function paintJobDetail() {
   };
   if (['running', 'listing', 'queued'].includes(job.state)) action('Pause job', () => jobs.pause(job.id));
   if (['paused', 'pausing'].includes(job.state)) action('Resume job', () => jobs.resume(job.id));
-  if (['done', 'cancelled'].includes(job.state) && !isEpubJob(job)) action(job.unfinished ? 'Retry missing works' : 'Run again', () => runAgain(job));
+  if (counts.failed && !isEpubJob(job)) action('Retry unfinished works', () => retryJobItems(job.id));
+  if (['done', 'cancelled'].includes(job.state)) action(isEpubJob(job) ? 'Choose EPUBs again' : 'Run again', () => runAgain(job));
   if (!['done', 'cancelled'].includes(job.state)) action('Stop job', () => jobs.stop(job.id));
   const filtered = job.items.filter(item => jobShowing.filter === 'all' || jobItemGroup(item) === jobShowing.filter);
   jobShowing.page = Math.min(jobShowing.page, Math.max(0, Math.ceil(filtered.length / JOB_PAGE_SIZE) - 1));
   for (const button of $$('#job-filters button')) {
     const selected = button.dataset.jobFilter === jobShowing.filter;
     button.setAttribute('aria-pressed', String(selected)); button.classList.toggle('on', selected);
+    const filter = button.dataset.jobFilter;
+    const labels = { all: 'All', downloaded: 'Downloaded', waiting: 'Pending', failed: 'Needs attention' };
+    button.textContent = `${labels[filter]} (${filter === 'all' ? job.items.length : counts[filter]})`;
   }
   const start = jobShowing.page * JOB_PAGE_SIZE;
   const items = filtered.slice(start, start + JOB_PAGE_SIZE);
@@ -2903,18 +2933,32 @@ async function paintJobDetail() {
     for (const item of items) {
       const work = works.get(String(item.workId));
       const row = document.createElement('article'); row.className = 'job-work'; row.dataset.workId = item.workId;
-      const head = document.createElement('h2'); head.textContent = work?.title || item.title || `Work ${item.workId}`;
+      const identity = downloadIdentity(work, item);
+      const head = document.createElement('h2'); head.textContent = identity.title;
       const by = document.createElement('p'); by.className = 'by';
-      by.textContent = work ? authorsOf(work.authors).join(', ') || 'Anonymous' : '';
+      by.textContent = identity.by;
       const state = document.createElement('p'); state.className = 'job-work-state';
       state.textContent = item.state === 'version' ? 'Imported as an earlier version'
         : item.state === 'downloaded' ? (work?.has_text ? 'Downloaded · available to read' : 'Downloaded in this job · no current copy in your visible library')
-        : item.state === 'failed' ? `Could not download${work?.has_text ? ' · your saved copy is still available' : ''}`
+        : item.state === 'stopped' ? 'Stopped before downloading'
+        : item.state === 'failed' ? `${downloadFailure(item.error)}${work?.has_text ? ' · your saved copy is still available' : ''}`
         : item.state === 'retrying' ? 'Waiting to retry'
         : item.state === 'downloading' ? 'Downloading'
         : ['paused', 'pausing'].includes(job.state) ? 'Paused'
         : job.state === 'cancelled' ? 'Stopped before downloading' : 'Waiting to download';
       row.append(head, by, state);
+      if (item.lastAttemptAt) {
+        const when = document.createElement('p'); when.className = 'job-attempt';
+        when.textContent = `Attempt ${item.attempts || 1} · ${new Date(item.lastAttemptAt).toLocaleString()}`;
+        if (item.state === 'retrying' && item.nextRetryAt) when.textContent += ` · retry after ${new Date(item.nextRetryAt).toLocaleTimeString()}`;
+        row.append(when);
+      }
+      if (['failed', 'stopped'].includes(item.state) && !isEpubJob(job)) {
+        const retry = document.createElement('button'); retry.className = 'secondary job-retry';
+        retry.textContent = item.state === 'stopped' ? 'Queue this work' : 'Retry this work';
+        retry.onclick = () => retryJobItems(job.id, [item.workId]);
+        row.append(retry);
+      }
       if (item.error) { const error = document.createElement('p'); error.className = 'job-error-detail'; error.textContent = item.error; row.append(error); }
       if (work?.has_text) {
         const actions = document.createElement('div'); actions.className = 'actions';
@@ -3005,7 +3049,7 @@ function paintJobs() {
     text.onclick = () => openJob(job.id);
     const who = document.createElement('span');
     who.className = 'job-who';
-    who.textContent = `${job.author} · ${job.part}`;
+    who.textContent = `${job.author || 'Download job'} · ${job.part || 'works'}`;
     const how = document.createElement('span');
     how.className = 'job-how';
     /* "unavailable" said nothing about what happened or whether it would
@@ -3037,7 +3081,7 @@ function paintJobs() {
       : null;
     /* A total lost by the older fault cannot come back, and "36 of 0" reads as
        a job asked for nothing that did thirty-six anyway. */
-    const count = counting
+    const count = isEpubJob(job) && job.say ? job.say : counting
       ? (walking ? `reading ${walking}…`
         : job.part === 'works' ? 'reading their works…' : 'reading their bookmarks…')
       /* Work whose outcome is not a number of downloads says what it was. */
@@ -3056,7 +3100,7 @@ function paintJobs() {
       : job.state === 'cancelled' ? ' · stopped'
       : job.state === 'listing' ? ' · still reading the list'
       : job.state === 'done' && job.issue ? ' · list incomplete'
-      : job.state === 'done' && (job.failed || job.unfinished) ? ` · ${Math.max(job.failed, job.unfinished)} need attention`
+      : job.state === 'done' && (job.failed || job.unfinished || job.stopped) ? ` · ${Math.max(job.failed, job.unfinished) + (job.stopped || 0)} need attention`
       : job.state === 'done' ? ` · finished${job.at ? ` ${whenShort(job.at)}` : ''}`
       : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
       : ' · waiting';
@@ -3129,9 +3173,9 @@ function paintJobs() {
        * What the job was is enough to work out how to do it again: an author
        * is walked, and the library's own backlog is read off the database.
        */
-      act('play', job.unfinished
-        ? `Try the ${job.unfinished} that never arrived again`
-        : 'Ask for this again', () => runAgain(job));
+      if (!isEpubJob(job) && (job.failed || job.unfinished || job.stopped)) {
+        act('play', `Try the ${Math.max(job.failed, job.unfinished) + (job.stopped || 0)} that never arrived again`, () => retryJobItems(job.id));
+      } else act('play', isEpubJob(job) ? 'Choose EPUBs again' : 'Ask for this again', () => runAgain(job));
     }
     act('trash', 'Delete', () => jobs.remove(job.id), true);
     row.append(acts);
@@ -5537,6 +5581,7 @@ async function openWork(workId, options = {}) {
     };
     actions.append(finish);
   }
+  actions.append(earlierVersionsButton(w));
   head.append(actions);
 
   const participation = document.createElement('section'); participation.className = 'work-participation';

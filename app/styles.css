@@ -2817,3 +2817,6 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
 .settings-destination .reading-slider input { display: block; width: 100%; max-width: none; min-height: 2.75rem; }
 
 .settings-destination input[type=range] { accent-color: var(--accent); }
+
+.job-attempt { color: var(--muted); font-size: .8rem; margin: .4rem 0; }
+.job-retry { margin: .4rem 0; }

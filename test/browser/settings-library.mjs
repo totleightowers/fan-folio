@@ -683,6 +683,29 @@ try {
   await page.locator('#preview-story .actions .primary').filter({ hasText: 'Read again' }).waitFor();
   await page.locator('#back').click();
   await page.locator('#library').waitFor({ state: 'visible', timeout: 5000 });
+  // A failed work can be retried without re-fetching its successful peers.
+  const retried = [];
+  await page.route('**/api/add?*', route => {
+    const id = new URL(route.request().url()).searchParams.get('url');
+    retried.push(id);
+    return route.fulfill({ json: { workId: id, title: 'Recovered work', authors: ['Rowan'], chapters: 1 } });
+  });
+  await page.locator('#tabs [data-tab="activity"]').click();
+  await page.locator('.job-open').filter({ hasText: 'Rowan' }).click();
+  await page.locator('[data-job-filter="failed"]').click();
+  await page.locator('#job-works [data-work-id="9999"] .job-retry').click();
+  await page.locator('#job-summary').filter({ hasText: '3 downloaded' }).waitFor();
+  assert.deepEqual(retried, ['9999']);
+  await page.locator('[data-job-filter="downloaded"]').click();
+  await page.locator('#job-works [data-work-id="9999"] .job-attempt').waitFor();
+  assert.match(await page.locator('#job-works [data-work-id="9999"]').innerText(), /Attempt 1/);
+  await screenshot('download-results-retried', { fullPage: false });
+  // Even an empty version history is discoverable beside the Read button.
+  await page.locator('#tabs [data-tab="library"]').click();
+  await page.locator('#works .work-title-link').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#detail').getByRole('button', { name: 'Earlier versions (0)', exact: true }).click();
+  await page.locator('#versions-list').filter({ hasText: 'Nothing has changed' }).waitFor();
+  await page.locator('[data-close="versions-dialog"]').click();
   assert.deepEqual(errors, [], 'no browser exceptions');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {

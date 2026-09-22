@@ -476,7 +476,7 @@ async function fetchAndSave(workId) {
 
   const out = JSON.parse(native.saveWork(JSON.stringify(payloadFor(workId, w))));
   if (out.error) throw new Error(out.error);
-  return { workId, title: w.title, chapters: w.chapters.length, words: w.meta?.words ?? 0 };
+  return { workId, title: w.title, authors: w.authors, chapters: w.chapters.length, words: w.meta?.words ?? 0 };
 }
 
 /** What the shell can tell us about the archive it opened. */

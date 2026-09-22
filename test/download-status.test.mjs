@@ -32,3 +32,8 @@ test('failure to discover the work list is not reported as up to date', () => {
   assert.equal(downloadStatus([{ state: 'done', added: 0, failed: 0, issue: '525' }]).title,
     'Some works still need attention');
 });
+
+test('works left stopped after a selected retry are still visible as unfinished', () => {
+  assert.equal(downloadStatus([{ state: 'done', added: 2, failed: 0, stopped: 1 }]).title,
+    'Some works still need attention');
+});

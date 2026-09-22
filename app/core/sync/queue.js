@@ -1,3 +1,5 @@
+import { jobSource } from './job-source.js';
+
 /**
  * Work the app owes the archive, done in the open.
  *
@@ -59,12 +61,13 @@ export function createQueue({
   const counts = (j) => {
     const items = [...j.items.values()];
     const added = items.filter(i => ['downloaded', 'version'].includes(i.state)).length + (j.legacyAdded || 0);
+    const stopped = items.filter(i => i.state === 'stopped').length;
     const failed = items.filter(i => i.state === 'failed').length + (j.legacyFailed || 0);
     const total = j.historyComplete ? items.length : Math.max(j.wasTotal || 0, items.length + (j.legacyAdded || 0) + (j.legacyFailed || 0));
-    return { total, added, failed, done: added + failed, waiting: Math.max(0, total - added - failed) };
+    return { total, added, failed, stopped, done: added + failed, waiting: Math.max(0, total - added - failed - stopped) };
   };
   const view = (j) => ({
-    id: j.id, author: j.author, part: j.part, state: j.state,
+    id: j.id, author: j.author, part: j.part, state: j.state, source: { ...j.source },
     ...counts(j),
     open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
     say: j.say ?? null, issue: j.issue ?? null,
@@ -82,8 +85,10 @@ export function createQueue({
    * Opening an author twice should not start a second download of the same
    * catalogue. A job for the same author and the same half is the same job.
    */
-  function add({ author, part, workIds = [], open = false }) {
+  function add({ author, part, workIds = [], open = false, source }) {
+    source = jobSource({ author, part, source });
     const existing = jobs.find((j) => j.author === author && j.part === part
+      && JSON.stringify(j.source) === JSON.stringify(source)
       && j.state !== 'done' && j.state !== 'cancelled');
     if (existing) {
       if (open) existing.open = true;
@@ -91,7 +96,7 @@ export function createQueue({
       return existing.id;
     }
     const job = {
-      id: nextId++, author, part, workIds: [...new Set(workIds.map(String))],
+      id: nextId++, author, part, source, workIds: [...new Set(workIds.map(String))],
       items: initialItems(workIds), historyComplete: true,
       done: 0, added: 0, failed: 0, open,
       /* How far through the index the walk had read, so a restart carries on
@@ -157,6 +162,9 @@ export function createQueue({
     const job = find(id);
     if (!job || job.state === 'done') return false;
     job.state = 'cancelled';
+    for (const item of job.items.values()) {
+      if (['waiting', 'retrying'].includes(item.state)) itemChange(job, item.workId, { state: 'stopped', nextRetryAt: null });
+    }
     announce('stopped', job);
     pump();
     return true;
@@ -238,11 +246,15 @@ export function createQueue({
       if (job.state !== 'running') break;
 
       const workId = job.workIds[job.done];
-      itemChange(job, workId, { state: 'downloading', error: null });
+      itemChange(job, workId, { state: 'downloading', error: null,
+        attempts: (job.items.get(workId)?.attempts || 0) + 1, lastAttemptAt: Date.now(), nextRetryAt: null });
       announce('item', job);
       try {
-        await runTask(workId);
-        itemChange(job, workId, { state: 'downloaded', error: null });
+        const result = await runTask(workId);
+        const identity = {};
+        if (result?.title) identity.title = result.title;
+        if (Array.isArray(result?.authors)) identity.authors = [...result.authors];
+        itemChange(job, workId, { ...identity, state: 'downloaded', error: null, completedAt: Date.now(), nextRetryAt: null });
         job.attempt = 0;
       } catch (e) {
         const attempt = job.attempt ?? 0;
@@ -252,9 +264,10 @@ export function createQueue({
              against the work. */
           job.attempt = attempt + 1;
           job.retrying = String(e?.message ?? '');
-          itemChange(job, workId, { state: 'retrying', error: job.retrying });
+          const delay = retryWait(attempt);
+          itemChange(job, workId, { state: 'retrying', error: job.retrying, nextRetryAt: Date.now() + delay });
           announce('retrying', job);
-          await wait(retryWait(attempt));
+          await wait(delay);
           continue;
         }
         /*
@@ -266,7 +279,7 @@ export function createQueue({
          * nothing downloaded and vanishing.
          */
         job.lastError = String(e?.message ?? '');
-        itemChange(job, workId, { state: 'failed', error: job.lastError, retryable: shouldRetry(e?.message) });
+        itemChange(job, workId, { state: 'failed', error: job.lastError, nextRetryAt: null, retryable: shouldRetry(e?.message) });
         if (shouldRetry(e?.message)) (job.unfinished ??= []).push(job.workIds[job.done]);
         job.attempt = 0;
         job.retrying = null;
@@ -302,16 +315,17 @@ export function createQueue({
     for (const workId of owed) itemChange(job, workId, {
       state: 'failed', error: checkError, retryable: true,
     });
-    const retry = owed.length && job.rounds < maxRounds;
-    if (retry) {
-      for (const workId of owed) itemChange(job, workId, { state: 'waiting' });
-      job.workIds = owed;
-      job.done = 0;
-    }
+    const repairs = job.rounds < maxRounds ? owed : [];
+    for (const workId of repairs) itemChange(job, workId, { state: job.state === 'cancelled' ? 'stopped' : 'waiting' });
+    // A selected retry may have been appended while verification was pending.
+    const pending = [...new Set([...job.workIds.slice(job.done), ...repairs])];
+    const retry = pending.length > 0;
+    if (retry) { job.workIds = pending; job.done = 0; }
     job.unfinished = [...job.items.values()].filter(i => i.state === 'failed' && i.retryable).map(i => i.workId);
     // A control pressed during verification still owns the decision to run.
     if (job.state === 'pausing') job.state = 'paused';
     if (job.state === 'running') job.state = retry ? 'queued' : 'done';
+    if (job.state === 'done') job.at = Date.now();
     announce(job.state === 'done' ? 'finished' : retry ? 'again' : 'settled', job);
     pump();
   }
@@ -325,9 +339,9 @@ export function createQueue({
    * left are handed to the runner.
    */
   function restore(saved) {
-    const owed = [...(saved.workIds ?? [])];
+    const owed = (saved.workIds ?? []).map(String);
     const job = {
-      id: nextId++, author: saved.author, part: saved.part,
+      id: nextId++, author: saved.author, part: saved.part, source: jobSource(saved),
       workIds: owed,
       items: initialItems([...(saved.items ?? []).map(item => item.workId).filter(Boolean), ...owed, ...(saved.unfinished ?? [])]),
       historyComplete: Boolean(saved.historyComplete),
@@ -352,8 +366,11 @@ export function createQueue({
     });
     for (const item of saved.items ?? []) {
       if (!item?.workId) continue;
-      const state = ['downloaded', 'failed', 'version'].includes(item.state) ? item.state : 'waiting';
+      const state = ['downloaded', 'failed', 'version', 'stopped'].includes(item.state) ? item.state : saved.state === 'cancelled' ? 'stopped' : 'waiting';
       itemChange(job, item.workId, { ...item, state, workId: String(item.workId) });
+    }
+    if (job.state === 'cancelled') for (const item of job.items.values()) {
+      if (item.state === 'waiting') itemChange(job, item.workId, { state: 'stopped', nextRetryAt: null });
     }
     const recorded = counts({ ...job, historyComplete: true });
     job.legacyAdded = job.historyComplete ? 0 : Math.max(0, (saved.added || 0) - recorded.added);
@@ -382,6 +399,28 @@ export function createQueue({
     job.unfinished = []; job.rounds = 0;
     job.lastError = null; job.issue = null; job.attempt = 0;
     job.state = 'queued';
+    announce('again', job);
+    pump();
+    return true;
+  }
+
+  /** Requeue selected failures without disturbing successes or the active runner. */
+  function retry(id, workIds) {
+    const job = find(id);
+    if (!job || (job.state === 'cancelled' && job.driving)) return false;
+    const selected = [...new Set(workIds.map(String))].filter(id => ['failed', 'stopped'].includes(job.items.get(id)?.state));
+    if (!selected.length) return false;
+    const settled = ['done', 'cancelled'].includes(job.state);
+    if (settled) { job.workIds = selected; job.done = 0; job.state = 'queued'; }
+    else {
+      const pending = new Set(job.workIds.slice(job.done));
+      job.workIds.push(...selected.filter(id => !pending.has(id)));
+      if (job.state === 'listing') job.state = 'queued';
+    }
+    for (const workId of selected) itemChange(job, workId, { state: 'waiting', error: null, nextRetryAt: null });
+    job.unfinished = (job.unfinished ?? []).filter(id => !selected.includes(id));
+    job.rounds = 0;
+    if (![...job.items.values()].some(i => i.state === 'failed')) job.lastError = null;
     announce('again', job);
     pump();
     return true;
@@ -443,6 +482,7 @@ export function createQueue({
     job.open = false;
     if (job.state === 'listing') {
       job.state = job.workIds.length ? 'queued' : 'done';
+      if (job.state === 'done') job.at = Date.now();
       announce(job.state === 'done' ? 'finished' : 'sealed', job);
       pump();
     }
@@ -471,7 +511,7 @@ export function createQueue({
   };
 
   return {
-    add, append, note, seal, rerun, restore, record, details,
+    add, append, note, seal, rerun, retry, restore, record, details,
     waitUntilRunnable, isStopped,
     pause, resume, stop, remove, startNow, moveUp, moveDown,
     list: snapshot,
@@ -504,7 +544,7 @@ export function createQueue({
       .map((j) => {
         const settled = j.state === 'done';
         return {
-          author: j.author, part: j.part,
+          author: j.author, part: j.part, source: { ...j.source },
           state: j.state,
           items: [...j.items.values()].map(item => ({ ...item })),
           historyComplete: j.historyComplete,

@@ -596,7 +596,7 @@ test('a paused or stopped restored job retains results and never starts a reques
     await settle();
     assert.equal(calls, 0);
     assert.equal(q.details(id).state, state);
-    assert.deepEqual(q.details(id).items.map(i => i.state), ['downloaded', 'waiting']);
+    assert.deepEqual(q.details(id).items.map(i => i.state), ['downloaded', state === 'cancelled' ? 'stopped' : 'waiting']);
     assert.equal(q.save()[0].state, state);
   }
 });

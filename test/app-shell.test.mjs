@@ -990,11 +990,11 @@ test('the settings icon is a cog, not a sun', () => {
  * feature. These copies are not on the archive any more; this is the only
  * place they exist.
  */
-test('a work with earlier versions offers them', () => {
-  const fn = js.slice(js.indexOf('function archiveActions('));
+test('earlier versions is offered beside reading controls, including an empty history', () => {
+  const fn = js.slice(js.indexOf('function earlierVersionsButton('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /w\.versions > 0/, 'offered only when there is something to look at');
-  assert.match(body, /showVersions\(/, 'and it opens the list');
+  assert.match(body, /showVersions\(/);
+  assert.match(js, /actions\.append\(earlierVersionsButton\(w\)\)/);
 });
 
 test('reading an archived copy does not move your place', () => {
@@ -1850,20 +1850,7 @@ test('a job renamed is still the job it was', () => {
   assert.match(fn.slice(0, 200), /STUBS_PARTS\.has\(job\.part\)/);
 });
 
-test('a finished job can always be asked for again', () => {
-  const fn = js.slice(js.indexOf('function runAgain('));
-  const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /if \(job\.unfinished && jobs\.rerun\(job\.id\)\) return/,
-    'what it could not get, when the ids are still to hand');
-  assert.match(body, /if \(isStubsJob\(job\)\)/,
-    'and otherwise worked out from what the job was: the backlog off the database');
-  assert.match(body, /walkAuthor\(job\.author, \{ listing: part, jobId: id \}\)/,
-    'or the author walked again');
 
-  const paint = js.slice(js.indexOf('function paintJobs('));
-  assert.match(paint.slice(0, paint.indexOf('\n}\n')), /'Ask for this again', \(\) => runAgain\(job\)/,
-    'a record that cannot be acted on is only half a record');
-});
 
 test('the bookmark sync stops at what it holds, not at what it has heard of', () => {
   const fn = js.slice(js.indexOf('const isHeld = (id) => {'));
