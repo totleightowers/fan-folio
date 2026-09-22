@@ -2483,13 +2483,13 @@ test('the app parses', () => {
  * A download is hours of paced requests, and all of it used to stop the moment
  * the app went away — which the settings screen admitted to rather than fixed.
  */
-test('a download keeps going while the app is not being looked at', () => {
+test('background downloads declare a foreground service and a partial wake lock', () => {
   const service = readFileSync(
     new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
   assert.match(service, /startForeground\(NOTE_ID, built,[\s\S]*FOREGROUND_SERVICE_TYPE_DATA_SYNC/,
     'a typed foreground service, which is what Android 14 asks for');
   assert.match(service, /PARTIAL_WAKE_LOCK/,
-    'the processor stays awake, which is what actually keeps the page timers firing');
+    'the native clock can run with the screen off');
   assert.ok(!/FULL_WAKE_LOCK|SCREEN_BRIGHT/.test(service),
     'and not the screen: an hour of downloading is not a reason to keep a display on');
   assert.match(service, /addAction\([\s\S]*"Pause"/, 'with a way to stop it from the notification');

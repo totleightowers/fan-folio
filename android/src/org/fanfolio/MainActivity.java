@@ -218,10 +218,15 @@ public class MainActivity extends Activity {
      */
     static void tick() {
         final MainActivity self = alive.get();
-        if (self == null || self.web == null) return;
+        if (self == null || self.web == null || self.isDestroyed()) return;
         self.web.post(new Runnable() {
             @Override public void run() {
-                self.toPage("window.__tick && window.__tick()");
+                self.web.evaluateJavascript("window.__tick && window.__tick()",
+                    new android.webkit.ValueCallback<String>() {
+                        @Override public void onReceiveValue(String value) {
+                            if ("true".equals(value)) DownloadService.workerResponded();
+                        }
+                    });
             }
         });
     }
@@ -2774,6 +2779,10 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (alive.get() == this) {
+            alive.clear();
+            DownloadService.workerGone();
+        }
         if (db != null) db.close();
         super.onDestroy();
     }

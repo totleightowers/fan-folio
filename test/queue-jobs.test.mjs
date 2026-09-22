@@ -620,3 +620,35 @@ test('EPUB results can be recorded without adding a network request', () => {
   assert.equal(q.save()[0].items[0].title, 'A local book');
   assert.equal(calls, 0);
 });
+
+test('resume during an in-flight request keeps one runner and one request per work', async () => {
+  const requests = [];
+  let release;
+  const q = createQueue({
+    runTask: id => { requests.push(id); return id === '1' ? new Promise(r => { release = r; }) : Promise.resolve(); },
+    wait: async () => {}, gap: () => 0,
+  });
+  const id = q.add(job('a', 'works', ['1', '2']));
+  q.pause(id); q.resume(id);
+  assert.deepEqual(requests, ['1']);
+  release(); await settle();
+  assert.deepEqual(requests, ['1', '2']);
+  assert.equal(q.list()[0].added, 2);
+  assert.equal(q.list()[0].state, 'done');
+});
+
+test('a pausing request holds the ordinary lane until it finishes', async () => {
+  const requests = [];
+  let release;
+  const q = createQueue({
+    runTask: id => { requests.push(id); return id === '1' ? new Promise(r => { release = r; }) : Promise.resolve(); },
+    wait: async () => {}, gap: () => 0,
+  });
+  const id = q.add(job('a', 'works', ['1', '2']));
+  q.pause(id);
+  q.add(job('b', 'works', ['3']));
+  assert.deepEqual(requests, ['1']);
+  release(); await settle();
+  assert.deepEqual(requests, ['1', '3']);
+  assert.equal(q.list()[0].state, 'paused');
+});

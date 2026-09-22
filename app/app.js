@@ -2501,7 +2501,7 @@ const jobs = createQueue({
     if (/answered 429|rate limit|too many requests/i.test(String(e?.message))) slowDown();
     throw e;
   })),
-  wait: (ms) => new Promise((r) => setTimeout(r, ms)),
+  wait: (ms) => untilDue(ms),
   gap: () => nextGap(),
   shouldRetry: isTransient,
   retryWait: (attempt) => retryDelay(attempt),
@@ -4046,7 +4046,7 @@ const syncSay = (text) => {
   el.textContent = text;
 };
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const wait = (ms) => untilDue(ms);
 
 /*
  * One page from the archive, asked for again if the archive was the problem.
@@ -4123,6 +4123,7 @@ window.__tick = () => {
     waitingOnTheArchive.delete(entry);
     entry.resolve();
   }
+  return true; // Android can distinguish a live runner from an unresponsive page.
 };
 
 function paced(run) {

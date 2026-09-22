@@ -46,6 +46,40 @@ public class DownloadService extends Service {
     private static final int DONE_ID = 2;
 
     private PowerManager.WakeLock awake;
+    private static java.lang.ref.WeakReference<DownloadService> alive =
+            new java.lang.ref.WeakReference<>(null);
+    private long lastHeartbeat;
+    private static final long HEARTBEAT_TIMEOUT_MS = 60_000;
+
+    @Override public void onCreate() {
+        super.onCreate();
+        alive = new java.lang.ref.WeakReference<>(this);
+        lastHeartbeat = android.os.SystemClock.elapsedRealtime();
+    }
+
+    static void workerResponded() {
+        DownloadService service = alive.get();
+        if (service != null) service.lastHeartbeat = android.os.SystemClock.elapsedRealtime();
+    }
+
+    static void workerGone() {
+        DownloadService service = alive.get();
+        if (service != null) service.interrupted();
+    }
+
+    private void interrupted() {
+        ensureChannel(CHANNEL_DONE, "Finished", "Download outcomes and interruptions.");
+        Notification.Builder note = Build.VERSION.SDK_INT >= 26
+                ? new Notification.Builder(this, CHANNEL_DONE) : new Notification.Builder(this);
+        note.setContentTitle("Downloads interrupted")
+            .setContentText("Open Fan Folio to continue. Your queue is saved.")
+            .setSmallIcon(android.R.drawable.stat_notify_error)
+            .setAutoCancel(true).setOngoing(false)
+            .setContentIntent(openActivity(4, "activity"));
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) manager.notify(DONE_ID, note.build());
+        standDown();
+    }
 
     /* What the work was last doing, so Resume can put the line back rather
        than replacing it with something vaguer than what it interrupted. */
@@ -60,6 +94,10 @@ public class DownloadService extends Service {
     private static final long TICK_MS = 5_000;
     private final Runnable keepingTime = new Runnable() {
         @Override public void run() {
+            if (android.os.SystemClock.elapsedRealtime() - lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+                interrupted();
+                return;
+            }
             MainActivity.tick();
             clock.postDelayed(this, TICK_MS);
         }
@@ -70,7 +108,13 @@ public class DownloadService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        String action = intent == null ? ACTION_START : String.valueOf(intent.getAction());
+        // A sticky restart restores the service, not the Activity-owned queue.
+        if (intent == null) {
+            interrupted();
+            return START_NOT_STICKY;
+        }
+        alive = new java.lang.ref.WeakReference<>(this);
+        String action = String.valueOf(intent.getAction());
 
         if (ACTION_PAUSE.equals(action)) {
             /*
@@ -91,6 +135,7 @@ public class DownloadService extends Service {
         }
 
         if (ACTION_RESUME.equals(action)) {
+            lastHeartbeat = android.os.SystemClock.elapsedRealtime();
             MainActivity.resumeFromNotification();
             startForegroundWith(lastText, false);
             hold();
@@ -120,6 +165,7 @@ public class DownloadService extends Service {
         String text = intent == null ? null : intent.getStringExtra(EXTRA_TEXT);
         if (text == null || text.isEmpty()) text = "Downloading from the archive";
         lastText = text;
+        lastHeartbeat = android.os.SystemClock.elapsedRealtime();
         boolean nowPaused = intent != null && "paused".equals(intent.getStringExtra(EXTRA_STATE));
         startForegroundWith(text, nowPaused);
         if (nowPaused) {
@@ -134,6 +180,7 @@ public class DownloadService extends Service {
     }
 
     private void standDown() {
+        if (alive.get() == this) alive.clear();
         clock.removeCallbacks(keepingTime);
         release();
         stopForeground(true);
@@ -248,8 +295,8 @@ public class DownloadService extends Service {
     }
 
     /**
-     * The processor stays awake, which is what actually keeps the page's timers
-     * firing. The screen does not: this is not a reason to keep somebody's
+     * The processor stays awake while the native clock releases due waits.
+     * WebView timers alone are insufficient in the background. The screen does not: this is not a reason to keep somebody's
      * display on for an hour.
      */
     private void hold() {
@@ -268,6 +315,7 @@ public class DownloadService extends Service {
 
     @Override
     public void onDestroy() {
+        if (alive.get() == this) alive.clear();
         clock.removeCallbacks(keepingTime);
         release();
         super.onDestroy();

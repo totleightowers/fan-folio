@@ -33,18 +33,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!--
-        Keeping a download going while the app is not being looked at.
-
-        An author's catalogue is hours of paced requests, and all of it used to
-        stop the moment the app went away. Android will keep a process alive
-        and out of Doze if it says what it is doing and shows that it is doing
-        it, which is what the notification is for.
-
-        WAKE_LOCK is the one that matters: the work runs on the page's own
-        timers, and those only fire while the processor is awake. The screen is
-        left alone.
-    -->
+    <!-- A foreground service and partial wake lock run the native download
+         clock with the screen off. They do not exempt the app from Doze or
+         guarantee that Android will never terminate its process. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

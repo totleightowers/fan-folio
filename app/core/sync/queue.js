@@ -157,7 +157,7 @@ export function createQueue({
   function resume(id) {
     const job = find(id);
     if (!job || (job.state !== 'paused' && job.state !== 'pausing')) return false;
-    job.state = 'queued';
+    job.state = job.driving ? 'running' : 'queued';
     announce('resumed', job);
     pump();
     return true;
@@ -196,7 +196,7 @@ export function createQueue({
     const job = find(id);
     if (!job || job.state === 'done' || job.state === 'cancelled') return false;
     job.parallel = true;
-    if (job.state === 'paused' || job.state === 'pausing') job.state = 'queued';
+    if (job.state === 'paused' || job.state === 'pausing') job.state = job.driving ? 'running' : 'queued';
     announce('rushed', job);
     pump();
     return true;
@@ -217,7 +217,7 @@ export function createQueue({
 
   function pump() {
     // the ordinary lane: one job, in order
-    const ordinary = jobs.some((j) => j.state === 'running' && !j.parallel);
+    const ordinary = jobs.some((j) => j.driving && !j.parallel);
     if (!ordinary) {
       const next = jobs.find((j) => j.state === 'queued' && !j.parallel);
       if (next) drive(next);
@@ -227,7 +227,17 @@ export function createQueue({
   }
 
   async function drive(job) {
-    if (job.state === 'running') return;
+    if (job.driving) return;
+    job.driving = true;
+    try {
+      await runJob(job);
+    } finally {
+      job.driving = false;
+      pump();
+    }
+  }
+
+  async function runJob(job) {
     job.state = 'running';
     announce('started', job);
 
@@ -374,7 +384,7 @@ export function createQueue({
    */
   function rerun(id) {
     const job = find(id);
-    if (!job) return false;
+    if (!job || job.driving || !['done', 'cancelled'].includes(job.state)) return false;
     const again = job.unfinished?.length ? job.unfinished : job.workIds;
     if (!again.length) return false;
     job.workIds = [...again];
