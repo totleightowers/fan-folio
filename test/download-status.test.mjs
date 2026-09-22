@@ -21,3 +21,14 @@ test('mixed jobs offer both pause and resume without describing completion as ac
   assert.equal(downloadStatus(jobs).paused, 1);
   assert.deepEqual(jobs, before, 'presentation never mutates scheduling state');
 });
+
+test('a failed permanent request still needs attention when no automatic retry is owed', () => {
+  const status = downloadStatus([{ state: 'done', total: 1, added: 0, failed: 1, unfinished: 0 }]);
+  assert.equal(status.title, 'Some works still need attention');
+  assert.match(status.detail, /1 did not arrive/);
+});
+
+test('failure to discover the work list is not reported as up to date', () => {
+  assert.equal(downloadStatus([{ state: 'done', added: 0, failed: 0, issue: '525' }]).title,
+    'Some works still need attention');
+});

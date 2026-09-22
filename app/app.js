@@ -2745,10 +2745,12 @@ function sayWhatIsHappening() {
        */
       const mine = list.filter((j) => runJobs.has(j.id));
       const added = mine.reduce((n, j) => n + (Number(j.added) || 0), 0);
-      const missing = mine.reduce((n, j) => n + (Number(j.unfinished) || 0), 0);
+      const missing = mine.reduce((n, j) => n + Math.max(Number(j.failed) || 0, Number(j.unfinished) || 0), 0);
       const outcome = mine.map((j) => j.say).filter(Boolean).at(-1);
       runJobs = new Set();
-      if (missing) {
+      if (mine.some(j => j.issue)) {
+        workFinished(`${fmt(added)} downloaded · a listing could not be completed`, true);
+      } else if (missing) {
         workFinished(`${fmt(added)} downloaded · ${fmt(missing)} never arrived`, true);
       } else if (added) {
         workFinished(`Finished — ${fmt(added)} downloaded`, false);
@@ -2864,6 +2866,7 @@ async function paintJobDetail() {
   const status = downloadStatus([job], { coolUntil });
   $('#job-summary').textContent = isEpubJob(job) && job.say ? job.say
     : `${status.title} · ${counts.downloaded} downloaded · ${counts.waiting} in progress · ${counts.failed} need attention`;
+  if (job.issue) $('#job-summary').textContent += ` · ${job.issue}`;
   $('#job-history-note').hidden = job.historyComplete;
   $('#job-history-note').textContent = 'This older job did not retain its complete work list. Only recorded works can be shown; the summary on Downloads still has its original counts.';
   controls.textContent = '';
@@ -3052,12 +3055,13 @@ function paintJobs() {
       : job.state === 'paused' ? ' · paused'
       : job.state === 'cancelled' ? ' · stopped'
       : job.state === 'listing' ? ' · still reading the list'
-      : job.state === 'done' && job.unfinished ? ` · ${job.unfinished} never arrived`
+      : job.state === 'done' && job.issue ? ' · list incomplete'
+      : job.state === 'done' && (job.failed || job.unfinished) ? ` · ${Math.max(job.failed, job.unfinished)} need attention`
       : job.state === 'done' ? ` · finished${job.at ? ` ${whenShort(job.at)}` : ''}`
       : job.unfinished ? ` · ${job.unfinished} still to get, will try again`
       : ' · waiting';
 
-    how.textContent = count + trouble + standing;
+    how.textContent = count + trouble + standing + (job.issue ? ` · ${job.issue}` : '');
 
     /* How far along, as a bar rather than a badge. A pill saying "downloading"
        spends a third of the row restating a word already in the line above it
@@ -3617,6 +3621,7 @@ async function catchUpOn(name, parts = ['works', 'bookmarks']) {
     counts = parseUserCounts(await archivePage(authorProfileUrl(name)));
   } catch (e) {
     jobError = `${name}: ${e.message}`;
+    for (const id of Object.values(opened)) jobs.note(id, { issue: e.message });
     closeAll();
     return;
   }
@@ -3768,6 +3773,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
     /* Kept for settings. "The archive answered 500" over a shelf is a sentence
        the reader cannot act on while doing something else. */
     jobError = `${name} · ${listing}: ${e.message}`;
+    if (jobId !== null) jobs.note(jobId, { issue: e.message });
     throw e;
   }
 }
@@ -4262,7 +4268,7 @@ async function runReconcile(id) {
     jobs.note(id, { say });
     syncSay(`${say}. Works already downloaded were kept.`);
   } catch (e) {
-    jobs.note(id, { say: e.message });
+    jobs.note(id, { say: e.message, issue: e.message });
     syncSay(e.message);
   } finally {
     jobs.seal(id);
@@ -4392,7 +4398,7 @@ async function runNewBookmarks(id) {
     syncSay(`${fmt(workIds.length)} work${workIds.length === 1 ? '' : 's'} to fetch, `
       + 'queued below. They arrive one at a time, and carry on if you go elsewhere.');
   } catch (e) {
-    jobs.note(id, { say: e.message });
+    jobs.note(id, { say: e.message, issue: e.message });
     syncSay(e.message);
   } finally {
     /* The list is complete however it ended, so the job stops saying it is

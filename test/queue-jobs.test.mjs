@@ -652,3 +652,70 @@ test('a pausing request holds the ordinary lane until it finishes', async () => 
   assert.deepEqual(requests, ['1', '3']);
   assert.equal(q.list()[0].state, 'paused');
 });
+
+test('restoring 20 completed of 23 keeps the original denominator and progress', async () => {
+  const { q, tick } = harness();
+  q.add(job('a', 'works', Array.from({ length: 23 }, (_, i) => String(i + 1))));
+  await settle(); for (let n = 1; n < 20; n++) await tick();
+  const saved = q.save()[0];
+  assert.equal(saved.workIds.length, 3);
+  const next = createQueue({ runTask: () => new Promise(() => {}) });
+  next.restore(saved);
+  assert.deepEqual([next.list()[0].added, next.list()[0].done, next.list()[0].total], [20, 20, 23]);
+  assert.equal(next.save()[0].total, 23);
+});
+
+test('verification retries count distinct works, not attempts', async () => {
+  let round = 0;
+  const q = createQueue({ runTask: async () => {}, wait: async () => {}, gap: () => 0,
+    verify: async ids => ++round === 1 ? ids.slice(0, 1) : [] });
+  q.add(job('a', 'works', ['1', '2'])); await settle();
+  assert.deepEqual([q.list()[0].added, q.list()[0].total, q.list()[0].failed], [2, 2, 0]);
+});
+
+test('verification does not override permanent failure or exhausted request retry limits', async () => {
+  const calls = []; const checked = [];
+  const q = createQueue({ runTask: async id => { calls.push(id); if (id !== '1') throw new Error(id === '2' ? '404' : '525'); },
+    wait: async () => {}, gap: () => 0, shouldRetry: message => message === '525', maxRetries: 1,
+    verify: async ids => { checked.push(...ids); return []; } });
+  q.add(job('a', 'works', ['1', '2', '3'])); await settle();
+  assert.deepEqual(calls, ['1', '2', '3', '3']);
+  assert.deepEqual(checked, ['1']);
+  assert.deepEqual([q.list()[0].added, q.list()[0].failed, q.list()[0].total], [1, 2, 3]);
+});
+
+test('sealing an already drained listing verifies its saved works', async () => {
+  const checked = [];
+  const q = createQueue({ runTask: async () => {}, wait: async () => {}, gap: () => 0,
+    verify: async ids => { checked.push(...ids); return []; } });
+  const id = q.add({ ...job('a', 'works', ['1']), open: true });
+  await settle(); assert.equal(q.list()[0].state, 'listing');
+  q.seal(id); await settle();
+  assert.deepEqual(checked, ['1']); assert.equal(q.list()[0].state, 'done');
+});
+
+test('stopping while verification is pending does not restart missing works', async () => {
+  let finish; const calls = [];
+  const q = createQueue({ runTask: async id => calls.push(id), wait: async () => {}, gap: () => 0,
+    verify: () => new Promise(r => { finish = r; }) });
+  const id = q.add(job('a', 'works', ['1'])); await settle();
+  q.stop(id); finish(['1']); await settle();
+  assert.deepEqual(calls, ['1']); assert.equal(q.list()[0].state, 'cancelled');
+  assert.deepEqual(q.save()[0].workIds, ['1']);
+});
+
+test('completed history never evicts an active saved queue', () => {
+  const q = createQueue({ runTask: () => new Promise(() => {}) });
+  q.add(job('still running', 'works', ['1']));
+  for (let i = 0; i < 45; i++) q.restore({ author: `old ${i}`, part: 'works', state: 'done', added: 1, total: 1 });
+  assert.equal(q.save().length, 41);
+  assert.equal(q.save()[0].author, 'still running');
+  assert.deepEqual(q.save()[0].workIds, ['1']);
+});
+
+test('a failed listing keeps its error after closing and restarting', () => {
+  const q = createQueue(); const id = q.add({ author: 'a', part: 'works', open: true });
+  q.note(id, { issue: 'Page 2 could not be read' }); q.seal(id);
+  const restored = createQueue(); restored.restore(q.save()[0]);
+  assert.equal(restored.list()[0].issue, 'Page 2 could not be read');
+});

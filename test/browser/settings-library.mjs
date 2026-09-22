@@ -505,6 +505,10 @@ try {
     { author: 'Waiting collection', part: 'works', state: 'paused', total: 1, workIds: ['2'], historyComplete: true,
       items: [{workId:'2',state:'waiting'}] },
     { author: 'Older collection', part: 'works', state: 'done', total: 30, added: 30, workIds: [] },
+    { author: 'Restarted collection', part: 'works', state: 'paused', total: 23, added: 20,
+      workIds: ['101','102','103'], historyComplete: true,
+      items: [...Array.from({length:20}, (_,i) => ({workId:String(2000+i),state:'downloaded'})),
+        ...['101','102','103'].map(workId => ({workId,state:'waiting'}))] },
     { author: 'Large collection', part: 'works', state: 'done', total: 55, added: 55, workIds: [], historyComplete: true,
       items: Array.from({length:55}, (_,i) => ({workId:String(1000+i),state:'downloaded'})) },
   ])));
@@ -512,6 +516,7 @@ try {
   await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('#download-state').filter({ hasText: 'Downloads paused' }).waitFor();
   assert.match(await page.locator('.job-error-detail').innerText(), /525/);
+  assert.match(await page.locator('.job-open').filter({ hasText: 'Restarted collection' }).innerText(), /20 of 23/);
   assert.equal(await page.locator('#downloads-pause').isVisible(), false);
   assert.equal(await page.locator('#downloads-resume').isVisible(), true);
   assert.equal(await page.locator('.download-help').evaluate(el => el.open), false);

@@ -2319,13 +2319,11 @@ test('what has already run can still be seen', () => {
 
 test('a queue still reading its index survives a restart', () => {
   const src = readFileSync(new URL('../app/core/sync/queue.js', import.meta.url), 'utf8');
-  const save = src.slice(src.indexOf('save: () => jobs'));
+  const save = src.slice(src.indexOf('save: () =>'));
   const body = save.slice(0, save.indexOf('\n  };'));
   assert.match(body, /open: Boolean\(j\.open\), page: j\.page \?\? 0/,
     'how far the walk got is part of what is saved');
   assert.match(body, /state: j\.state,/, 'and what state it was in');
-  assert.match(body, /total: j\.workIds\.length \|\| j\.wasTotal \|\| 0/,
-    'and how much it was about, as a number rather than a list length');
   assert.ok(!/\.filter\(\(j\) => j\.workIds\.length \|\| j\.open\)/.test(body),
     'a finished job is no longer dropped for having nothing left to do');
 

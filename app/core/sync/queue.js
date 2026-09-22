@@ -56,31 +56,20 @@ export function createQueue({
     job.items.set(id, { ...(job.items.get(id) ?? { workId: id }), ...patch });
   };
 
+  const counts = (j) => {
+    const items = [...j.items.values()];
+    const added = items.filter(i => ['downloaded', 'version'].includes(i.state)).length + (j.legacyAdded || 0);
+    const failed = items.filter(i => i.state === 'failed').length + (j.legacyFailed || 0);
+    const total = j.historyComplete ? items.length : Math.max(j.wasTotal || 0, items.length + (j.legacyAdded || 0) + (j.legacyFailed || 0));
+    return { total, added, failed, done: added + failed, waiting: Math.max(0, total - added - failed) };
+  };
   const view = (j) => ({
     id: j.id, author: j.author, part: j.part, state: j.state,
-    /* How many it was ever about. A running job knows from its own list; a
-       finished one has emptied that list, so it has to have been kept — which
-       it was not, and every restored record read 0 of 0 and then saved those
-       zeros back over what it had actually done. */
-    total: j.workIds.length || j.wasTotal || 0,
-    done: j.done, added: j.added, failed: j.failed,
-    /* Open means the list is still being read, so `total` is what is known so
-       far rather than what there will be — the difference between a bar that
-       can be trusted and one that slides backwards. */
-    open: Boolean(j.open),
-    /* Where a walk has got to. A job that reads an index rather than a list of
-       works has no works to count, and "0 of 0" is what that looked like from
-       the outside — so the pages it is actually walking are part of what a job
-       can say about itself. */
-    page: j.page ?? 0, pages: j.pages ?? null,
-    /* A line the job has written about itself, for work whose outcome is not a
-       number of downloads: how many bookmarks were read, what changed. */
-    say: j.say ?? null,
-    /* Work that ran out of retries rather than being refused, or that the
-       database says never arrived: still owed either way. */
+    ...counts(j),
+    open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
+    say: j.say ?? null, issue: j.issue ?? null,
     unfinished: j.unfinished?.length ?? 0,
-    rounds: j.rounds ?? 0,
-    at: j.at ?? null,
+    rounds: j.rounds ?? 0, at: j.at ?? null,
     parallel: j.parallel, retrying: j.retrying ?? null, lastError: j.lastError ?? null,
   });
   const snapshot = () => jobs.map(view);
@@ -254,7 +243,6 @@ export function createQueue({
       try {
         await runTask(workId);
         itemChange(job, workId, { state: 'downloaded', error: null });
-        job.added += 1;
         job.attempt = 0;
       } catch (e) {
         const attempt = job.attempt ?? 0;
@@ -277,9 +265,8 @@ export function createQueue({
          * the second means a restart picks it up instead of the job reporting
          * nothing downloaded and vanishing.
          */
-        job.failed += 1;
         job.lastError = String(e?.message ?? '');
-        itemChange(job, workId, { state: 'failed', error: job.lastError });
+        itemChange(job, workId, { state: 'failed', error: job.lastError, retryable: shouldRetry(e?.message) });
         if (shouldRetry(e?.message)) (job.unfinished ??= []).push(job.workIds[job.done]);
         job.attempt = 0;
         job.retrying = null;
@@ -290,9 +277,9 @@ export function createQueue({
     }
 
     if (job.state === 'pausing') {
-      job.state = 'paused'; announce('finished', job); pump(); return;
+      job.state = 'paused'; announce('settled', job); pump(); return;
     }
-    if (job.state !== 'running') { announce('finished', job); pump(); return; }
+    if (job.state !== 'running') { announce('settled', job); pump(); return; }
 
     /* Out of work but not out of list: back to waiting rather than reporting
        itself finished, and the next page to land wakes it. */
@@ -305,28 +292,27 @@ export function createQueue({
      * ask for ever.
      */
     job.rounds = (job.rounds ?? 0) + 1;
-    let owed = [];
-    try { owed = await verify(job.workIds); } catch { owed = []; }
-
+    // Failed requests already exhausted their retry policy. Verification only
+    // checks successful saves; it must not retry deleted/restricted works.
+    const saved = job.workIds.filter(id => job.items.get(String(id))?.state === 'downloaded');
+    let owed = [], checkError = 'No saved chapters were found after downloading.';
+    try { owed = saved.length ? await verify(saved) : []; }
+    catch { owed = saved; checkError = 'Could not verify the saved chapters.'; }
+    owed = [...new Set(owed.map(String))].filter(id => saved.includes(id));
     for (const workId of owed) itemChange(job, workId, {
-      state: 'failed', error: job.items.get(String(workId))?.error || 'No saved chapters were found after downloading.',
+      state: 'failed', error: checkError, retryable: true,
     });
-    if (owed.length && job.rounds < maxRounds) {
+    const retry = owed.length && job.rounds < maxRounds;
+    if (retry) {
       for (const workId of owed) itemChange(job, workId, { state: 'waiting' });
       job.workIds = owed;
       job.done = 0;
-      job.unfinished = [];
-      job.state = 'queued';
-      announce('again', job);
-      pump();
-      return;
     }
-
-    /* Out of rounds with work still missing: owed, not delivered, so it is
-       kept and saved rather than quietly counted as done. */
-    if (owed.length) job.unfinished = owed;
-    job.state = 'done';
-    announce('finished', job);
+    job.unfinished = [...job.items.values()].filter(i => i.state === 'failed' && i.retryable).map(i => i.workId);
+    // A control pressed during verification still owns the decision to run.
+    if (job.state === 'pausing') job.state = 'paused';
+    if (job.state === 'running') job.state = retry ? 'queued' : 'done';
+    announce(job.state === 'done' ? 'finished' : retry ? 'again' : 'settled', job);
     pump();
   }
 
@@ -350,7 +336,7 @@ export function createQueue({
       page: saved.page ?? 0, pages: saved.pages ?? null,
       rounds: saved.rounds ?? 0, parallel: false, attempt: 0, retrying: null,
       lastError: saved.lastError ?? null,
-      say: saved.say ?? null,
+      say: saved.say ?? null, issue: saved.issue ?? null,
       /* What it was ever about, kept as a number rather than worked out from a
          list it may have finished with. */
       wasTotal: Number(saved.total) || owed.length,
@@ -369,6 +355,9 @@ export function createQueue({
       const state = ['downloaded', 'failed', 'version'].includes(item.state) ? item.state : 'waiting';
       itemChange(job, item.workId, { ...item, state, workId: String(item.workId) });
     }
+    const recorded = counts({ ...job, historyComplete: true });
+    job.legacyAdded = job.historyComplete ? 0 : Math.max(0, (saved.added || 0) - recorded.added);
+    job.legacyFailed = job.historyComplete ? 0 : Math.max(0, (saved.failed || 0) - recorded.failed);
     if (job.state === 'queued' && !job.workIds.length) job.state = job.open ? 'listing' : 'done';
     jobs.push(job);
     announce('restored', job);
@@ -391,7 +380,7 @@ export function createQueue({
     for (const workId of again) itemChange(job, workId, { state: 'waiting', error: null });
     job.done = 0; job.added = 0; job.failed = 0;
     job.unfinished = []; job.rounds = 0;
-    job.lastError = null; job.attempt = 0;
+    job.lastError = null; job.issue = null; job.attempt = 0;
     job.state = 'queued';
     announce('again', job);
     pump();
@@ -434,7 +423,7 @@ export function createQueue({
    * failed would sit saying it was still reading for ever.
    */
   /** The walk reporting where it has got to, so a restart can pick it up. */
-  function note(id, { page, pages, say } = {}) {
+  function note(id, { page, pages, say, issue } = {}) {
     const job = find(id);
     if (!job) return false;
     if (page != null) job.page = page;
@@ -443,6 +432,7 @@ export function createQueue({
        read and agreed with has an outcome worth keeping, and nowhere to put it
        among added, failed and total. */
     if (say != null) job.say = say;
+    if (issue !== undefined) job.issue = issue;
     announce('noted', job);
     return true;
   }
@@ -452,7 +442,7 @@ export function createQueue({
     if (!job) return false;
     job.open = false;
     if (job.state === 'listing') {
-      job.state = job.done >= job.workIds.length ? 'done' : 'queued';
+      job.state = job.workIds.length ? 'queued' : 'done';
       announce(job.state === 'done' ? 'finished' : 'sealed', job);
       pump();
     }
@@ -473,6 +463,12 @@ export function createQueue({
     return job ? { ...view(job), historyComplete: job.historyComplete,
       items: [...job.items.values()].map(item => ({ ...item })) } : null;
   }
+
+  const savedJobs = () => {
+    const settled = j => ['done', 'cancelled'].includes(j.state);
+    const recent = new Set(jobs.filter(settled).slice(-40));
+    return jobs.filter(j => !settled(j) || recent.has(j));
+  };
 
   return {
     add, append, note, seal, rerun, restore, record, details,
@@ -504,8 +500,7 @@ export function createQueue({
      *
      * Bounded to the last forty: a record of recent work, not a log.
      */
-    save: () => jobs
-      .slice(-40)
+    save: () => savedJobs()
       .map((j) => {
         const settled = j.state === 'done';
         return {
@@ -515,14 +510,14 @@ export function createQueue({
           historyComplete: j.historyComplete,
           workIds: settled
             ? [...(j.unfinished ?? [])]
-            : [...j.workIds.slice(j.done), ...(j.unfinished ?? [])],
+            : [...new Set([...j.workIds.slice(j.done), ...(j.unfinished ?? [])])],
           unfinished: [...(j.unfinished ?? [])],
-          total: j.workIds.length || j.wasTotal || 0,
-          added: j.added, failed: j.failed,
+          total: counts(j).total,
+          added: counts(j).added, failed: counts(j).failed,
           open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
           rounds: j.rounds ?? 0,
           lastError: j.lastError ?? null,
-          say: j.say ?? null,
+          say: j.say ?? null, issue: j.issue ?? null,
           at: j.at ?? null,
         };
       })
