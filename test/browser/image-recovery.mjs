@@ -58,7 +58,7 @@ const server = createServer(async (req,res) => {
     if (!path.startsWith(root)) {res.writeHead(403);return res.end();}
     res.setHeader('Content-Type', ({'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml'})[extname(path)] || 'application/octet-stream');
     res.end(await readFile(path));
-  } catch (e) {res.writeHead(500);res.end(e.message);}
+  } catch {res.setHeader('Content-Type','text/plain; charset=utf-8');res.writeHead(500);res.end('Test fixture request failed');}
 });
 await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
