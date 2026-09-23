@@ -436,7 +436,7 @@ public class MainActivity extends Activity {
         {"source", "TEXT"}, {"source_file", "TEXT"}, {"fetched_at", "TEXT"},
         {"in_bookmarks", "INTEGER DEFAULT 0"}, {"rec", "INTEGER DEFAULT 0"},
         {"in_history", "INTEGER DEFAULT 0"}, {"bookmarked_at", "TEXT"},
-        {"last_visited", "TEXT"}, {"visits", "INTEGER"},
+        {"last_visited", "TEXT"}, {"visits", "INTEGER"}, {"visits_synced_at", "TEXT"},
         {"kudos_given", "INTEGER DEFAULT 0"},
         {"kudos", "INTEGER"}, {"bookmark_count", "INTEGER"}, {"hits", "INTEGER"},
         {"has_text", "INTEGER DEFAULT 0"},
@@ -474,7 +474,7 @@ public class MainActivity extends Activity {
      */
     private static final String[] WORK_OWNS = {
         "chapters", "work_fts", "tags", "images",
-        "chapter_versions", "skin_versions", "reading", "works",
+        "chapter_versions", "skin_versions", "reading_visits", "reading", "works",
     };
 
     private static final String[][] READING_COLUMNS = {
@@ -503,6 +503,8 @@ public class MainActivity extends Activity {
     private void migrate(SQLiteDatabase db) {
         migrateTable(db, "works", WORKS_COLUMNS);
         migrateTable(db, "reading", READING_COLUMNS);
+        db.execSQL("CREATE TABLE IF NOT EXISTS reading_visits (id TEXT PRIMARY KEY, work_id TEXT NOT NULL, started_at TEXT NOT NULL)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS visits_by_work ON reading_visits(work_id)");
         try {
             db.execSQL("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
         } catch (Exception ignored) { }
@@ -2171,6 +2173,41 @@ public class MainActivity extends Activity {
             } catch (Exception e) {
                 return errorJson(String.valueOf(e.getMessage()));
             }
+        }
+
+        @JavascriptInterface
+        public String recordVisit(String workId, String visitId) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            if (visitId == null || visitId.length() > 100 || visitId.isEmpty()) return errorJson("invalid visit");
+            try {
+                db.execSQL("INSERT OR IGNORE INTO reading_visits (id, work_id, started_at) SELECT ?, work_id, datetime('now') FROM works WHERE work_id = ?",
+                    new Object[]{ visitId, workId });
+                return "{\"ok\":true}";
+            } catch (Exception e) { return errorJson(String.valueOf(e.getMessage())); }
+        }
+
+        @JavascriptInterface
+        public String saveHistory(String json, String syncedAt) {
+            mustBeOurPage();
+            if (db == null) return errorJson("no library open");
+            try {
+                org.json.JSONArray rows = new org.json.JSONArray(json);
+                int updated = 0;
+                db.beginTransaction();
+                try {
+                    for (int i = 0; i < rows.length(); i++) {
+                        org.json.JSONObject row = rows.getJSONObject(i);
+                        if (row.isNull("visits") || row.optInt("visits", -1) < 0) continue;
+                        android.content.ContentValues v = new android.content.ContentValues();
+                        v.put("visits", row.getInt("visits")); v.put("in_history", 1);
+                        v.put("last_visited", row.optString("lastVisited", null)); v.put("visits_synced_at", syncedAt);
+                        updated += db.update("works", v, "work_id = ?", new String[]{ row.getString("workId") });
+                    }
+                    db.setTransactionSuccessful();
+                } finally { db.endTransaction(); }
+                return "{\"updated\":" + updated + "}";
+            } catch (Exception e) { return errorJson(String.valueOf(e.getMessage())); }
         }
 
         @JavascriptInterface

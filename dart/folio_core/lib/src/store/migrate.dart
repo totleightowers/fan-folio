@@ -61,6 +61,13 @@ const List<String> _migrated = ['works', 'reading'];
 /// Add what is missing. Returns the names of the columns added, which is
 /// empty on a current library and on every run after the first.
 Future<List<String>> ensureColumns(SqlRunner db) async {
+  for (final sql in schemaStatements.where(
+    (s) =>
+        s.contains('CREATE TABLE IF NOT EXISTS reading_visits') ||
+        s.contains('CREATE INDEX IF NOT EXISTS visits_by_work'),
+  )) {
+    await db.execute(sql);
+  }
   final added = <String>[];
   for (final table in _migrated) {
     final info = await db.query('PRAGMA table_info($table)');
@@ -72,7 +79,8 @@ Future<List<String>> ensureColumns(SqlRunner db) async {
         // quoted, because one of these columns is called offset and that is a
         // keyword everywhere else in a statement
         await db.execute(
-            'ALTER TABLE $table ADD COLUMN "${column.name}" ${column.ddl}');
+          'ALTER TABLE $table ADD COLUMN "${column.name}" ${column.ddl}',
+        );
         added.add(column.name);
       } catch (_) {
         // a column that cannot be added must not stop the ones that can

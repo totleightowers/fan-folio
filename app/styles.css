@@ -644,6 +644,7 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
 }
 .card-metadata { display: grid; gap: .2rem; margin-top: .3rem; min-width: 0; font-size: .75rem; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
 .card-metadata:empty { display: none; }
+.visit-count { font-size: .72rem; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
 .card-rating { font-weight: 550; color: var(--ink-mid); }
 .card .card-foot { font-size: .68rem; color: var(--muted); margin-top: .3rem; }
 /* The same fact as the corner of a library row, in the room a 12rem card has:

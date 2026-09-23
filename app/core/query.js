@@ -12,7 +12,10 @@
  * validated.
  */
 
+import { FF_VISITS, TOTAL_VISITS } from './store/visits.js';
+
 export const SORTS = {
+  visits: `${TOTAL_VISITS} DESC, w.title COLLATE NOCASE ASC`,
   title: 'w.title COLLATE NOCASE ASC',
   author: 'w.authors COLLATE NOCASE ASC',
   /* When the work changed, on the archive. Nothing about this library. */
@@ -284,6 +287,7 @@ export function buildWorksQuery(filters = {}) {
                  w.downloaded_at, w.language,
                  w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
                  w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
+                 w.visits, ${FF_VISITS} AS ff_visits,
                  w.kudos, w.bookmark_count, w.hits, w.has_text,
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                  r.opened_at, r.offset, r.completed_before,

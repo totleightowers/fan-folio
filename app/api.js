@@ -7,6 +7,7 @@
  * be developed in a browser and shipped without changing a line of it.
  */
 
+import { FF_VISITS } from './core/store/visits.js';
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, COMPLETED, shown } from './core/query.js';
@@ -78,7 +79,7 @@ const LOCAL = {
     const shelf = (where, order, limit = 12) => ({
       works: sql(`
       SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count, w.complete, w.rating,
-             w.rec,
+             w.rec, w.visits, ${FF_VISITS} AS ff_visits,
              r.chapter AS at_chapter, r.chapters_read, r.marked_later,
              r.opened_at, r.offset, r.completed_before, w.has_text,
              (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
@@ -202,7 +203,7 @@ const LOCAL = {
   },
 
   work: (workId) => {
-    const work = one('SELECT * FROM works WHERE work_id = ?', [workId]);
+    const work = one(`SELECT w.*, ${FF_VISITS} AS ff_visits FROM works w WHERE work_id = ?`, [workId]);
     if (!work) throw new Error('no such work');
     const tags = {};
     for (const t of sql('SELECT kind, name FROM tags WHERE work_id = ? ORDER BY kind, name', [workId])) {
@@ -735,6 +736,24 @@ export function markBookmarked(workId) {
   } catch {
     return false;
   }
+}
+
+export async function recordVisit(workId, visitId) {
+  if (!visitId) return;
+  if (isNative) {
+    const out = JSON.parse(native.recordVisit(String(workId), String(visitId)));
+    if (out.error) throw new Error(out.error);
+    return;
+  }
+  const response = await fetch(`/api/visit?${new URLSearchParams({ workId, visitId })}`, { method: 'POST' });
+  if (!response.ok) throw new Error('Reading visit could not be saved');
+}
+
+export function saveHistory(works, syncedAt) {
+  if (!isNative) throw new Error('History syncing needs the Android app');
+  const out = JSON.parse(native.saveHistory(JSON.stringify(works), syncedAt));
+  if (out.error) throw new Error(out.error);
+  return out.updated;
 }
 
 export async function markOpened(workId) {

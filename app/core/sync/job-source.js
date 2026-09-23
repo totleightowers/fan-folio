@@ -1,6 +1,7 @@
 /** Stable operation identity, including jobs saved before sources were explicit. */
 export function jobSource(job) {
   const source = job.source;
+  if (source?.kind === 'history') return { kind: 'history', user: source.user || null };
   if (source?.kind === 'author' && source.author) return { kind: 'author', author: String(source.author), part: source.part === 'bookmarks' ? 'bookmarks' : 'works' };
   if (source?.kind === 'series' && /^\d+$/.test(String(source.seriesId))) return { kind: 'series', seriesId: String(source.seriesId) };
   if (['bookmarks-new', 'bookmarks-all', 'saved', 'epub', 'works'].includes(source?.kind)) return { kind: source.kind };

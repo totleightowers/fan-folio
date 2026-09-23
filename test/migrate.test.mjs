@@ -29,7 +29,7 @@ function oldLibrary() {
 test('the library query fails on a database from before recs', () => {
   const db = oldLibrary();
   const q = buildWorksQuery({});
-  assert.throws(() => db.prepare(q.sql).all(...q.args), /no such column: w\.rec/,
+  assert.throws(() => db.prepare(q.sql).all(...q.args), /no such (?:column: w\.rec|table: reading_visits)/,
     'this is the error that took out the whole library');
 });
 

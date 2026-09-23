@@ -26,7 +26,7 @@ const addChapter = (d, id, number, html) =>
     .run(id, number, `Chapter ${number}`, html, html, 10);
 
 /** device + incoming, merged, and the device handed back. */
-function merge(build) {
+function merge(build, passes = 1) {
   const devicePath = join(dir, `device-${++n}.db`);
   const incomingPath = join(dir, `incoming-${n}.db`);
   const device = db(devicePath);
@@ -36,7 +36,9 @@ function merge(build) {
 
   device.exec(`ATTACH '${incomingPath}' AS incoming`);
   device.exec('BEGIN');
-  for (const sql of MERGE_STEPS) device.exec(sql);
+  for (let pass = 0; pass < passes; pass++) {
+    for (const sql of MERGE_STEPS) device.exec(sql);
+  }
   for (const sql of REINDEX_STEPS) device.exec(sql);
   device.exec('COMMIT');
   device.exec('DETACH incoming');
@@ -202,4 +204,26 @@ test('imported chapters are available regardless of a missing or stale incoming 
   assert.deepEqual(d.prepare('SELECT work_id,has_text FROM works ORDER BY work_id').all().map(r => [r.work_id,r.has_text]),
     [['1',1],['2',1],['3',0]]);
   d.close();
+});
+
+
+test('AO3 snapshots and FF event IDs survive merging without double counting', () => {
+  const d=merge((device,incoming)=>{
+    addWork(device,'visits','Visits'); addWork(incoming,'visits','Visits');
+    device.exec("UPDATE works SET visits=7,visits_synced_at='2026-09-22' WHERE work_id='visits'");
+    incoming.exec("UPDATE works SET visits=9,visits_synced_at='2026-09-24' WHERE work_id='visits'");
+    device.exec("INSERT INTO reading_visits VALUES ('shared','visits','2026-09-21'),('local','visits','2026-09-22')");
+    incoming.exec("INSERT INTO reading_visits VALUES ('shared','visits','2026-09-21'),('other','visits','2026-09-23')");
+  }, 2);
+  assert.equal(d.prepare("SELECT visits FROM works WHERE work_id='visits'").get().visits,9);
+  assert.equal(d.prepare("SELECT count(*) n FROM reading_visits WHERE work_id='visits'").get().n,3);
+});
+test('an older AO3 backup cannot replace newer history, and new imported works keep counts',()=>{
+  const d=merge((device,incoming)=>{
+    addWork(device,'old','Old');addWork(incoming,'old','Old');addWork(incoming,'new','New');
+    device.exec("UPDATE works SET visits=9,visits_synced_at='2026-09-24' WHERE work_id='old'");
+    incoming.exec("UPDATE works SET visits=7,visits_synced_at='2026-09-22'");
+  });
+  assert.equal(d.prepare("SELECT visits FROM works WHERE work_id='old'").get().visits,9);
+  assert.equal(d.prepare("SELECT visits FROM works WHERE work_id='new'").get().visits,7);
 });

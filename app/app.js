@@ -7,8 +7,10 @@
  * difference between an app you keep and one you abandon.
  */
 
+import { visitLabel } from './core/store/visits.js';
 import { createImageCollector } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
+import { walkHistory } from './core/sync/history.js';
 import { jobSource } from './core/sync/job-source.js';
 import { History, openingOffset } from './core/nav.js';
 import { parseEpub } from './core/epub.js';
@@ -18,14 +20,14 @@ import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/
 import { createQueue } from './core/sync/queue.js';
 import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
 import { languageName } from './core/ao3/markup.js';
-import { bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
+import { readings as historyUrl, bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
   authorBookmarks as authorBookmarksUrl, authorProfile as authorProfileUrl,
   isOrphan, linkTarget, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, retryImages, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
-import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
+import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, recordVisit, saveHistory, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
@@ -453,6 +455,7 @@ function here() {
   if (route === 'reader' && current.workId) {
     params.workId = String(current.workId);
     params.chapter = Number(current.chapter) || 1;
+    params.visitId = current.visitId;
     if (current.versionId) params.versionId = current.versionId;
     if (readingIsTransient) params.transient = true;
   }
@@ -500,7 +503,7 @@ function renderPlace(place, motion = 'back') {
     } else if (place.route === 'reader' && p.workId) {
       show('reader', motion);
       ready = p.versionId ? openVersion(p.workId, p.versionId)
-        : openChapter(p.workId, Number(p.chapter) || 1, { transient: Boolean(p.transient) });
+        : openChapter(p.workId, Number(p.chapter) || 1, { transient: Boolean(p.transient), visitId: p.visitId });
     } else if (place.route === 'results' && p.query) {
       $('#q').value = p.query;
       searchInScope = p.scope || 'text';
@@ -827,6 +830,8 @@ function workRow(w) {
   heading.textContent = w.title ?? '(untitled)';
   heading.prepend(...marks(w));
   node.querySelector('.statline').textContent = stats;
+  const visits = visitLabel(w);
+  if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; node.querySelector('.statline').after(line); }
   /* Known, but not here. Saying so on the row matters more than it looks:
      otherwise a work opens into an empty reader and the reader assumes the app
      has lost it. */
@@ -954,6 +959,7 @@ $('#availability').onchange = () => {
 $('#sort').value = view.sort;
 $('#sort').onchange = () => {
   view.sort = $('#sort').value;
+  paintCollections();
   save(VIEW_KEY, view);
   loadMore(true);
 };
@@ -2624,6 +2630,7 @@ function paintActivityBadge() {
 }
 
 function paintCollections() {
+  $('#visits-help').hidden = view.sort !== 'visits';
   for (const button of $$('#library-collections [data-collection]')) {
     const selected = button.dataset.collection === (view.collection || view.state);
     button.classList.toggle('on', selected);
@@ -2650,6 +2657,7 @@ function openBookmarkSync() {
   $('#bookmark-sync').scrollIntoView({ block: 'start' });
 }
 $('#library-sync').onclick = openBookmarkSync;
+$('#library-history-sync').onclick = () => { goToTab('activity'); $('#history-sync').scrollIntoView({ block: 'start' }); };
 
 /**
  * Land in the library, narrowed to one thing about yourself.
@@ -2701,6 +2709,7 @@ async function runAgain(job) {
   }
   if (!isNative || !signedIn()) { showAccountForDownloads(); return; }
   try {
+    if (source.kind === 'history') { await syncHistory(); return; }
     if (source.kind === 'bookmarks-new') { await syncBookmarks(); return; }
     if (source.kind === 'bookmarks-all') { await reconcileAllBookmarks(); return; }
     if (source.kind === 'series') {
@@ -3295,7 +3304,9 @@ function resumeJobs() {
      * walk entirely: what it had already queued was kept, and the pages it
      * had not reached yet were simply forgotten.
      */
-    if (job.open && isNative && signedIn() && isBookmarkJob(job)) {
+    if (job.open && isNative && signedIn() && jobSource(job).kind === 'history') {
+      runHistorySync(id).catch(() => {});
+    } else if (job.open && isNative && signedIn() && isBookmarkJob(job)) {
       /* A bookmark walk goes back to the first page rather than the one it
          had reached. Catching up with what is new is a page or two, and
          reading the whole list is the only way the other one can say what has
@@ -4076,6 +4087,63 @@ function localIdFor(book, name) {
   return hash.toString(36);
 }
 
+const runningHistory = new Set();
+async function syncHistory() {
+  if (!isNative) { toast('History syncing needs the Android app'); return; }
+  if (!signedIn()) { showAccountForDownloads(); return; }
+  if (jobs.list().some(j => jobSource(j).kind === 'history' && j.open && !['done', 'cancelled'].includes(j.state))) {
+    toast('History sync is already queued'); goToTab('activity'); return;
+  }
+  try {
+    const user = await whoAmI();
+    const previous = readMeta('history-user');
+    if (previous && previous !== user) throw new Error(`This library has AO3 history for ${previous}. Sign in to that account to update it.`);
+    saveMeta('history-user', user);
+    const id = jobs.add({ author: 'Your AO3 history', part: 'visit counts', source: { kind: 'history', user }, workIds: [], open: true });
+    goToTab('activity');
+    await runHistorySync(id);
+  } catch (e) { toast(e.message); }
+}
+
+async function runHistorySync(id) {
+  if (runningHistory.has(id)) return;
+  runningHistory.add(id);
+  const status = $('#history-sync-status');
+  try {
+    const job = jobs.list().find(j => j.id === id);
+    const user = await whoAmI();
+    if (jobSource(job).user !== user) throw new Error('Sign in to the AO3 account that started this history sync.');
+    const out = await walkHistory({
+      fromPage: Math.max(1, Number(job.page || 0) + 1),
+      waitUntilRunnable: () => jobs.waitUntilRunnable(id),
+      fetchPage: async page => {
+        const html = await archivePage(historyUrl(user, page));
+        if (signedInUser(html) !== user) throw new Error('AO3 history needs your signed-in session. Sign in again and retry.');
+        const listing = parseListing(html);
+        if (listing.works.length && listing.works.every(w => w.visits == null)) throw new Error('AO3 did not provide visit counts on this history page. Counts already saved were kept.');
+        return listing;
+      },
+      savePage: works => {
+        const gone = deletedAmong(works.map(w => w.workId));
+        const allowed = works.filter(w => !gone.has(String(w.workId)) && !isHidden(w.authors, blockedNames()));
+        saveStubs(asStubs(allowed));
+        return saveHistory(allowed, new Date().toISOString());
+      },
+      onProgress: ({ page, pages, checked }) => {
+        const say = `History page ${page} of ${pages} · ${fmt(checked)} visit counts updated this run`;
+        jobs.note(id, { page, pages, say }); status.textContent = say;
+      },
+    });
+    const say = out.complete ? `AO3 history synced · ${fmt(out.checked)} visit counts updated this run` : 'History sync stopped. Counts already saved were kept.';
+    jobs.note(id, { say }); status.textContent = say;
+    if (out.complete) saveMeta('history-synced-at', new Date().toISOString());
+    await refresh({ works: true, force: true });
+  } catch (e) {
+    jobs.note(id, { issue: e.message, say: e.message }); status.textContent = e.message;
+  } finally { runningHistory.delete(id); jobs.seal(id); keepQueue(); }
+}
+$('#sync-history').onclick = syncHistory;
+
 const BOOKMARKS_NEW = { author: 'Your bookmarks', part: 'new ones' };
 const BOOKMARKS_ALL = { author: 'Your bookmarks', part: 'the whole list' };
 
@@ -4850,6 +4918,8 @@ function cardMetadata(w) {
     line.textContent = w[field];
     box.append(line);
   }
+  const visits = visitLabel(w);
+  if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; box.append(line); }
   return box;
 }
 
@@ -5808,7 +5878,7 @@ let readingIsTransient = false;
 let transientFrom = 0;
 let transientForever = false;
 
-async function openChapter(workId, number, { transient = false } = {}) {
+async function openChapter(workId, number, { transient = false, visitId = null } = {}) {
   const token = ++pending;
   $('#chapter-ending').hidden = true;
 
@@ -5816,6 +5886,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
      page is not: the swipe is already carrying the old page off, and a
      skeleton flashing behind it would be noise rather than feedback. */
   const arriving = showing() !== 'reader';
+  const sessionId = visitId || (!arriving && String(current.workId) === String(workId) && !viewingArchive && current.visitId) || crypto.randomUUID();
   if (String(currentWork?.work_id) !== String(workId)) currentWork = null;
   if (arriving) {
     go('reader', { workId: String(workId), chapter: Number(number) || 1 });
@@ -5854,7 +5925,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
      faithfully restored, landing the reader somewhere arbitrary in a chapter
      they have never seen. The chapter being left has already been recorded. */
   clearTimeout(posTimer);
-  current = { workId, chapter: number, count: chapterTotal(w) };
+  current = { workId, chapter: number, count: chapterTotal(w), visitId: sessionId };
   /* Going back into an earlier chapter is reading it again, and the end of
      the last one should count again when it is reached again. */
   if (number < chapterTotal(w)) finishedThisVisit = null;
@@ -5940,6 +6011,7 @@ async function openChapter(workId, number, { transient = false } = {}) {
    * it still belongs at the front of the shelf. Only the position is skipped.
    */
   markOpened(workId);
+  if (!transient) recordVisit(workId, sessionId).catch(e => toast(e.message));
   if (!transient) saveProgress(workId, number, offset);
   if (!transient) {
     nowReading = { workId: String(workId), title: w.title || '(untitled)', chapter: Number(number) || 1 };
@@ -6179,6 +6251,7 @@ addEventListener('scroll', () => {
     if (readingIsTransient && !transientForever
         && Math.abs(window.scrollY - transientFrom) > window.innerHeight) {
       readingIsTransient = false;
+      recordVisit(current.workId, current.visitId).catch(e => toast(e.message));
     }
     if (readingIsTransient) return;
     nowReading = { workId: String(current.workId), title: currentWork?.title || '(untitled)', chapter: current.chapter };

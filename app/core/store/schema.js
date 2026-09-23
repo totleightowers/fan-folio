@@ -6,6 +6,7 @@
  * One schema, so what the ingest writes is exactly what the reader queries.
  */
 
+import { VISIT_SCHEMA } from './visits.js';
 import { REPAIR_AVAILABILITY } from './availability.js';
 
 export const SCHEMA = `
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS works (
   bookmarked_at  TEXT,
   last_visited   TEXT,
   visits         INTEGER,
+  visits_synced_at TEXT,
   -- kudos can be left once and only once, and the archive gives no way to ask
   -- afterwards whether they were; remembering locally is the only way the
   -- button can ever say so
@@ -209,6 +211,7 @@ CREATE TABLE IF NOT EXISTS blocked (
   at   TEXT
 );
 
+${VISIT_SCHEMA}
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 `;
 
@@ -244,6 +247,7 @@ function declaredColumns(table) {
 }
 
 export function ensureColumns(db) {
+  db.exec(VISIT_SCHEMA);
   const added = [];
   for (const table of ['works', 'reading']) {
     const have = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((r) => r.name));

@@ -32,6 +32,7 @@ export const WORK_OWNS = [
   'images',
   'chapter_versions',
   'skin_versions',
+  'reading_visits',
   'reading',
   'works',
 ];

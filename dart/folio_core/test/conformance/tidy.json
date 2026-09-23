@@ -8,6 +8,7 @@
     "images",
     "chapter_versions",
     "skin_versions",
+    "reading_visits",
     "reading",
     "works"
   ],
@@ -18,6 +19,7 @@
     "DELETE FROM images WHERE work_id = ?",
     "DELETE FROM chapter_versions WHERE work_id = ?",
     "DELETE FROM skin_versions WHERE work_id = ?",
+    "DELETE FROM reading_visits WHERE work_id = ?",
     "DELETE FROM reading WHERE work_id = ?",
     "DELETE FROM works WHERE work_id = ?"
   ],

@@ -32,8 +32,8 @@ const WORK_COLUMNS = [
  *
  * Kudos left from the app are recorded nowhere else — the archive offers no way
  * to ask afterwards whether they were given — so an import that overwrote the
- * flag would make the button offer to leave them a second time. The visit
- * counters are the device's own record of reading.
+ * flag would make the button offer to leave them a second time. AO3 visit
+ * snapshots and local reading events are merged separately below.
  */
 
 export const MERGE_STEPS = [
@@ -79,6 +79,17 @@ export const MERGE_STEPS = [
      SELECT work_id, ${WORK_COLUMNS.join(', ')} FROM incoming.works WHERE true
    ON CONFLICT(work_id) DO UPDATE SET
      ${WORK_COLUMNS.map((c) => `${c} = excluded.${c}`).join(',\n     ')}`,
+
+  // A newer AO3 snapshot replaces an older one; importing it twice never adds visits.
+  `UPDATE works SET (visits, last_visited, visits_synced_at) = (
+       SELECT i.visits, i.last_visited, i.visits_synced_at FROM incoming.works i WHERE i.work_id = works.work_id
+     ) WHERE EXISTS (SELECT 1 FROM incoming.works i WHERE i.work_id = works.work_id AND i.visits IS NOT NULL
+       AND (works.visits IS NULL OR COALESCE(i.visits_synced_at, '') > COALESCE(works.visits_synced_at, '')
+         OR (i.visits_synced_at IS NULL AND works.visits_synced_at IS NULL AND i.visits > works.visits)))`,
+  // Backups overlap. Event IDs retain independent visits without counting restores again.
+  `INSERT OR IGNORE INTO reading_visits (id, work_id, started_at)
+     SELECT v.id, v.work_id, v.started_at FROM incoming.reading_visits v
+     WHERE EXISTS (SELECT 1 FROM works w WHERE w.work_id = v.work_id)`,
 
   // tags belong to the work, so they arrive with it
   `DELETE FROM tags WHERE work_id IN (SELECT work_id FROM incoming.works)`,

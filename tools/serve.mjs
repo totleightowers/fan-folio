@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { RECORD_VISIT, FF_VISITS } from '../app/core/store/visits.js';
 import { renderChapter, sanitiseHtml } from '../app/core/render.js';
 import { INDEX_FIRST, deleteStatements, TOMBSTONE } from '../app/core/store/delete.js';
 import { isHidden, worksByPattern } from '../app/core/store/blocked.js';
@@ -40,7 +41,7 @@ const MIME = {
 
 const Q = {
   count: db.prepare('SELECT count(*) n FROM works'),
-  work: db.prepare('SELECT * FROM works WHERE work_id = ?'),
+  work: db.prepare(`SELECT w.*, ${FF_VISITS} AS ff_visits FROM works w WHERE work_id = ?`),
   chapters: db.prepare('SELECT number, title, words FROM chapters WHERE work_id = ? ORDER BY number'),
   chapter: db.prepare('SELECT number, title, html FROM chapters WHERE work_id = ? AND number = ?'),
   tags: db.prepare('SELECT kind, name FROM tags WHERE work_id = ? ORDER BY kind, name'),
@@ -139,7 +140,7 @@ function home() {
   const shelf = (where, order, limit = 12) => ({
     works: db.prepare(`
     SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count, w.complete, w.rating,
-           w.rec,
+           w.rec, w.visits, ${FF_VISITS} AS ff_visits,
            r.chapter AS at_chapter, r.chapters_read, r.marked_later,
              r.opened_at, r.offset, r.completed_before, w.has_text,
            (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
@@ -421,6 +422,13 @@ createServer(async (req, res) => {
 
     /* Opened, without saying where in it — a peek from a search result must
        not move the bookmark, but it is still reading. */
+    if (p === '/api/visit' && req.method === 'POST') {
+      const workId = url.searchParams.get('workId'), visitId = url.searchParams.get('visitId');
+      if (!workId || !visitId || visitId.length > 100) return json(res, { error: 'invalid visit' }, 400);
+      db.prepare(RECORD_VISIT).run(visitId, workId);
+      return json(res, { ok: true });
+    }
+
     if (p === '/api/opened' && req.method === 'POST') {
       const workId = url.searchParams.get('workId');
       if (!workId) return json(res, { error: 'no work' }, 400);

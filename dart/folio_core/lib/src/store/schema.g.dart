@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS works (
   bookmarked_at  TEXT,
   last_visited   TEXT,
   visits         INTEGER,
+  visits_synced_at TEXT,
   kudos_given    INTEGER DEFAULT 0,
   has_text       INTEGER DEFAULT 0,
   kudos          INTEGER,
@@ -162,6 +163,16 @@ CREATE TABLE IF NOT EXISTS blocked (
   name TEXT PRIMARY KEY,
   at   TEXT
 );
+""",
+  r"""
+CREATE TABLE IF NOT EXISTS reading_visits (
+  id TEXT PRIMARY KEY,
+  work_id TEXT NOT NULL,
+  started_at TEXT NOT NULL
+);
+""",
+  r"""
+CREATE INDEX IF NOT EXISTS visits_by_work ON reading_visits(work_id);
 """,
   r"""
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);

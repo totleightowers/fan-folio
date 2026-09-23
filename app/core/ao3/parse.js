@@ -158,8 +158,8 @@ function readingInfo(li) {
   const out = {};
   const last = text.match(/Last visited:\s*([0-9]{1,2} \w{3} \d{4})/i);
   if (last) out.lastVisited = last[1];
-  const times = text.match(/Visited\s+(\d+)\s+times?/i);
-  out.visits = times ? Number(times[1]) : 1;
+  const times = text.match(/Visited\s+([\d,]+)\s+times?/i);
+  out.visits = times ? Number(times[1].replaceAll(',', '')) : /Visited once/i.test(text) ? 1 : null;
   // AO3 says so explicitly when the copy you read is no longer the current one
   out.staleSinceVisit = /Latest version/i.test(text) ? false : /updated since/i.test(text);
   return out;

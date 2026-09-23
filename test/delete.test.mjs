@@ -63,6 +63,7 @@ function deleteWork(db, workId) {
 
 test('deleting a work leaves nothing of it behind', () => {
   const db = libraryWithOneWorkInEveryTable();
+  db.exec("INSERT INTO reading_visits (id,work_id,started_at) VALUES ('visit-1','1','2026-09-24')");
   for (const table of WORK_OWNS) {
     const n = db.prepare(`SELECT count(*) AS n FROM ${table} WHERE work_id = ?`).get('1').n;
     assert.ok(n > 0, `the fixture should have something in ${table}`);

@@ -230,6 +230,12 @@
       <button id="fetch-stubs" class="primary">Download them all</button>
     </div>
 
+    <div id="history-sync" class="setting-group">
+      <h3 class="group">Your reading history</h3>
+      <p class="setting-note">Most read adds your AO3 history visits to visits in Fan Folio. Sync reads your history pages without downloading the works. Large histories take time; you can pause the job below.</p>
+      <button id="sync-history" class="ghost">Sync AO3 history</button>
+      <p id="history-sync-status" class="setting-note" aria-live="polite"></p>
+    </div>
     <div id="bookmark-sync" class="setting-group">
       <h3 class="group">Your bookmarks on the archive</h3>
       <p class="setting-note">Checks for bookmarks you have made since the last time, and
@@ -378,6 +384,7 @@
       <button class="chip" data-collection="finished">Finished</button>
       <button class="chip" data-collection="bookmarked">AO3 bookmarks</button>
     </div>
+    <p id="visits-help" class="setting-note" hidden>Your AO3 history visits + Fan Folio reading visits. Fan Folio counts start with this update. <button id="library-history-sync" class="linkish">Sync AO3 history</button></p>
     <button id="library-sync" class="ghost" hidden>Check your AO3 bookmarks</button>
     </div>
     <div id="toolbar">
@@ -400,7 +407,8 @@
             <option value="chapters">Most chapters</option>
             <option value="kudos">Most kudos</option>
             <option value="bookmarks">Most bookmarked</option>
-            <option value="hits">Most read</option>
+            <option value="visits">Most read · your visits</option>
+            <option value="hits">Most AO3 hits · everyone</option>
             <option value="random">Shuffle</option>
           </select>
         </label>

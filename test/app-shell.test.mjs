@@ -2595,7 +2595,7 @@ test('going back rebuilds the place rather than unhiding a screen', () => {
   const fn = js.slice(js.indexOf('function renderPlace('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /openWork\(p\.workId, \{ collection: p\.collection \?\? null \}\)/, 'the work that entry names');
-  assert.match(body, /openChapter\(p\.workId, Number\(p\.chapter\) \|\| 1, \{ transient: Boolean\(p\.transient\) \}\)/, 'that chapter');
+  assert.match(body, /openChapter\(p\.workId, Number\(p\.chapter\) \|\| 1, \{ transient: Boolean\(p\.transient\), visitId: p\.visitId \}\)/, 'that chapter');
   assert.match(body, /runSearch\(p\.query\)/, 'that search');
   assert.match(body, /Object\.assign\(view, p\.filters\)/, 'those filters');
 
