@@ -74,6 +74,9 @@ try {
  await page.locator('#reader-more').click();await page.locator('#reader-menu [data-go="settings"]').click();
  await page.locator('#back').click();await page.locator('#workskin .userstuff').waitFor();
  assert.equal(count(),1,'returning from Settings reuses the visit');
+ await page.locator('#reader-more').click();await page.locator('#reader-menu [data-go="settings"]').click();
+ await page.locator('#now-reading').click();await page.locator('#workskin .userstuff').waitFor();
+ assert.equal(count(),1,'the Return to the story pill also preserves a Settings detour');
  await page.locator('#reader-more').click();await page.locator('#reader-menu [data-go="library"]').click();
  await story.locator('[data-act="open"]').click();await page.locator('#workskin .userstuff').waitFor();
  assert.equal(count(),2,'a fresh reading entry counts once');

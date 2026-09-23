@@ -277,7 +277,9 @@ function paintNowReading(name = showing()) {
   $('#now-reading-place').textContent = `Return to the story · Chapter ${nowReading.chapter}`;
 }
 $('#now-reading').onclick = () => {
-  if (nowReading) openChapter(nowReading.workId, nowReading.chapter);
+  if (nowReading) openChapter(nowReading.workId, nowReading.chapter, {
+    visitId: showing().startsWith('settings') && String(current.workId) === nowReading.workId ? current.visitId : null,
+  });
 };
 $('#desk-downloads').onclick = () => goToTab('activity');
 
