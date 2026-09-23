@@ -117,10 +117,12 @@ try {
   await page.waitForFunction(() => JSON.parse(localStorage.getItem('archive.view')).otp === '1');
   await page.locator('#apply-filters').filter({ hasText: 'Apply · 1' }).click();
   await page.locator('#filters').waitFor({ state: 'hidden' });
+  await page.locator('#works .work-card').filter({ hasText: 'The long way home' }).waitFor();
   assert.equal(await page.locator('#works .work-card').count(), 1);
   await page.reload();
   await page.locator('[data-tab="library"]').click();
   await page.locator('#active').getByRole('button', { name: /OTP/ }).waitFor();
+  await page.locator('#works .work-card').filter({ hasText: 'The long way home' }).waitFor();
   assert.equal(await page.locator('#works .work-card').count(), 1);
   await page.route('**/api/facets?**', async route => {
     const response = await route.fetch();
