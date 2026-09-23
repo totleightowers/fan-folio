@@ -38,8 +38,8 @@ const List<String> workOwns = [
 
 /// The statements, for a backend that can run them straight.
 List<String> deleteStatements() => [
-  for (final table in workOwns) 'DELETE FROM $table WHERE work_id = ?',
-];
+      for (final table in workOwns) 'DELETE FROM $table WHERE work_id = ?',
+    ];
 
 /// And the tombstone, which is the half that makes it stay deleted.
 ///
@@ -47,8 +47,7 @@ List<String> deleteStatements() => [
 /// the library and absent from here is a work the next listing quietly
 /// restores, which is worse than not having deleted it at all — the reader
 /// believes it is gone.
-const String tombstone =
-    'INSERT OR REPLACE INTO deleted (work_id, title, at) '
+const String tombstone = 'INSERT OR REPLACE INTO deleted (work_id, title, at) '
     "VALUES (?, ?, datetime('now'))";
 
 /// Whatever the works table has in its authors column, as a list of names.
@@ -89,7 +88,7 @@ bool isHidden(Object? authors, Iterable<String> blocked) {
 /// inside the JSON array, so blocking "Anna" does not touch "Annabel".
 /// Blocking recomputes only these, not the library.
 String worksByPattern(String name) {
-  final quoted = jsonEncode(name)
-      .replaceAllMapped(RegExp(r'[\\%_]'), (m) => '\\${m[0]}');
+  final quoted =
+      jsonEncode(name).replaceAllMapped(RegExp(r'[\\%_]'), (m) => '\\${m[0]}');
   return '%$quoted%';
 }
