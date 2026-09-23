@@ -137,7 +137,7 @@ const list = (value) => {
  *   wordsMin / wordsMax, chaptersMin / chaptersMax
  *   updatedAfter / updatedBefore   YYYY-MM-DD, inclusive
  *   crossover  '1' more than one fandom, '0' exactly one
- *   otp        every relationship on the work is one of the included tags
+ *   otp        exactly one saved relationship tag, independent of include[]
  *   sort       one of SORTS
  */
 /** Escape what LIKE would otherwise treat as a wildcard. */
@@ -246,6 +246,14 @@ export function buildWorksQuery(filters = {}) {
     args.push(String(filters.updatedBefore).slice(0, 10));
   }
 
+  // AO3 otp:true means one relationship, even without an included pairing.
+  // Saved tags have no canonical/synonym identity, so count distinct names;
+  // never guess equivalence from slashes, ampersands, or character names.
+  if (filters.otp === '1' || filters.otp === 1 || filters.otp === true) {
+    where.push("(SELECT count(DISTINCT t.name) FROM tags t "
+             + "WHERE t.work_id = w.work_id AND t.kind = 'relationship') = 1");
+  }
+
   /*
    * Crossovers: a work in more than one fandom. The archive treats this as a
    * yes-or-no of its own rather than something you assemble out of fandom
@@ -253,26 +261,6 @@ export function buildWorksQuery(filters = {}) {
    * fandoms gives works in both, and what you wanted was works in either that
    * are also in some second thing.
    */
-  /*
-   * Only this pairing.
-   *
-   * Choosing a relationship gives works that have it among others; what is
-   * usually wanted is the ones that are about it. So: no relationship tag on
-   * the work outside the ones asked for. Names that are not relationships are
-   * harmlessly in the list — a work's relationship tags simply have to fall
-   * within it.
-   *
-   * Meaningless with nothing chosen, where it would ask for works with no
-   * relationships at all, so it needs something to be exact about.
-   */
-  const wanted = list(filters.include);
-  if (filters.otp && wanted.length) {
-    where.push(`NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id
-                  AND t.kind = 'relationship'
-                  AND t.name NOT IN (${wanted.map(() => '?').join(',')}))`);
-    args.push(...wanted);
-  }
-
   if (filters.crossover === '1') {
     where.push("(SELECT count(DISTINCT t.name) FROM tags t "
              + "WHERE t.work_id = w.work_id AND t.kind = 'fandom') > 1");

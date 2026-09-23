@@ -1344,9 +1344,10 @@ async function buildFilterPanel() {
 
   for (const [kind, title] of FILTER_SECTIONS) {
     const items = facets.tags?.[kind] ?? [];
-    if (!items.length) continue;
+    if (!items.length && kind !== 'relationship') continue;
     const chosen = [...view.include, ...view.exclude].filter(
       (t) => items.some((i) => i.name === t));
+    if (kind === 'relationship' && view.otp) chosen.unshift('OTP');
 
     section(kind, title, chosen, (box) => {
       const needle = (sectionSearch[kind] ?? '').toLowerCase();
@@ -1378,24 +1379,23 @@ async function buildFilterPanel() {
         box.append(find);
       }
 
-      /*
-       * Only this pairing.
-       *
-       * Choosing a relationship gives every work that has it among others,
-       * which for a popular pair is most of the fandom. What is usually meant
-       * is the works that are about it — so this asks for the ones carrying no
-       * other relationship. It appears once there is a pairing to be exact
-       * about, because with nothing chosen it would mean works with no
-       * relationships at all.
-       */
-      if (kind === 'relationship' && items.some((t) => view.include.includes(t.name))) {
+      // OTP is usable on its own, including when no relationship facets
+      // remain or the selected relationship falls outside the top forty.
+      if (kind === 'relationship') {
         const only = document.createElement('div');
         only.className = 'opts sec-toggle';
-        only.append(chip('Only this pairing', null, view.otp ? 'on' : '', () => {
+        const toggle = chip('OTP · One relationship only', null, view.otp ? 'on' : '', () => {
           view.otp = view.otp ? '' : '1';
           save(VIEW_KEY, view);
-        }));
-        box.append(only);
+        });
+        toggle.setAttribute('aria-describedby', 'otp-help');
+        only.append(toggle);
+        const help = document.createElement('p');
+        help.id = 'otp-help';
+        help.className = 'filter-hint';
+        help.textContent = 'Only works with one relationship tag. Use on its own or choose a relationship below. '
+          + 'AO3 merges synonymous tags; saved tags may not include that information.';
+        box.append(only, help);
       }
 
       const opts = document.createElement('div');
@@ -1508,7 +1508,7 @@ function paintActiveFilters() {
       currentAuthor = null;
     });
   }
-  if (view.otp) pill('only this pairing', 'in', () => { view.otp = ''; });
+  if (view.otp) pill('OTP · One relationship only', 'in', () => { view.otp = ''; });
   if (view.crossover) {
     pill(view.crossover === '1' ? 'crossovers' : 'no crossovers', 'in', () => { view.crossover = ''; });
   }

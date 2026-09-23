@@ -105,6 +105,37 @@ try {
     await checkCardMetadata(homeStory);
     await screenshot('home-' + width);
   }
+  // OTP is discoverable without selecting a pairing, survives reopening,
+  // and remains removable even when relationship facets are unavailable.
+  await page.locator('[data-tab="library"]').click();
+  await page.locator('#library').waitFor({ state: 'visible' });
+  await page.locator('#open-filters').click();
+  const relationships = page.locator('.filter-section').filter({ has: page.locator('.sec-title', { hasText: /^Relationships$/ }) });
+  await relationships.locator('.sec-head').click();
+  const otp = relationships.getByRole('button', { name: 'OTP · One relationship only', exact: true });
+  await otp.click();
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('archive.view')).otp === '1');
+  await page.locator('#apply-filters').filter({ hasText: 'Apply · 1' }).click();
+  await page.locator('#filters').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#works .work-card').count(), 1);
+  await page.reload();
+  await page.locator('[data-tab="library"]').click();
+  await page.locator('#active').getByRole('button', { name: /OTP/ }).waitFor();
+  assert.equal(await page.locator('#works .work-card').count(), 1);
+  await page.route('**/api/facets?**', async route => {
+    const response = await route.fetch();
+    const data = await response.json();
+    data.tags.relationship = [];
+    await route.fulfill({ json: data });
+  });
+  await page.locator('#open-filters').click();
+  await relationships.locator('.sec-head').click();
+  assert.equal(await otp.getAttribute('aria-pressed'), 'true');
+  await otp.click();
+  await page.locator('#apply-filters').filter({ hasText: 'Apply · 3' }).click();
+  await page.locator('#filters').waitFor({ state: 'hidden' });
+  await page.unroute('**/api/facets?**');
+  await page.locator('[data-tab="home"]').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await openSettings();
   await page.locator('#reading-summary').filter({ hasText: 'Georgia' }).waitFor();

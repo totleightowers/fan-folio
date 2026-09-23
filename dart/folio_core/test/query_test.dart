@@ -65,6 +65,46 @@ List<String> run(Database db, [Map<String, Object?> filters = const {}]) {
 void main() {
   setUpAll(useSystemSqlite);
 
+  test('OTP counts relationship tags without requiring an included pairing',
+      () {
+    final db = library();
+    db.execute("INSERT INTO tags VALUES ('1','relationship','A/B'), "
+        "('2','relationship','A/B'), ('2','relationship','C & D')");
+    for (final otp in ['1', 1, true]) {
+      expect(run(db, {'otp': otp}), ['1']);
+      expect(
+          run(db, {
+            'otp': otp,
+            'include': ['BTS']
+          }),
+          ['1']);
+      expect(
+          run(db, {
+            'otp': otp,
+            'include': ['A/B']
+          }),
+          ['1']);
+      expect(
+          run(db, {
+            'otp': otp,
+            'include': ['A/B', 'C & D']
+          }),
+          isEmpty);
+      expect(
+          run(db, {
+            'otp': otp,
+            'exclude': ['A/B']
+          }),
+          isEmpty);
+    }
+    for (final otp in ['', '0', 0, false]) {
+      expect(run(db, {'otp': otp}), hasLength(3));
+    }
+    db.execute("INSERT INTO tags VALUES ('3','relationship','A & B & C')");
+    expect(run(db, {'otp': '1'}), ['1', '3']);
+    db.dispose();
+  });
+
   test('the schema this builds against is the one the app ships', () {
     final db = library();
     final tables = db

@@ -420,22 +420,29 @@ test('the archive filters this library did not have', () => {
   assert.match(chapters.countSql, /w\.chapter_count <= \?/);
 });
 
-/*
- * Choosing a relationship gives every work carrying it among others, which for
- * a popular pair is most of a fandom. What is usually meant is the works that
- * are about it.
- */
-test('only this pairing means no other relationship on the work', () => {
-  const q = buildWorksQuery({ include: ['A/B'], otp: '1' });
-  assert.match(q.countSql, /NOT EXISTS[\s\S]*kind = 'relationship'[\s\S]*NOT IN/);
-  assert.ok(q.args.includes('A/B'), 'the chosen tags are what it is exact about');
-});
-
-test('only this pairing with nothing chosen does nothing', () => {
-  const bare = buildWorksQuery({ otp: '1' });
-  assert.ok(!/kind = 'relationship'/.test(bare.countSql),
-    'otherwise it asks for works with no relationships at all, which is not what anyone meant');
-  assert.deepEqual(bare.countSql, buildWorksQuery({}).countSql);
+test('OTP selects exactly one relationship independently of other filters', () => {
+  const db = library();
+  const tag = db.prepare('INSERT INTO tags (work_id,kind,name) VALUES (?,?,?)');
+  tag.run('1', 'relationship', 'A/B');
+  tag.run('2', 'relationship', 'A/B');
+  tag.run('2', 'relationship', 'C & D');
+  const ids = filters => {
+    const q = buildWorksQuery(filters);
+    const rows = db.prepare(q.sql).all(...q.args).map(row => row.work_id);
+    assert.equal(db.prepare(q.countSql).get(...q.args).n, rows.length);
+    return rows;
+  };
+  for (const otp of ['1', 1, true]) {
+    assert.deepEqual(ids({ otp }), ['1'], 'zero and multiple relationships excluded');
+    assert.deepEqual(ids({ otp, include: ['BTS'] }), ['1']);
+    assert.deepEqual(ids({ otp, include: ['A/B'] }), ['1']);
+    assert.deepEqual(ids({ otp, include: ['A/B', 'C & D'] }), []);
+    assert.deepEqual(ids({ otp, exclude: ['A/B'] }), []);
+  }
+  for (const otp of ['', '0', 0, false]) assert.equal(ids({ otp }).length, 3);
+  tag.run('3', 'relationship', 'A & B & C');
+  assert.deepEqual(ids({ otp: '1' }), ['1', '3'], 'platonic and multi-person tags each count once');
+  db.close();
 });
 
 test('authors can be counted, so they can be chosen as well as removed', () => {

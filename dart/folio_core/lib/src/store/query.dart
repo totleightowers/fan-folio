@@ -168,7 +168,7 @@ class WorksQuery {
 ///   wordsMin / wordsMax, chaptersMin / chaptersMax
 ///   updatedAfter / updatedBefore   YYYY-MM-DD, inclusive
 ///   crossover  '1' more than one fandom, '0' exactly one
-///   otp        every relationship on the work is one of the included tags
+///   otp        exactly one saved relationship tag, independent of include[]
 ///   sort       one of [sorts]
 WorksQuery buildWorksQuery([Map<String, Object?> filters = const {}]) {
   final where = <String>['1=1'];
@@ -273,19 +273,12 @@ WorksQuery buildWorksQuery([Map<String, Object?> filters = const {}]) {
     }
   }
 
-  /// Only this pairing.
-  ///
-  /// Choosing a relationship gives works that have it among others; what is
-  /// usually wanted is the ones that are about it. So: no relationship tag on
-  /// the work outside the ones asked for. Meaningless with nothing chosen,
-  /// where it would ask for works with no relationships at all.
-  final wanted = _list(filters['include']);
+  // AO3 otp:true works without selecting a pairing. Saved tags do not carry
+  // canonical/synonym identities, so count distinct relationship names.
   final otp = filters['otp'];
-  if (otp != null && '$otp'.isNotEmpty && wanted.isNotEmpty) {
-    where.add('NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id '
-        "AND t.kind = 'relationship' "
-        'AND t.name NOT IN (${List.filled(wanted.length, '?').join(',')}))');
-    args.addAll(wanted);
+  if (otp == '1' || otp == 1 || otp == true) {
+    where.add("(SELECT count(DISTINCT t.name) FROM tags t "
+        "WHERE t.work_id = w.work_id AND t.kind = 'relationship') = 1");
   }
 
   /// Crossovers: a work in more than one fandom. The archive treats this as a
