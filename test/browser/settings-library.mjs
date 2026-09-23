@@ -155,7 +155,7 @@ try {
   assert.equal(await page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' }).locator('[data-act="ao3"]').count(), 0);
   const imported = page.locator('#works .work-card').filter({ hasText: 'Letters from the coast' });
   assert.equal(await imported.locator('.not-held').count(), 0, 'an imported saved copy is available');
-  await imported.locator('.work-title-link').click();
+  await imported.locator('.sum').tap();
   await page.locator('#detail .actions .primary').filter({ hasText: 'Read' }).click();
   await page.locator('#reader').waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.querySelector('#workskin').textContent.includes('Afternoon light'));
@@ -296,6 +296,46 @@ try {
   await page.locator('#author').waitFor({ state: 'visible' });
   assert.equal(await page.locator('#author-block').isVisible(), false, 'author removal stays behind explicit management');
   await page.locator('#author-known').filter({ hasText: '3 works known · 2 downloaded' }).waitFor();
+  // Card descriptions are part of the work target, including on the author page.
+  const authorCard = page.locator('#author-works .work-card').filter({ hasText: 'Letters from the coast' });
+  for (const width of [390, 900, 1225]) {
+    await page.setViewportSize({ width, height: 940 });
+    for (const target of ['.sum', '.statline', 'padding']) {
+      await authorCard.scrollIntoViewIfNeeded();
+      if (target === 'padding') await authorCard.tap({ position: { x: 8, y: 8 } });
+      else await authorCard.locator(target).tap();
+      await page.locator('#detail').waitFor({ state: 'visible', timeout: 5000 });
+      assert.match(await page.locator('#detail .work-title').innerText(), /Letters from the coast/);
+      assert.equal(await page.locator('#reader').isVisible(), false, 'card body previews the work');
+      await page.locator('#back').click();
+      await page.locator('#author').waitFor({ state: 'visible' });
+    }
+    await authorCard.locator('.work-title-link').focus();
+    await page.keyboard.press('Enter');
+    await page.locator('#detail').waitFor({ state: 'visible' });
+    await page.locator('#back').click();
+    await page.locator('#author').waitFor({ state: 'visible' });
+    await authorCard.locator('[data-act="open"]').tap();
+    await page.locator('#reader').waitFor({ state: 'visible' });
+    await page.locator('#back').click();
+    await page.locator('#author').waitFor({ state: 'visible' });
+  }
+  // Expanding/collapsing stays local; selecting description text does not navigate.
+  await authorCard.evaluate(card => { card.dataset.density = 'compact'; });
+  const disclosure = authorCard.locator('.work-description > summary');
+  const initiallyOpen = await authorCard.locator('details').evaluate(el => el.open);
+  await disclosure.tap();
+  assert.equal(await authorCard.locator('details').evaluate(el => el.open), !initiallyOpen);
+  assert.equal(await page.locator('#author').isVisible(), true);
+  if (initiallyOpen) await disclosure.tap();
+  await authorCard.locator('.sum').evaluate(el => {
+    const range = document.createRange(); range.selectNodeContents(el);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    el.click();
+  });
+  assert.equal(await page.locator('#author').isVisible(), true, 'selected description text stays available to copy');
+  await page.evaluate(() => window.getSelection().removeAllRanges());
+  await authorCard.evaluate(card => { card.dataset.density = 'expanded'; });
   await page.locator('#author-management summary').click();
   for (const width of [390, 900]) {
     await page.setViewportSize({ width, height: 940 });
@@ -353,7 +393,7 @@ try {
   assert.equal(await page.locator('#q').inputValue(), 'Afternoon');
   assert.equal(await page.locator('#tabs button.on').getAttribute('data-tab'), 'home', 'Back restores the originating section');
   assert.equal(await page.locator('#search-scope').inputValue(), 'meta');
-  await page.locator('#results .work-title-link').filter({ hasText: 'Letters from the coast' }).click();
+  await page.locator('#results .work-card').filter({ hasText: 'Letters from the coast' }).locator('.sum').tap();
   await page.locator('#detail .work-title').waitFor();
   assert.equal(await page.locator('#search-scope').inputValue(), 'work');
   assert.equal(await page.locator('#q').inputValue(), '');

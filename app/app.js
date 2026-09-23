@@ -848,7 +848,8 @@ function workRow(w) {
   const description = node.querySelector('.work-description');
   if (description) {
     description.open = libraryDisplay.density !== 'compact';
-    description.onclick = e => e.stopPropagation();
+    // Only the disclosure toggles locally; the description is part of the card.
+    description.querySelector('summary').onclick = e => e.stopPropagation();
   }
 
   const when = whenOf(w);
@@ -877,7 +878,12 @@ function workRow(w) {
   for (const b of node.querySelectorAll('.rowactions button')) {
     b.onclick = (e) => { e.stopPropagation(); act[b.dataset.act](); };
   }
-  node.onclick = () => openWork(w.work_id);
+  node.onclick = () => {
+    // Keep long-press/drag selection available for copying a description.
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && node.contains(selection.anchorNode)) return;
+    openWork(w.work_id);
+  };
   return node;
 }
 

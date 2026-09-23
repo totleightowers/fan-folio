@@ -2260,7 +2260,7 @@ test('tapping a work shows the work, wherever it is tapped', () => {
 
   const row = js.slice(js.indexOf('function workRow('));
   const body = row.slice(0, row.indexOf('\n}\n'));
-  assert.match(body, /node\.onclick = \(\) => openWork\(w\.work_id\);/,
+  assert.match(body, /node\.onclick = \(\) => \{[^}]*openWork\(w\.work_id\);\s*\}/,
     'and so does the library row');
   assert.match(body, /open: \(\) => w\.has_text\s*\? readWork\(w\)\s*: openWork\(w\.work_id\)/,
     'while Read and Continue are the ways into the reader, and say so');
@@ -2771,7 +2771,7 @@ test('a library row does not offer twice what the row itself does', () => {
   const fn = js.slice(js.indexOf('function workRow('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.ok(!/data-act="details"/.test(body), 'tapping the row already opens it');
-  assert.match(body, /node\.onclick = \(\) => openWork\(w\.work_id\)/);
+  assert.match(body, /node\.onclick = \(\) => \{[^}]*openWork\(w\.work_id\);\s*\}/);
   assert.match(body, /data-act="open"/, 'and the way straight in stays');
 });
 
