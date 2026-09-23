@@ -72,6 +72,16 @@ try {
     await page.locator('#apply-filters').click();
     await page.locator('#filters').waitFor({ state: 'hidden' });
   };
+  const checkCardMetadata = async (card) => {
+    assert.equal(await card.locator('.card-rating').innerText(), 'General Audiences');
+    assert.equal(await card.locator('.card-relationship').innerText(),
+      'Jeon Jungkook/Jung Hoseok | J-Hope/Kim Namjoon | RM/Min Yoongi | Suga/Park Jimin');
+    assert.ok(await card.locator('.card-metadata').evaluate(el => {
+      const box = el.getBoundingClientRect(), cardBox = el.closest('.card').getBoundingClientRect();
+      return box.left >= cardBox.left && box.right <= cardBox.right
+        && el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight;
+    }), 'metadata wraps inside the card without clipping');
+  };
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
@@ -91,6 +101,8 @@ try {
     assert.match(await page.locator('.fandom-list').innerText(), /Jeon Jungkook/);
     await page.locator('#browse-kind').selectOption('fandom');
     assert.ok(await page.locator('.fandom-list .name').first().evaluate(el => el.scrollWidth <= el.clientWidth), 'short fandom names remain fully readable');
+    const homeStory = page.locator('[data-shelf="added"] .card').filter({ hasText: 'The long way home' });
+    await checkCardMetadata(homeStory);
     await screenshot('home-' + width);
   }
   await page.setViewportSize({ width: 390, height: 844 });
@@ -380,6 +392,8 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#tabs [data-tab="home"]').click();
+  await fillSearch('long');
+  await checkCardMetadata(page.locator('#results .card').filter({ hasText: 'The long way home' }));
   await fillSearch('Afternoon');
   await page.locator('#results .hit').first().waitFor();
   assert.equal(await page.locator('#search-scope').inputValue(), 'everything');
@@ -467,7 +481,8 @@ try {
   };
   for (const width of [390, 900, 1225]) {
     await page.setViewportSize({ width, height: 940 });
-    for (const target of ['padding', '.by', '.resume-position', '.bar']) {
+    await checkCardMetadata(resume);
+    for (const target of ['padding', '.by', '.card-relationship', '.card-rating', '.resume-position', '.bar']) {
       await resume.scrollIntoViewIfNeeded();
       const position = target === 'padding' ? { x: 8, y: 8 } : await resume.evaluate((el, selector) => {
         const card = el.getBoundingClientRect(), part = el.querySelector(selector).getBoundingClientRect();

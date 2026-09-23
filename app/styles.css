@@ -642,6 +642,9 @@ body:has(#tabs:not([hidden])) .view { padding-bottom: 5rem; }
   font-size: .68rem; color: var(--muted); margin-top: auto;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.card-metadata { display: grid; gap: .2rem; margin-top: .3rem; min-width: 0; font-size: .75rem; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+.card-metadata:empty { display: none; }
+.card-rating { font-weight: 550; color: var(--ink-mid); }
 .card .card-foot { font-size: .68rem; color: var(--muted); margin-top: .3rem; }
 /* The same fact as the corner of a library row, in the room a 12rem card has:
    on one line, label first, rather than stacked. */

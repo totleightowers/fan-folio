@@ -30,6 +30,24 @@ for (const workId of ['epub-1abc', '123']) {
   });
 }
 
+test('native Home cards include rating and relationship without inventing missing metadata', async () => {
+  db.prepare('INSERT INTO works (work_id,title,authors,rating,chapter_count,has_text) VALUES (?,?,?,?,1,1)')
+    .run('metadata', 'A story', '[]', 'Teen And Up Audiences');
+  db.prepare('INSERT INTO tags (work_id,kind,name) VALUES (?,?,?)')
+    .run('metadata', 'relationship', 'Alex & Sam');
+  db.prepare('INSERT INTO reading (work_id,chapter,opened_at) VALUES (?,1,?)')
+    .run('metadata', '2026-09-23');
+  const { shelves } = await api('/api/home');
+  for (const key of ['reading', 'added']) {
+    const work = shelves.find(s => s.key === key).works.find(w => w.work_id === 'metadata');
+    assert.equal(work.rating, 'Teen And Up Audiences');
+    assert.equal(work.relationship, 'Alex & Sam');
+  }
+  const imported = shelves.find(s => s.key === 'added').works.find(w => w.work_id === 'epub-1abc');
+  assert.equal(imported.rating, null);
+  assert.equal(imported.relationship, null);
+});
+
 // Exercise the SQL Android actually runs, against the production schema.
 const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
 const method = java.slice(java.indexOf('private void archiveSkin('), java.indexOf('\n    }', java.indexOf('private void archiveSkin(')));

@@ -81,7 +81,8 @@ const LOCAL = {
              w.rec,
              r.chapter AS at_chapter, r.chapters_read, r.marked_later,
              r.opened_at, r.offset, r.completed_before, w.has_text,
-             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
       FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
       WHERE ${shown(where)} ORDER BY ${order} LIMIT ${lim(limit, 12)}`),
       total: sql(`SELECT count(*) AS n FROM works w LEFT JOIN reading r ON r.work_id = w.work_id

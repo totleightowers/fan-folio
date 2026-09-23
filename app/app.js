@@ -4839,6 +4839,20 @@ function spineColour(seed) {
   return `hsl(${hash % 360} 55% 52%)`;
 }
 
+/** Compact metadata shared by Home shelves, Continue reading and discovery cards. */
+function cardMetadata(w) {
+  const box = document.createElement('div');
+  box.className = 'card-metadata';
+  for (const field of ['rating', 'relationship']) {
+    if (!w[field]) continue;
+    const line = document.createElement('div');
+    line.className = `card-${field}`;
+    line.textContent = w[field];
+    box.append(line);
+  }
+  return box;
+}
+
 function workCard(w) {
   const card = document.createElement('button');
   card.className = 'card';
@@ -4862,6 +4876,7 @@ function workCard(w) {
   const cardWhen = whenOf(w);
   if (cardWhen) card.querySelector('.card-when').append(...whenParts(cardWhen));
   card.querySelector('.card-fandom').textContent = w.fandom ?? '';
+  card.querySelector('.card-fandom').after(cardMetadata(w));
   /*
    * Tapping a work shows the work.
    *
@@ -4905,7 +4920,7 @@ function resumeCard(w) {
   bar.setAttribute('aria-valuemin', '0'); bar.setAttribute('aria-valuemax', String(progress.total));
   bar.setAttribute('aria-valuenow', String(Math.min(progress.total, progress.read)));
   const fill = document.createElement('div'); fill.style.width = `${progress.pct}%`; bar.append(fill);
-  card.append(fandom, title, by, footer, bar);
+  card.append(fandom, title, by, cardMetadata(w), footer, bar);
   return card;
 }
 
