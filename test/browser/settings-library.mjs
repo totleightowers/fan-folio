@@ -776,6 +776,8 @@ try {
 
   // A preview opened beyond the first batch returns to that batch and offset.
   const largeLibrary = new DatabaseSync(dbPath);
+  // The reader may still be saving its position in the separate server process.
+  largeLibrary.exec('PRAGMA busy_timeout = 5000');
   const insert = largeLibrary.prepare("INSERT INTO works (work_id,title,authors,summary,has_text,chapter_count,words,complete) VALUES (?,?,?, ?,0,1,100,1)");
   for (let n = 1; n <= 55; n++) insert.run(`epub-collection${n}`, `Collection story ${String(n).padStart(3, '0')}`, '["Rowan"]', 'A story in a large collection.');
   largeLibrary.close();
