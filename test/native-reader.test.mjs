@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -49,7 +50,7 @@ test('native Home cards include rating and relationship without inventing missin
 });
 
 // Exercise the SQL Android actually runs, against the production schema.
-const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+const java = nativeSource();
 const method = java.slice(java.indexOf('private void archiveSkin('), java.indexOf('\n    }', java.indexOf('private void archiveSkin(')));
 const query = [...method.slice(method.indexOf('db.execSQL('), method.indexOf('new Object[]')).matchAll(/"(?:[^"\\]|\\.)*"/g)]
   .map(m => JSON.parse(m[0])).join('');

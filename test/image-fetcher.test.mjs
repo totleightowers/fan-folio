@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -8,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA } from '../app/core/store/schema.js';
 
-const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+const java = nativeSource();
 const transport = new URL('../android/src/org/fanfolio/ImageFetcher.java', import.meta.url);
 test('native image transport handles real Imgur placeholders, redirects, privacy, limits and fallback', t => {
   if (spawnSync('javac', ['-version']).error) { t.skip('JDK unavailable'); return; }

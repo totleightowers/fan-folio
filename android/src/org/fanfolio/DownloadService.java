@@ -11,21 +11,7 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 
-/**
- * Keeps a download running while the app is not being looked at.
- *
- * An author's catalogue is hours of paced requests, and until now all of it
- * stopped the moment the app went away — which the settings screen admitted
- * to rather than fixed. Android will keep a process alive and out of Doze if
- * it says what it is doing and shows that it is doing it, so that is what this
- * is: an ongoing notification for as long as there is work, and nothing when
- * there is not.
- *
- * The work itself still runs in the page. This does not reimplement the queue
- * — a second copy of the pacing and retry rules is exactly the kind of
- * duplication that has caused trouble here before. It holds the process open
- * and keeps the processor awake so the page's own timers keep firing.
- */
+/** Foreground support for the process-owned download runtime, independent of a screen. */
 public class DownloadService extends Service {
 
     public static final String ACTION_START = "org.fanfolio.WORK_START";
@@ -60,6 +46,11 @@ public class DownloadService extends Service {
     static void workerResponded() {
         DownloadService service = alive.get();
         if (service != null) service.lastHeartbeat = android.os.SystemClock.elapsedRealtime();
+    }
+
+    static void workerReady(boolean pending) {
+        DownloadService service = alive.get();
+        if (service != null && !pending) service.standDown();
     }
 
     static void workerGone() {
@@ -98,7 +89,7 @@ public class DownloadService extends Service {
                 interrupted();
                 return;
             }
-            MainActivity.tick();
+            FolioRuntime.tick();
             clock.postDelayed(this, TICK_MS);
         }
     };
@@ -108,13 +99,19 @@ public class DownloadService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // A sticky restart restores the service, not the Activity-owned queue.
-        if (intent == null) {
-            interrupted();
-            return START_NOT_STICKY;
-        }
         alive = new java.lang.ref.WeakReference<>(this);
-        String action = String.valueOf(intent.getAction());
+        String action = intent == null ? ACTION_START : String.valueOf(intent.getAction());
+        // Enter foreground before restoring the page/SQLite. A sticky restart
+        // has no Activity, but uses precisely the same persisted queue.
+        if (intent == null) {
+            lastHeartbeat = android.os.SystemClock.elapsedRealtime();
+            startForegroundWith("Restoring saved downloads…", false);
+            hold();
+            clock.removeCallbacks(keepingTime);
+            clock.postDelayed(keepingTime, TICK_MS);
+            FolioRuntime.startWorker(this, null);
+            return START_STICKY;
+        }
 
         if (ACTION_PAUSE.equals(action)) {
             /*
@@ -127,20 +124,22 @@ public class DownloadService extends Service {
              * screen. The notification stays and offers Resume. The wake lock
              * does not: nothing is waiting on a clock while it is paused.
              */
-            MainActivity.pauseFromNotification();
+
             clock.removeCallbacks(keepingTime);
             release();
             startForegroundWith(lastText, true);
+            FolioRuntime.startWorker(this, "__pauseAll");
             return START_STICKY;
         }
 
         if (ACTION_RESUME.equals(action)) {
             lastHeartbeat = android.os.SystemClock.elapsedRealtime();
-            MainActivity.resumeFromNotification();
+
             startForegroundWith(lastText, false);
             hold();
             clock.removeCallbacks(keepingTime);
             clock.postDelayed(keepingTime, TICK_MS);
+            FolioRuntime.startWorker(this, "__resumeAll");
             return START_STICKY;
         }
 
@@ -149,8 +148,12 @@ public class DownloadService extends Service {
                on the Activity list with what it managed and what it never got,
                and can be asked for again — which is the only thing that makes
                this safe to offer from a lock screen. */
-            MainActivity.stopFromNotification();
-            standDown();
+            lastHeartbeat = android.os.SystemClock.elapsedRealtime();
+            startForegroundWith("Stopping downloads…", false);
+            hold();
+            clock.removeCallbacks(keepingTime);
+            clock.postDelayed(keepingTime, TICK_MS);
+            FolioRuntime.startWorker(this, "__stopAll");
             return START_NOT_STICKY;
         }
 
@@ -176,6 +179,7 @@ public class DownloadService extends Service {
             clock.removeCallbacks(keepingTime);
             clock.postDelayed(keepingTime, TICK_MS);
         }
+        FolioRuntime.startWorker(this, null);
         return START_STICKY;
     }
 

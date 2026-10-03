@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -68,7 +69,7 @@ test('resume advances to an added chapter after catching up, but preserves an un
 });
 
 test('Android receives the same restart statement exercised against SQLite', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const build = readFileSync(new URL('../android/build.sh', import.meta.url), 'utf8');
   assert.ok(java.includes('db.execSQL(readAsset("web/restart-reading.sql"), new Object[]{ workId })'));
   assert.ok(build.includes('tools/emit-reading-sql.mjs > assets/web/restart-reading.sql'));

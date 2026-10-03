@@ -6,9 +6,13 @@ All queue gaps, retry backoff and listing waits use the same clock that Android 
 
 A job retains ownership of its runner until the in-flight request returns. Resuming while it is still pausing continues that runner instead of starting a second download of the same work.
 
-The foreground service checks that the page acknowledges its clock. If the Activity is destroyed, a sticky service restarts without its queue, or acknowledgements stop for a minute, the service releases its wake lock and shows an interruption notification linking to Downloads. The queue is already persisted after every event and resumes when the app is reopened. This stage does not move the downloader into an independent native worker or promise survival after Android terminates the app process.
+The Activity is now only a window onto a process-owned `FolioRuntime`. Closing or recreating it detaches the view and releases the Activity context, without closing the database or destroying the queue. Reopening attaches that same runtime; it does not load a second page or start a second pacer. The foreground service can create the runtime without an Activity after a sticky restart and restore saved jobs. Removing the task does not explicitly stop the service.
 
-Validation: suspended-timer queue/retry/listing tests, in-flight pause/resume tests, the actual Java service command/watchdog logic with platform effects stubbed, Java compilation, full logic/syntax checks and PR checks. Physical Android screen-off, app-switching and process-recreation checks remain unverified without a connected device. All local fixtures avoid AO3 requests.
+Notification Pause/Resume/Stop also work on a cold runtime. Pending commands restore jobs held before applying the command, so cold Pause and Stop do not issue an initial request. User-paused jobs remain paused across a service restart. Queue restoration writes its checkpoint after all jobs have been restored, rather than overwriting the saved list with each partial prefix. Archive pacing and cooldown deadlines persist across process restarts.
+
+This still uses the shared JavaScript queue in a WebView, driven by native clock ticks; it is not a native HTTP worker. Missing acknowledgements still produce an interruption notification. Reattaching a responsive screen republishes the current download state and restarts foreground support if needed. Android can restrict background network access or kill the process; Force stop requires reopening the app. No guarantee is made about OEM battery restrictions or restart timing.
+
+Validation covers the actual Java lifecycle and service methods with platform effects stubbed, cold queue/notification restoration and cooldowns in a browser, suspended-timer queue/retry/listing tests, Java compilation, and the existing logic/browser checks. Physical Android screen-off, recent-task removal and process-recreation scheduling remain unverified without a connected device. Local fixtures make no AO3 requests.
 
 ## Counts and outcomes
 

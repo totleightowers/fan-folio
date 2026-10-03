@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -111,7 +112,7 @@ test('Android applies the same availability repair on database open and before i
   const { execFileSync } = await import('node:child_process');
   const { REPAIR_AVAILABILITY } = await import('../app/core/store/availability.js');
   assert.equal(execFileSync(process.execPath, ['tools/emit-availability-sql.mjs'], { encoding: 'utf8' }), REPAIR_AVAILABILITY);
-  const java = readFileSync('android/src/org/fanfolio/MainActivity.java', 'utf8');
+  const java = nativeSource();
   const migrate = java.slice(java.indexOf('private void migrate(SQLiteDatabase db)'), java.indexOf('private void repairCompleteness('));
   assert.match(migrate, /db.execSQL\(readAsset\("web\/availability.sql"\)\)/);
   assert.match(java, /migrate\(incoming\)/);

@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -111,8 +112,7 @@ test('what makes it stay deleted is written down in the same breath', () => {
 });
 
 test('the shell lets go of everything the shared list names', () => {
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const list = java.slice(java.indexOf('String[] WORK_OWNS = {'));
   const named = new Set([...list.slice(0, list.indexOf('};')).matchAll(/"([a-z_]+)"/g)]
     .map((m) => m[1]));

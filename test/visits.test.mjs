@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -35,7 +36,7 @@ test('Most read adds AO3 snapshots and deduplicated FF visits, not public hits',
   } finally { db.close(); }
 });
 test('the native visit insert has the same duplicate and orphan protection', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java',import.meta.url),'utf8');
+  const java = nativeSource();
   const body = java.slice(java.indexOf('public String recordVisit('),java.indexOf('public String saveHistory('));
   const sql = JSON.parse(body.match(/db.execSQL\(("[^"\n]+")/)[1]);
   const db=library();

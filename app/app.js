@@ -28,7 +28,7 @@ import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, retryImages, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, recordVisit, saveHistory, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
-  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen,
+  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -2748,6 +2748,12 @@ function retryJobItems(id, workIds = null) {
  */
 let lastSaid = '';
 
+window.__wakeDownloads = () => {
+  lastSaid = '';
+  sayWhatIsHappening();
+  downloadsReady(window.__downloadsPending());
+};
+
 /* How a single job describes itself. A job still reading a list has nothing
    to count towards, and a bookmark reconciliation never will — reported as
    "0 of ?" for the tens of minutes it takes, which is saying nothing. */
@@ -2827,6 +2833,8 @@ function sayWhatIsHappening() {
 }
 
 /* The notification's Resume: back to where it was, one job at a time. */
+window.__downloadsPending = () => jobs.list().some(j => ['running', 'queued', 'listing', 'paused', 'pausing'].includes(j.state));
+
 window.__resumeAll = () => {
   for (const job of jobs.list()) {
     if (job.state === 'paused' || job.state === 'pausing') jobs.resume(job.id);
@@ -3218,8 +3226,10 @@ function paintJobs() {
  * carried over rather than dropped on the floor.
  */
 const QUEUE_KEY = 'queue';
+let restoringQueue = false;
 
 function keepQueue() {
+  if (restoringQueue) return;
   const list = jobs.save();
   if (isNative && saveMeta(QUEUE_KEY, JSON.stringify(list))) return;
   save(JOBS_KEY, list);            // no library open, or not the app at all
@@ -3240,7 +3250,9 @@ function storedQueue() {
   return older;
 }
 
-function resumeJobs() {
+function resumeJobs(hold = false) {
+  restoringQueue = true;
+  try {
   for (const job of storedQueue()) {
     if (job.state === 'done' || job.state === 'cancelled') {
       jobs.restore(job);
@@ -3298,7 +3310,7 @@ function resumeJobs() {
       continue;
     }
 
-    const id = jobs.restore({ ...job, items, workIds: left, open: Boolean(job.open) });
+    const id = jobs.restore({ ...job, items, workIds: left, open: Boolean(job.open), ...(hold ? { state: 'paused' } : {}) });
 
     /*
      * A job that was still reading an index goes back to reading it, from the
@@ -3326,6 +3338,8 @@ function resumeJobs() {
       jobs.seal(id);          // nothing can carry the walk on, so close it
     }
   }
+  } finally { restoringQueue = false; }
+  keepQueue();
 }
 
 /** Saved image arrivals update the page in place, preserving the reading position. */
@@ -3793,6 +3807,9 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
   try {
     /* Resuming: the total was written down last time, so the first page does
        not have to be read again just to learn it. */
+    if (jobId !== null && !(await jobs.waitUntilRunnable(jobId))) {
+      return { complete: false, reached: Math.max(0, fromPage - 1), pages: knownPages, top: null };
+    }
     let pages = knownPages;
     let top = null;
     if (fromPage <= 1 || pages == null) {
@@ -4112,6 +4129,7 @@ async function runHistorySync(id) {
   runningHistory.add(id);
   const status = $('#history-sync-status');
   try {
+    if (!(await jobs.waitUntilRunnable(id))) return;
     const job = jobs.list().find(j => j.id === id);
     const user = await whoAmI();
     if (jobSource(job).user !== user) throw new Error('Sign in to the AO3 account that started this history sync.');
@@ -4218,12 +4236,15 @@ const wait = (ms) => untilDue(ms);
  * cool-off that everything honours when the archive says to slow down.
  */
 let archiveTurn = Promise.resolve();
-let lastArchiveAt = 0;
-let coolUntil = 0;
+const savedPacing = load('archive.pacing', {});
+let lastArchiveAt = Number(savedPacing.lastArchiveAt) || 0;
+let coolUntil = Number(savedPacing.coolUntil) || 0;
+const keepPacing = () => save('archive.pacing', { lastArchiveAt, coolUntil });
 
 /** The archive asked for room. Everything waits, not just whoever was told. */
 function slowDown(ms = 5 * 60_000) {
   coolUntil = Math.max(coolUntil, Date.now() + ms);
+  keepPacing();
   if (showing() === 'activity') paintDownloadStatus();
 }
 
@@ -4274,6 +4295,7 @@ function paced(run) {
     const owed = Math.max(coolUntil - now, nextGap() - (now - lastArchiveAt), 0);
     if (owed > 0) await untilDue(owed);
     lastArchiveAt = Date.now();
+    keepPacing();
     try {
       return await run();
     } finally {
@@ -4365,6 +4387,7 @@ async function runReconcile(id) {
   syncSay('Asking the archive who you are…');
   let stopped = false;
   try {
+    if (!(await jobs.waitUntilRunnable(id))) return;
     const user = await whoAmI();
     const all = [];
     let pages = null;
@@ -4431,6 +4454,7 @@ async function syncBookmarks() {
 async function runNewBookmarks(id) {
   syncSay('Asking the archive who you are…');
   try {
+    if (!(await jobs.waitUntilRunnable(id))) return;
     const user = await whoAmI();
     /*
      * Where the sync stops walking backwards.
@@ -6799,6 +6823,7 @@ async function start() {
     // the internal path is not information a reader can act on
     $('#setup-hint').textContent = 'Look under Internal storage → Download.';
     show('setup');
+    downloadsReady(false);
     return;
   }
   if (!status.search) toast('This device\'s SQLite cannot do full-text search');
@@ -6820,7 +6845,13 @@ async function start() {
   /* Each chore stands on its own: one of them failing is not a reason for the
      rest not to run, and never a reason to take the screen down with it. */
   for (const chore of [
-    () => resumeJobs(),        // whatever was owed when the app last closed
+    () => {
+      const command = takeDownloadCommand();
+      // Restore held first so a cold Pause/Stop cannot make even one request.
+      resumeJobs(Boolean(command));
+      if (['__pauseAll', '__resumeAll', '__stopAll'].includes(command)) window[command]();
+      downloadsReady(window.__downloadsPending());
+    },
     () => paintAccount(),
     () => paintActiveFilters(),
     // an intent can arrive before this page exists, so the shell holds it

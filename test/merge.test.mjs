@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
@@ -158,7 +159,7 @@ test('the search index covers what arrived', () => {
 test('the shell runs the same statements these tests do', async () => {
   const { readFileSync } = await import('node:fs');
   const build = readFileSync(new URL('../android/build.sh', import.meta.url), 'utf8');
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
 
   /* A second copy of this SQL written in Java would drift from the one under
      test, and a merge that drifts silently loses reading positions. The build
@@ -172,7 +173,7 @@ test('the shell runs the same statements these tests do', async () => {
 
 test('a merge that cannot finish changes nothing', async () => {
   const { readFileSync } = await import('node:fs');
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('private void importFrom('));
   const body = fn.slice(0, fn.indexOf('\n    }\n'));
   assert.match(body, /beginTransaction\(\)/, 'it runs in a transaction');

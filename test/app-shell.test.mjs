@@ -1,3 +1,4 @@
+import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -99,8 +100,7 @@ function selectorMatches(parts, node) {
   return true;
 }
 
-const java_ = () => readFileSync(
-  new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+const java_ = () => nativeSource();
 
 const nameOf = (button) => (button.id ? `#${button.id}`
   : button.classes.length ? `.${button.classes.join('.')}`
@@ -206,7 +206,7 @@ test('the app is named consistently wherever a person can see it', () => {
 });
 
 test('the sign-in window is never given the app bridge', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const start = java.indexOf('private void openSignIn()');
   const end = java.indexOf('private FrameLayout signInPanel');
   const body = java.slice(start, end);
@@ -216,7 +216,7 @@ test('the sign-in window is never given the app bridge', () => {
 });
 
 test('the session cookie goes only to the archive', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const open = java.slice(java.indexOf('private HttpURLConnection open('), java.indexOf('private WebResourceResponse respond('));
 
   /* This used to assert the shape of the check rather than what it guarantees,
@@ -232,7 +232,7 @@ test('the session cookie goes only to the archive', () => {
 });
 
 test('a domain merely ending in the archive name is not the archive', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('private static boolean isArchiveHost('));
   const body = fn.slice(0, fn.indexOf('\n    }'));
 
@@ -243,7 +243,7 @@ test('a domain merely ending in the archive name is not the archive', () => {
 });
 
 test('a redirect cannot take a signed-in write off the archive', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const post = java.slice(java.indexOf('private String postOnce('));
   const body = post.slice(0, post.indexOf('\n    }\n'));
 
@@ -260,7 +260,7 @@ test('a redirect cannot take a signed-in write off the archive', () => {
 });
 
 test('the read bridge refuses anything that is not a single read', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const q = java.slice(java.indexOf('public String query(String sql'), java.indexOf('/** Store a work'));
   // the page composes its own queries, so this is the boundary that decides
   // what it may ask for
@@ -271,7 +271,7 @@ test('the read bridge refuses anything that is not a single read', () => {
 });
 
 test('the shell proxy retries transient failures rather than reporting them', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const proxy = java.slice(java.indexOf('private WebResourceResponse proxy(String raw)'),
     java.indexOf('private WebResourceResponse proxyOnce'));
   assert.match(proxy, /for \(int attempt = 0; attempt < \d+/, 'more than one attempt');
@@ -281,7 +281,7 @@ test('the shell proxy retries transient failures rather than reporting them', ()
 });
 
 test('a proxied url is not decoded twice', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   // getQueryParameter already decodes; decoding again turns a literal + into a
   // space and eats any %xx the url legitimately contains
   assert.ok(!java.includes('URLDecoder.decode'),
@@ -324,15 +324,15 @@ test('the app offers itself for work links and for shared text', () => {
 });
 
 test('a link that arrives before the page is ready is not lost', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   assert.ok(java.includes('pendingLink'), 'the shell holds it');
   assert.ok(java.includes('takePendingLink'), 'and the page collects it when ready');
   assert.ok(java.includes('onNewIntent'), 'a link arriving while running is handled too');
 });
 
 test('a shared link is found by scanning, not by a backtracking pattern', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const send = java.slice(java.indexOf('ACTION_SEND.equals(action)'), java.indexOf('@Override protected void onNewIntent'));
+  const java = nativeSource();
+  const send = java.slice(java.indexOf('ACTION_SEND.equals(action)'), java.indexOf('void acceptIntent('));
   // shared text is chosen by somebody else; `https?://\S*/works/\d+\S*` reads
   // naturally and backtracks polynomially on "http://http://http://…"
   assert.ok(!/Pattern\s*\n?\s*\.compile/.test(send), 'no regex over shared text');
@@ -511,7 +511,7 @@ test('a late response cannot overwrite a newer navigation', () => {
  * applied would leave a screen permanently shrunk and offset.
  */
 test('every back-gesture hook the shell calls exists in the page', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   for (const hook of [...java.matchAll(/window\.(__on[A-Za-z]+)\s*&&/g)].map((m) => m[1])) {
     assert.ok(js.includes(`window.${hook} =`), `the shell calls ${hook}, the page never defines it`);
   }
@@ -556,7 +556,7 @@ test('a sheet is dragged by its own furniture, not its contents', () => {
  */
 test('the shell can migrate every column the schema declares', () => {
   const schema = readFileSync(new URL('../app/core/store/schema.js', import.meta.url), 'utf8');
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
 
   const create = schema.slice(schema.indexOf('CREATE TABLE IF NOT EXISTS works'));
   const declared = [...create.slice(0, create.indexOf('\n);')).matchAll(/^\s{2}([a-z_]+)\s+(TEXT|INTEGER)/gm)]
@@ -664,7 +664,7 @@ test('no motion value is written as a bare literal', () => {
 });
 
 test('nothing crossing the bridge can name a host for a write', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('public String archivePost('));
   const body = fn.slice(0, fn.indexOf('\n        }'));
 
@@ -696,7 +696,7 @@ test('nothing crossing the bridge can name a host for a write', () => {
  * it, so this does.
  */
 test('the shell exposes every bridge method the page calls', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
 
   const exposed = new Set(
@@ -910,7 +910,7 @@ test('the manifest declares what it needs to see', () => {
 });
 
 test('a browser is chosen by name, not left to a chooser to work out', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('private void toBrowser('));
   const body = fn.slice(0, fn.indexOf('\n    }\n'));
 
@@ -967,7 +967,7 @@ test('no XML comment carries a double hyphen', () => {
 });
 
 test('the shell reports the version it was stamped with', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   assert.match(java, /getPackageInfo\(getPackageName\(\), 0\)\.versionName/,
     'read from the package rather than a constant beside it');
 });
@@ -1038,7 +1038,7 @@ test('a work offers to fetch itself again', () => {
  * checked against the other path.
  */
 test('the shell archives chapters before it replaces them', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const archiveAt = java.indexOf('archiveChapters(id, chapters)');
   const deleteAt = java.indexOf('db.delete("chapters", "work_id = ?"');
   assert.ok(archiveAt > 0, 'the shell archives at all');
@@ -1047,7 +1047,7 @@ test('the shell archives chapters before it replaces them', () => {
 });
 
 test('an unchanged refetch archives nothing', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('private int archiveChapters('));
   const body = fn.slice(0, fn.indexOf('\n    }\n'));
   // otherwise every refetch buries the real changes under untouched chapters
@@ -1164,7 +1164,7 @@ test('a shelf row says when a work is not downloaded', () => {
  */
 
 test('listing works never overwrites one already held', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('public String saveStubs('));
   const body = fn.slice(0, fn.indexOf('\n        }\n'));
   /* A blurb knows less than the work page a held copy came from, so a stub
@@ -1280,13 +1280,14 @@ test('a list comes back a list', () => {
  * laid out for and every line was cut at both edges.
  */
 test('the page is told when the screen changes shape', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   assert.match(java, /public void onConfigurationChanged\(/,
     'the manifest claims the config change, so the activity has to handle it');
   const fn = java.slice(java.indexOf('public void onConfigurationChanged('));
   const body = fn.slice(0, fn.indexOf('\n    }\n'));
   assert.match(body, /super\.onConfigurationChanged/);
-  assert.match(body, /window\.__resized/, 'and tell the page, which is what reflows');
+  assert.match(body, /runtime\.resized\(/);
+  assert.match(java, /window\.__resized/, 'and tell the page, which is what reflows');
   assert.match(js, /window\.__resized = onScreenResized/, 'which the page answers to');
 });
 
@@ -1309,7 +1310,7 @@ test('a fold does not lose your place', () => {
  * different facts, and only the first is worth protecting from a glance.
  */
 test('a library already full of works called unfinished is put right', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('private void repairCompleteness('));
   const body = fn.slice(0, fn.indexOf('\n    }\n'));
   assert.match(body, /chapter_count >= chapters_planned/,
@@ -1516,7 +1517,7 @@ test('an older library gets somewhere to record what was deleted', () => {
 });
 
 test('the shell migrates every reading column the query asks for', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const block = java.slice(java.indexOf('READING_COLUMNS = {'));
   const migrated = new Set([...block.slice(0, block.indexOf('};')).matchAll(/\{"([a-z_]+)"/g)]
     .map((m) => m[1]));
@@ -1532,7 +1533,7 @@ test('the shell migrates every reading column the query asks for', () => {
 });
 
 test('the shell and the query agree on how many chapters a work has', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const body = java.slice(java.indexOf('public String markFinished('));
   const sql = body.slice(0, body.indexOf('} catch')).replace(/"\s*\+\s*"/g, '').replace(/\s+/g, ' ');
 
@@ -1821,7 +1822,7 @@ test('the queue is kept with the library, not with the browser', () => {
   assert.match(rbody, /if \(older\.length && isNative\) saveMeta/,
     'a queue saved by an older version is carried over, not dropped');
 
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   assert.match(java, /public String saveMeta\(String key, String value\)/,
     'and the shell has one way to write it');
 });
@@ -1886,7 +1887,7 @@ test('the home screen is not built last', () => {
   const fn = js.slice(js.indexOf('async function start('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   const painted = body.indexOf('refresh(');
-  const chores = body.indexOf('resumeJobs()');
+  const chores = body.indexOf('resumeJobs(');
   assert.ok(painted > -1 && chores > -1);
   assert.ok(painted < chores,
     'the screen the reader is looking at comes before the housekeeping');
@@ -2006,7 +2007,7 @@ test('a failure worth retrying is retried rather than called unavailable', () =>
  */
 test('the shell sends the same headers as the client that is not throttled', () => {
   const client = readFileSync(new URL('../tools/lib/client.mjs', import.meta.url), 'utf8');
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
 
   const fn = client.slice(client.indexOf('function browserHeaders('));
   const wanted = [...fn.slice(0, fn.indexOf('\n}')).matchAll(/'?([A-Z][A-Za-z-]+)'?:/g)]
@@ -2023,7 +2024,7 @@ test('the shell sends the same headers as the client that is not throttled', () 
 });
 
 test('a referer is carried between archive pages', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   /* Somebody on page seven got there from page six. Arriving with no referer
      at all, page after page, is not what browsing looks like. */
   assert.match(java, /lastArchiveUrl/, 'the last archive page is remembered');
@@ -2168,7 +2169,7 @@ test('everything described but not held can be asked for at once', () => {
 });
 
 test('failing to reach the archive is not the archive refusing', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const at = java.indexOf('String reason = e.getClass().getSimpleName()');
   const around = java.slice(at, at + 260);
   assert.match(around, /"text\/plain", "utf-8", 502/,
@@ -2406,7 +2407,7 @@ test('image arrivals update the current chapter without rebuilding it', () => {
 });
 
 test('the session never travels to an image host', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const open_ = java.slice(java.indexOf('private HttpURLConnection open('),
     java.indexOf('private WebResourceResponse respond('));
   /* Images may come from anywhere, which is a deliberate loosening. The rule
@@ -2417,7 +2418,7 @@ test('the session never travels to an image host', () => {
 });
 
 test('image requests use the native request thread and stored chapter URLs', () => {
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
   assert.match(api, /await fetch\(`\/\_\_images\/next/);
   assert.doesNotMatch(api, /native\.fetchNextImage/);
@@ -2475,10 +2476,8 @@ test('the notification says what is happening, and goes when it stops', () => {
     'and it is not rewritten on every event for the same words');
 
   assert.match(js, /window\.__pauseAll = \(\) => \{/, 'Pause on the notification reaches the queue');
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  assert.match(java, /static void pauseFromNotification\(\) \{ fromNotification\("window\.__pauseAll"\)/,
-    'and the shell is what calls it');
+  const service = readFileSync(new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
+  assert.match(service, /FolioRuntime\.startWorker\(this, "__pauseAll"\)/, 'the service commands the runtime without a screen');
 });
 
 /*
@@ -2503,8 +2502,8 @@ test('the notification has a paused state, not an absence', () => {
   assert.match(shape, /"Stop", serviceAction\(\d, ACTION_STOP\)/, 'and a way out');
   assert.match(shape, /"Pause", serviceAction\(\d, ACTION_PAUSE\)/);
 
-  for (const fn_ of ['resumeFromNotification', 'stopFromNotification']) {
-    assert.match(java_(), new RegExp(`static void ${fn_}\\(`), `${fn_} reaches the queue`);
+  for (const command of ['__resumeAll', '__stopAll']) {
+    assert.ok(service.includes(`FolioRuntime.startWorker(this, "${command}")`), `${command} reaches the shared runtime`);
   }
   assert.match(js, /window\.__resumeAll = \(\) => \{/);
   assert.match(js, /window\.__stopAll = \(\) => \{/);
@@ -2654,9 +2653,8 @@ test('a download notification lands on the downloads', () => {
   assert.match(service, /openActivity\(\d, "activity"\)/,
     'not wherever the app happened to be left');
 
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  assert.match(java, /private void goWhereAsked\(Intent intent\)/, 'acted on when resuming');
+  const java = nativeSource();
+  assert.match(java, /void acceptIntent\(Intent intent\)/, 'acted on when resuming');
   assert.match(java, /public String takePendingOpen\(\)/,
     'and held when the notification is tapped before the page exists');
   assert.match(js, /window\.__open = \(where\) => \{/);
@@ -2683,8 +2681,7 @@ test('the whole bookmark list can be read, so removals are noticed', () => {
      conclude that everything on the pages it never read had been unbookmarked. */
   assert.ok(!/fromPage|job\.page/.test(body), 'it starts from the first page, always');
 
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const shell = java.slice(java.indexOf('public String reconcileBookmarks('));
   const sbody = shell.slice(0, shell.indexOf('\n        }\n'));
   assert.match(sbody, /beginTransaction/, 'a half-applied reconciliation is worse than none');
@@ -2956,12 +2953,11 @@ test('the shell keeps the time only while there is work', () => {
   const service = readFileSync(
     new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
   assert.match(service, /clock\.postDelayed\(keepingTime, TICK_MS\)/, 'started with the work');
-  assert.match(service, /MainActivity\.tick\(\)/, 'and it tells the page time has passed');
+  assert.match(service, /FolioRuntime\.tick\(\)/, 'and it tells the page time has passed');
   const stops = [...service.matchAll(/clock\.removeCallbacks\(keepingTime\)/g)];
   assert.ok(stops.length >= 3, `stopped when paused, and when the service goes: ${stops.length}`);
 
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   assert.match(java, /window\.__tick && window\.__tick\(\)/);
 });
 
@@ -3228,8 +3224,7 @@ test('nothing is asked of the archive to bring a book in', () => {
 });
 
 test('the library decides whether a book is the work or a version of it', () => {
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const fn = java.slice(java.indexOf('public String saveEpub(String json)'));
   const body = fn.slice(0, fn.indexOf('\n        }\n'));
 
@@ -3294,8 +3289,7 @@ test('an export brought in says when it was taken, not today', () => {
   assert.match(body, /endNotesHtml: book\.endNotesHtml \?\? null/,
     'and the author\u2019s last word, which has a column and never had a writer');
 
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const save = java.slice(java.indexOf('public String saveEpub(String json)'));
   const body_ = save.slice(0, save.indexOf('\n        }\n'));
   assert.match(body_, /from\.put\("downloaded_at", w\.optString\("downloadedAt"\)\)/);
@@ -3310,9 +3304,8 @@ test('an export brought in says when it was taken, not today', () => {
  * silently, and looking exactly like choosing a single file.
  */
 test('a shelf of books is not thrown away for having no single file in it', () => {
-  const java = readFileSync(
-    new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
-  const fn = java.slice(java.indexOf('protected void onActivityResult('));
+  const java = nativeSource();
+  const fn = java.slice(java.indexOf('void onActivityResult('));
   const body = fn.slice(0, fn.indexOf('\n    }\n'));
 
   const epubs = body.indexOf('if (request == PICK_EPUBS)');
@@ -3457,7 +3450,7 @@ test('work cards use the same explicit archive handoff as work details', () => {
   const row = js.slice(js.indexOf('function workRow('), js.indexOf('async function loadMore('));
   assert.match(row, /ao3: \(\) => openOnArchive\(`/);
   assert.ok(!row.includes('window.open('), 'native work cards do not ask WebView to create a popup');
-  const java = readFileSync(new URL('../android/src/org/fanfolio/MainActivity.java', import.meta.url), 'utf8');
+  const java = nativeSource();
   const start = java.indexOf('boolean shouldOverrideUrlLoading(');
   const handler = java.slice(start, java.indexOf('root.addView(web', start));
   assert.ok(handler.indexOf('!r.isForMainFrame() || !r.hasGesture()') < handler.indexOf('startActivity('),

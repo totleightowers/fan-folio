@@ -1072,3 +1072,12 @@ export async function commentOnWork(workId, text) {
   if (res.status >= 400) throw new Error(refusal(res, 'The archive refused the comment'));
   return { workId };
 }
+
+/** A notification command delivered while Android is restoring a closed app. */
+export function takeDownloadCommand() {
+  return isNative && native.takeDownloadCommand ? native.takeDownloadCommand() : '';
+}
+
+export function downloadsReady(pending) {
+  if (isNative && native.downloadsReady) native.downloadsReady(Boolean(pending));
+}

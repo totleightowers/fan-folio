@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 // Run the actual command/watchdog branches with platform effects replaced by
 // counters. Device tests are still required for Android scheduling itself.
-test('service restart and missing heartbeats never pretend work is running', t => {
+test('service restores its runtime without a screen and detects missing heartbeats', t => {
   if (spawnSync('javac', ['-version']).error) { t.skip('JDK unavailable'); return; }
   const source = readFileSync(new URL('../android/src/org/fanfolio/DownloadService.java', import.meta.url), 'utf8');
   const from = source.indexOf('    public int onStartCommand(');
@@ -27,7 +27,13 @@ public class ServiceCheck {
   final Clock clock = new Clock();
   static class Clock { long now; int posts; void postDelayed(Runnable r, long ms) {posts++;} void removeCallbacks(Runnable r) {} }
   static class Intent { String action, state; Intent(String a) {action=a;} String getAction(){return action;} String getStringExtra(String key){return key.equals(EXTRA_STATE)?state:null;} boolean getBooleanExtra(String key, boolean def){return def;} }
-  static class MainActivity { static int ticks; static void tick(){ticks++;} static void pauseFromNotification(){} static void resumeFromNotification(){} static void stopFromNotification(){} }
+  static class FolioRuntime {
+    static int ticks, starts; static String command;
+    static void tick(){ticks++;}
+    static void startWorker(ServiceCheck service, String value){
+      check(service.foreground>0, "foreground must precede runtime startup"); starts++; command=value;
+    }
+  }
   void interrupted(){interruptedCount++;}
   void hold(){holds++;} void release(){releases++;} void standDown(){stops++;}
   void startForegroundWith(String text, boolean paused){foreground++;}
@@ -37,14 +43,19 @@ public class ServiceCheck {
   static void check(boolean ok, String message){if(!ok) throw new AssertionError(message);}
   public static void main(String[] args) {
     ServiceCheck cold=new ServiceCheck();
-    check(cold.onStartCommand(null,0,1)==START_NOT_STICKY, "restart must stop");
-    check(cold.interruptedCount==1 && cold.foreground==0 && cold.holds==0 && cold.clock.posts==0, "restart without a queue must report interruption");
+    check(cold.onStartCommand(null,0,1)==START_STICKY, "restart restores saved work");
+    check(cold.interruptedCount==0 && cold.foreground==1 && cold.holds==1 && cold.clock.posts==1 && FolioRuntime.starts==1, "restart needs no Activity");
     ServiceCheck live=new ServiceCheck(); live.clock.now=100000;
     check(live.onStartCommand(new Intent(ACTION_START),0,1)==START_STICKY, "live starts");
     check(live.holds==1 && live.foreground==1, "live worker gets foreground support");
-    live.clock.now+=5000; live.keepingTime.run(); check(MainActivity.ticks==1, "probe live page");
+    live.clock.now+=5000; live.keepingTime.run(); check(FolioRuntime.ticks==1, "probe live page");
     live.clock.now+=60001; live.keepingTime.run();
-    check(live.interruptedCount==1 && MainActivity.ticks==1, "missing acknowledgement ends misleading notification");
+    check(live.interruptedCount==1 && FolioRuntime.ticks==1, "missing acknowledgement ends misleading notification");
+    for (String action : new String[]{ACTION_PAUSE,ACTION_RESUME,ACTION_STOP}) {
+      ServiceCheck control=new ServiceCheck(); control.onStartCommand(new Intent(action),0,1);
+      String expected=action.equals(ACTION_PAUSE)?"__pauseAll":action.equals(ACTION_RESUME)?"__resumeAll":"__stopAll";
+      check(expected.equals(FolioRuntime.command), "cold notification command reaches the runtime");
+    }
     ServiceCheck paused=new ServiceCheck(); Intent pause=new Intent(ACTION_START); pause.state="paused";
     paused.onStartCommand(pause,0,1);
     check(paused.holds==0 && paused.clock.posts==0 && paused.releases==1, "paused jobs do not keep clocks or wake locks");
