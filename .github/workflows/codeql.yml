@@ -57,7 +57,7 @@ jobs:
           javac -nowarn -source 8 -target 8 \
             -bootclasspath "$ANDROID_HOME/platforms/android-34/android.jar" \
             -classpath "$ANDROID_HOME/platforms/android-34/android.jar" \
-            -d build/classes @build/sources.txt 2>/dev/null
+            -d build/classes @build/sources.txt
 
       - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:

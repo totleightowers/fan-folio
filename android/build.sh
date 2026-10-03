@@ -71,8 +71,7 @@ find src build/gen -name '*.java' > build/sources.txt
 # errors must not be swallowed: a hidden compile failure once produced a
 # "successful" build that silently shipped the previous APK
 javac -nowarn -source 8 -target 8 -bootclasspath "$SDK_JAR" \
-  -classpath "$SDK_JAR" -d build/classes @build/sources.txt 2>&1 \
-  | grep -v 'bootstrap class path\|source value 8\|target value 8\|deprecat' || true
+  -classpath "$SDK_JAR" -d build/classes @build/sources.txt
 [ -n "$(find build/classes -name '*.class' -print -quit)" ] || {
   echo "javac produced no classes — build failed" >&2; exit 1; }
 

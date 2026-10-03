@@ -156,7 +156,9 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
     void resized() {
         web.requestLayout();
-        ui.post(() -> toPage("window.__resized && window.__resized()"));
+        ui.post(new Runnable() { @Override public void run() {
+            toPage("window.__resized && window.__resized()");
+        }});
     }
 
     void evaluate(String js, android.webkit.ValueCallback<String> callback) {
@@ -173,10 +175,10 @@ public class FolioRuntime extends android.content.ContextWrapper {
     }
 
     private void startActivityForResult(Intent intent, int request) {
-        runOnUiThread(() -> {
+        runOnUiThread(new Runnable() { @Override public void run() {
             MainActivity screen = activity.get();
             if (screen != null && !screen.isDestroyed()) screen.startActivityForResult(intent, request);
-        });
+        }});
     }
 
     static void startWorker(android.content.Context context, String command) {
@@ -190,14 +192,18 @@ public class FolioRuntime extends android.content.ContextWrapper {
         String command = pendingCommand.getAndSet(null);
         if (command != null) web.evaluateJavascript(
             "window." + command + " && window." + command + "(); window.__downloadsPending && window.__downloadsPending()",
-            value -> { if ("false".equals(value)) DownloadService.workerReady(false); });
+            new android.webkit.ValueCallback<String>() { @Override public void onReceiveValue(String value) {
+                if ("false".equals(value)) DownloadService.workerReady(false);
+            }});
     }
 
     static void tick() {
         FolioRuntime runtime = instance;
         if (runtime == null || !runtime.ready) return;
         runtime.web.evaluateJavascript("window.__tick && window.__tick()",
-            value -> { if ("true".equals(value)) DownloadService.workerResponded(); });
+            new android.webkit.ValueCallback<String>() { @Override public void onReceiveValue(String value) {
+                if ("true".equals(value)) DownloadService.workerResponded();
+            }});
     }
 
     /**
@@ -211,7 +217,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
     private boolean askedAboutNotifications = false;
 
     private void askAboutNotificationsOnce() {
-        runOnUiThread(() -> {
+        runOnUiThread(new Runnable() { @Override public void run() {
             MainActivity screen = activity.get();
             if (screen == null || screen.isDestroyed() || askedAboutNotifications || Build.VERSION.SDK_INT < 33) return;
             askedAboutNotifications = true;
@@ -219,7 +225,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 screen.requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7);
             }
-        });
+        }});
     }
 
     /* --------------------------------------------------------- opening links */
@@ -1163,11 +1169,11 @@ public class FolioRuntime extends android.content.ContextWrapper {
         @JavascriptInterface
         public void downloadsReady(boolean pending) {
             mustBeOurPage();
-            runOnUiThread(() -> {
+            runOnUiThread(new Runnable() { @Override public void run() {
                 ready = true;
                 deliverCommand();
                 DownloadService.workerReady(pending);
-            });
+            }});
         }
 
         private void mustBeOurPage() {
