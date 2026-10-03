@@ -2648,8 +2648,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
             }
         } catch (Exception e) {
             staged.delete();
-            toPage("window.__importFailed && window.__importFailed("
-                + org.json.JSONObject.quote(String.valueOf(e.getMessage())) + ")");
+            toPage("window.__importFailed && window.__importFailed('Could not merge that library. Your existing library has been kept.')");
             return;
         }
 
