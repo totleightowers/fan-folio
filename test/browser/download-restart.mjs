@@ -98,14 +98,16 @@ try {
   assert.deepEqual(requests,[],'restored cooldown is honoured');
   await tick(1);
   await page.waitForFunction(()=>document.querySelector('#activity-dot').dataset.state==='busy');
-  assert.deepEqual(requests,['/works/1']);
   await page.waitForFunction(()=>JSON.parse(window.ArchiveNative.query("SELECT value FROM meta WHERE key='queue'",'[]')).rows.some(row=>JSON.parse(row.value)[0].added===1));
+  assert.deepEqual(requests,['/works/1']);
   assert.equal(saved()[0].added,1,JSON.stringify({errors,queue:saved()}));
   assert.deepEqual(saved()[0].workIds,['2']);
   await page.close(); // A killed page must recover from persisted state, not repeat work 1.
   await open();await tick(600000);
+  await page.waitForFunction(()=>JSON.parse(window.ArchiveNative.query("SELECT value FROM meta WHERE key='queue'",'[]')).rows.some(row=>JSON.parse(row.value)[0].added===2));
   assert.deepEqual(requests,['/works/1','/works/2']);
   await tick(600000);
+  await page.waitForFunction(()=>!window.__downloadsPending());
   assert.equal(saved()[0].state,'done');assert.equal(saved()[0].added,2);
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   console.log('Cold Pause/Stop, saved pause, cooldown restoration and remaining-only downloads passed');
