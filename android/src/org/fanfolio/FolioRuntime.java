@@ -195,7 +195,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
     static void tick() {
         FolioRuntime runtime = instance;
-        if (runtime == null) return;
+        if (runtime == null || !runtime.ready) return;
         runtime.web.evaluateJavascript("window.__tick && window.__tick()",
             value -> { if ("true".equals(value)) DownloadService.workerResponded(); });
     }
