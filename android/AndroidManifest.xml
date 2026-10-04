@@ -44,6 +44,7 @@
     <!-- allowBackup is off deliberately: a detailed record of what someone
          reads is not something to hand to cloud backup without asking. -->
     <application
+        android:name=".FolioApplication"
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"

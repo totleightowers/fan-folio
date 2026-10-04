@@ -1081,3 +1081,14 @@ export function takeDownloadCommand() {
 export function downloadsReady(pending) {
   if (isNative && native.downloadsReady) native.downloadsReady(Boolean(pending));
 }
+
+/** Numeric, local-only diagnostics. Never send exception messages or library content. */
+export function downloadDiagnostic(event, values = {}) {
+  try { if (isNative && native.downloadDiagnostic) native.downloadDiagnostic(event, JSON.stringify(values)); }
+  catch { /* Recording must not interrupt work. */ }
+}
+export function exportDownloadDiagnostics() {
+  if (!isNative || !native.exportDownloadDiagnostics) return false;
+  native.exportDownloadDiagnostics();
+  return true;
+}

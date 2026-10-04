@@ -34,11 +34,30 @@ public class DownloadService extends Service {
     private PowerManager.WakeLock awake;
     private static java.lang.ref.WeakReference<DownloadService> alive =
             new java.lang.ref.WeakReference<>(null);
-    private long lastHeartbeat;
+    private volatile long lastHeartbeat;
+    private volatile long lastTick;
+    private volatile boolean diagnosticWakeHeld;
+    private java.util.concurrent.ScheduledExecutorService diagnosticClock;
+
+    // This sampler owns no wake lock. If the main thread freezes it can still
+    // leave evidence; if Android suspends the process its timestamps show a gap.
+    private void beginDiagnostics() {
+        lastTick = android.os.SystemClock.elapsedRealtime();
+        diagnosticClock = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+        diagnosticClock.scheduleWithFixedDelay(new Runnable() { @Override public void run() {
+            long now = android.os.SystemClock.elapsedRealtime();
+            DownloadDiagnostics.event("service_sample", "tickAgeMs", now - lastTick,
+                "jsHeartbeatAgeMs", now - lastHeartbeat, "wakeHeld", diagnosticWakeHeld);
+            DownloadDiagnostics.systemState();
+        }}, 60, 60, java.util.concurrent.TimeUnit.SECONDS);
+    }
+
     private static final long HEARTBEAT_TIMEOUT_MS = 60_000;
 
     @Override public void onCreate() {
         super.onCreate();
+        DownloadDiagnostics.event("service_create");
+        beginDiagnostics();
         alive = new java.lang.ref.WeakReference<>(this);
         lastHeartbeat = android.os.SystemClock.elapsedRealtime();
     }
@@ -59,6 +78,7 @@ public class DownloadService extends Service {
     }
 
     private void interrupted() {
+        DownloadDiagnostics.event("watchdog_interrupted", "heartbeatAgeMs", android.os.SystemClock.elapsedRealtime() - lastHeartbeat);
         ensureChannel(CHANNEL_DONE, "Finished", "Download outcomes and interruptions.");
         Notification.Builder note = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_DONE) : new Notification.Builder(this);
@@ -85,6 +105,9 @@ public class DownloadService extends Service {
     private static final long TICK_MS = 5_000;
     private final Runnable keepingTime = new Runnable() {
         @Override public void run() {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - lastTick > 15000) DownloadDiagnostics.event("native_tick_gap", "gapMs", now - lastTick);
+            lastTick = now;
             if (android.os.SystemClock.elapsedRealtime() - lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
                 interrupted();
                 return;
@@ -101,6 +124,8 @@ public class DownloadService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         alive = new java.lang.ref.WeakReference<>(this);
         String action = intent == null ? ACTION_START : String.valueOf(intent.getAction());
+        DownloadDiagnostics.event("service_command", "restart", intent == null,
+            "action", ACTION_START.equals(action) ? 0 : ACTION_PAUSE.equals(action) ? 1 : ACTION_RESUME.equals(action) ? 2 : ACTION_STOP.equals(action) ? 3 : ACTION_DONE.equals(action) ? 4 : -1);
         // Enter foreground before restoring the page/SQLite. A sticky restart
         // has no Activity, but uses precisely the same persisted queue.
         if (intent == null) {
@@ -184,6 +209,7 @@ public class DownloadService extends Service {
     }
 
     private void standDown() {
+        DownloadDiagnostics.event("service_stand_down");
         if (alive.get() == this) alive.clear();
         clock.removeCallbacks(keepingTime);
         release();
@@ -258,12 +284,14 @@ public class DownloadService extends Service {
         if (Build.VERSION.SDK_INT >= 26) note.setChannelId(CHANNEL);
 
         Notification built = note.build();
+        DownloadDiagnostics.event("foreground_requested", "paused", isPaused);
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTE_ID, built,
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
             startForeground(NOTE_ID, built);
         }
+        DownloadDiagnostics.event("foreground_started", "paused", isPaused);
     }
 
     /**
@@ -310,15 +338,26 @@ public class DownloadService extends Service {
         awake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "fanfolio:downloads");
         awake.setReferenceCounted(false);
         awake.acquire();
+        diagnosticWakeHeld = awake.isHeld();
+        DownloadDiagnostics.event("wake_acquired", "held", diagnosticWakeHeld);
     }
 
     private void release() {
         if (awake != null && awake.isHeld()) awake.release();
         awake = null;
+        diagnosticWakeHeld = false;
+        DownloadDiagnostics.event("wake_released");
+    }
+
+    @Override public void onTaskRemoved(Intent rootIntent) {
+        DownloadDiagnostics.event("task_removed");
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
+        DownloadDiagnostics.event("service_destroy");
+        if (diagnosticClock != null) diagnosticClock.shutdownNow();
         if (alive.get() == this) alive.clear();
         clock.removeCallbacks(keepingTime);
         release();

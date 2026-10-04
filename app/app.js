@@ -7,6 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
+import { diagnosticProgress, diagnosticQueue } from './download-diagnostics.js';
 import { visitLabel } from './core/store/visits.js';
 import { createImageCollector } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
@@ -28,7 +29,7 @@ import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, retryImages, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, recordVisit, saveHistory, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
-  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady,
+  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady, downloadDiagnostic, exportDownloadDiagnostics,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -2517,6 +2518,7 @@ function freshenSoon() {
   freshenTimer = setTimeout(freshen, due);
 }
 
+let lastDownloadProgress = Date.now();
 const jobs = createQueue({
   runTask: (workId) => paced(() => addWork(String(workId)).catch((e) => {
     if (/answered 429|rate limit|too many requests/i.test(String(e?.message))) slowDown();
@@ -2541,6 +2543,8 @@ const jobs = createQueue({
     return ids.filter((id) => !held.has(id));
   },
   onEvent: (e) => {
+    lastDownloadProgress = Date.now();
+    try { downloadDiagnostic('queue_progress', diagnosticProgress(e.job)); } catch { /* diagnostic only */ }
     if (e.type === 'progress') {
       toast(`${e.job.author} · ${e.job.part}: ${e.job.added} of ${e.job.total}`
         + (e.job.failed ? ` (${e.job.failed} unavailable)` : ''));
@@ -3024,6 +3028,22 @@ function paintDownloadStatus() {
 $('#downloads-pause').onclick = () => { window.__pauseAll(); paintJobs(); };
 $('#downloads-resume').onclick = () => { window.__resumeAll(); paintJobs(); };
 $('#downloads-library').onclick = () => openLibraryAs({ availability: 'held', sort: 'added' });
+const diagnosticsExport = $('#downloads-diagnostics-export');
+$('#download-diagnostics').hidden = !isNative;
+diagnosticsExport.onclick = () => {
+  sampleDownloads();
+  try {
+    if (!exportDownloadDiagnostics()) toast('Download diagnostics need the updated Android app.');
+  } catch { toast('Could not open the save dialog. Please try again.'); }
+};
+window.__diagnosticsExported = (result) => {
+  const message = result === 1 ? 'Diagnostics saved. Share the file when reporting the download problem.'
+    : result === 0 ? 'Export cancelled. Diagnostics are still saved in the app.'
+    : 'Could not save diagnostics. Please try another location.';
+  $('#downloads-diagnostics-status').textContent = message;
+  toast(message);
+};
+
 $('#downloads-add').onclick = () => $('#add').click();
 setInterval(() => { if (showing() === 'activity') paintDownloadStatus(); }, 15000);
 
@@ -4263,6 +4283,19 @@ function slowDown(ms = 5 * 60_000) {
  * timer still does the job whenever it is allowed to, and the tick is only
  * ever a second opinion — nothing runs early because of it.
  */
+function sampleDownloads() {
+  try {
+    downloadDiagnostic('queue', diagnosticQueue(jobs.list(), waitingOnTheArchive,
+      coolUntil, lastDownloadProgress, document.hidden));
+  } catch { /* Diagnostic sampling must not interrupt the native tick. */ }
+}
+window.addEventListener('error', () => downloadDiagnostic('js_error'));
+window.addEventListener('unhandledrejection', () => downloadDiagnostic('js_rejection'));
+document.addEventListener('visibilitychange', () => {
+  downloadDiagnostic('visibility', { hidden: document.hidden });
+  sampleDownloads();
+});
+
 const waitingOnTheArchive = new Set();
 
 function untilDue(ms) {
@@ -4274,8 +4307,10 @@ function untilDue(ms) {
 }
 
 /** The shell, saying time has passed. Only what is already owed goes. */
+let lastDiagnosticSample = 0;
 window.__tick = () => {
   const now = Date.now();
+  if (now - lastDiagnosticSample >= 60000) { lastDiagnosticSample = now; sampleDownloads(); }
   for (const entry of [...waitingOnTheArchive]) {
     if (now < entry.due) continue;
     clearTimeout(entry.timer);

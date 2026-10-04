@@ -22,6 +22,8 @@ public class ServiceCheck {
   static final int START_STICKY=1, START_NOT_STICKY=2;
   static WeakReference<ServiceCheck> alive = new WeakReference<>(null);
   static final long TICK_MS=5000, HEARTBEAT_TIMEOUT_MS=60000;
+  static class DownloadDiagnostics { static void event(String event, Object... values) {} }
+  long lastTick;
   long lastHeartbeat; String lastText="";
   int interruptedCount, foreground, holds, releases, stops, finished;
   final Clock clock = new Clock();

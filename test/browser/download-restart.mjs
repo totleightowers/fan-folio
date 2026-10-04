@@ -9,7 +9,8 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const db = new DatabaseSync(':memory:'); db.exec(SCHEMA);
 const root = fileURLToPath(new URL('../../app/', import.meta.url));
 const fixture = await readFile(new URL('../fixtures/work-page.html', import.meta.url), 'utf8');
-const requests = [], errors = [], external = [], ready = [];
+const requests = [], errors = [], external = [], ready = [], diagnostics = [];
+let exportRequests = 0;
 const setQueue = (state, source = null) => {
   db.exec('DELETE FROM chapters; DELETE FROM works; DELETE FROM meta;');
   db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('queue', JSON.stringify([
@@ -27,6 +28,8 @@ const server = createServer(async (req,res) => {
       if (method==='query') return json({rows:db.prepare(args[0]).all(...JSON.parse(args[1]))});
       if (method==='saveMeta') db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run(...args);
       if (method==='downloadsReady') ready.push(args[0]);
+      if (method==='downloadDiagnostic') diagnostics.push({event:args[0],data:JSON.parse(args[1])});
+      if (method==='exportDownloadDiagnostics') exportRequests++;
       if (method==='saveWork') {
         const work=JSON.parse(args[0]);
         db.prepare('INSERT OR REPLACE INTO works(work_id,title,authors,chapter_count,has_text,complete) VALUES(?,?,?, ?,1,1)')
@@ -67,7 +70,7 @@ async function open(command='',cooldown=0) {
       status:()=>JSON.stringify({hasDatabase:true,search:true}),signedIn:()=>true,
       takePendingOpen:()=>'',takePendingLink:()=>'',databaseSize:()=>1,
       takeDownloadCommand:()=>command,
-      ...Object.fromEntries(['query','saveMeta','saveWork','downloadsReady'].map(method=>[method,bridge(method)])),
+      ...Object.fromEntries(['query','saveMeta','saveWork','downloadsReady','downloadDiagnostic','exportDownloadDiagnostics'].map(method=>[method,bridge(method)])),
     },{get:(target,key)=>target[key]||(()=>'{}')});
   },{command,cooldown});
   page.on('pageerror',e=>errors.push(e.message));
@@ -109,6 +112,19 @@ try {
   await tick(600000);
   await page.waitForFunction(()=>!window.__downloadsPending());
   assert.equal(saved()[0].state,'done');assert.equal(saved()[0].added,2);
+  await page.locator('#tabs [data-tab="activity"]').click();
+  await page.locator('#download-diagnostics summary').click();
+  await page.getByRole('button',{name:'Export download diagnostics'}).click();
+  assert.equal(exportRequests,1,'export opens the native save picker');
+  for(const [result,expected] of [[1,'Diagnostics saved'],[0,'Export cancelled'],[-1,'Could not save diagnostics']]) {
+    await page.evaluate(result=>window.__diagnosticsExported(result),result);
+    assert.match(await page.locator('#downloads-diagnostics-status').textContent(),new RegExp(expected));
+  }
+  assert.ok(diagnostics.some(d=>d.event==='queue' && d.data.cooldownMs>0),'cooldown is distinguishable from a dead queue');
+  assert.ok(diagnostics.some(d=>d.event==='queue_progress' && d.data.added===2),'successful saves leave progress evidence');
+  for(const record of diagnostics) for(const value of Object.values(record.data)) {
+    assert.ok(typeof value==='number' || typeof value==='boolean','bridge receives no story/account/error text');
+  }
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   console.log('Cold Pause/Stop, saved pause, cooldown restoration and remaining-only downloads passed');
 } finally { await browser.close();await new Promise(resolve=>server.close(resolve));db.close(); }

@@ -11,6 +11,7 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        DownloadDiagnostics.event("activity_create", "restored", state != null);
         runtime = FolioRuntime.get(this);
         runtime.attach(this, getIntent());
         registerBackGesture();
@@ -33,9 +34,14 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        DownloadDiagnostics.event("activity_destroy", "finishing", isFinishing(), "configuration", isChangingConfigurations());
         if (runtime != null) runtime.detach(this);
         super.onDestroy();
     }
+
+    @Override protected void onResume() { super.onResume(); DownloadDiagnostics.event("activity_resume"); }
+    @Override protected void onPause() { DownloadDiagnostics.event("activity_pause"); super.onPause(); }
+    @Override protected void onStop() { DownloadDiagnostics.event("activity_stop"); super.onStop(); }
 
     private void registerBackGesture() {
         if (Build.VERSION.SDK_INT < 33) return;      // onBackPressed still serves

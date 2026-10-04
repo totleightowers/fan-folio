@@ -41,6 +41,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
     private static final int PICK_DATABASE = 1;
     private static final int SAVE_DATABASE = 2;
     private static final int PICK_EPUBS = 3;
+    private static final int SAVE_DIAGNOSTICS = 4;
 
     /**
      * The books somebody chose, held between the picker and the reading.
@@ -81,6 +82,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
     private FolioRuntime(android.content.Context application) {
         super(application);
+        DownloadDiagnostics.event("runtime_create");
         viewContext = new android.content.MutableContextWrapper(application);
         root = new FrameLayout(viewContext);
         root.setBackgroundColor(0xFF000000);
@@ -108,6 +110,11 @@ public class FolioRuntime extends android.content.ContextWrapper {
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap f) {
                 pageTrusted = HOST.equals(Uri.parse(url).getHost());
                 ready = false;
+                DownloadDiagnostics.event("page_started", "trusted", pageTrusted);
+            }
+            @Override public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                DownloadDiagnostics.event("renderer_gone", "crashed", detail.didCrash(), "priority", detail.rendererPriorityAtExit());
+                return super.onRenderProcessGone(view, detail);
             }
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 Uri u = r.getUrl();
@@ -123,6 +130,15 @@ public class FolioRuntime extends android.content.ContextWrapper {
             }
         });
 
+        if (Build.VERSION.SDK_INT >= 29) web.setWebViewRenderProcessClient(new android.webkit.WebViewRenderProcessClient() {
+            @Override public void onRenderProcessUnresponsive(WebView view, android.webkit.WebViewRenderProcess renderer) {
+                DownloadDiagnostics.event("renderer_unresponsive");
+            }
+            @Override public void onRenderProcessResponsive(WebView view, android.webkit.WebViewRenderProcess renderer) {
+                DownloadDiagnostics.event("renderer_responsive");
+            }
+        });
+
         root.addView(web, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         openDatabase();
@@ -135,6 +151,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
     }
 
     void attach(MainActivity screen, Intent intent) {
+        DownloadDiagnostics.event("runtime_attach");
         activity = new java.lang.ref.WeakReference<>(screen);
         if (root.getParent() instanceof ViewGroup) ((ViewGroup) root.getParent()).removeView(root);
         viewContext.setBaseContext(screen);
@@ -147,6 +164,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
     void detach(MainActivity screen) {
         if (activity.get() != screen) return;
+        DownloadDiagnostics.event("runtime_detach");
         if (signInView != null) closeSignIn(isSignedIn());
         if (root.getParent() instanceof ViewGroup) ((ViewGroup) root.getParent()).removeView(root);
         activity.clear();
@@ -678,6 +696,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 // 520-527 are Cloudflare's own, and always transient
                 if (code < 500 || (code > 527 && code != 502 && code != 503 && code != 504)) return res;
                 if (attempt == 2) return res;
+                if (res.getData() != null) res.getData().close();
             } catch (IOException e) {
                 last = e;
             }
@@ -686,6 +705,20 @@ public class FolioRuntime extends android.content.ContextWrapper {
     }
 
     private WebResourceResponse proxyOnce(String raw) throws IOException {
+        DownloadDiagnostics.Request diagnostic = DownloadDiagnostics.request();
+        try {
+            WebResourceResponse response = proxyOnceUntracked(raw);
+            diagnostic.headers(response.getStatusCode());
+            response.setData(diagnostic.wrap(response.getData()));
+            return response;
+        } catch (IOException | RuntimeException error) {
+            diagnostic.end(2);
+            DownloadDiagnostics.failure("request_failed", error);
+            throw error;
+        }
+    }
+
+    private WebResourceResponse proxyOnceUntracked(String raw) throws IOException {
         if (raw == null) throw new IOException("no url");
         /* getQueryParameter has already decoded this. Decoding a second time
            turns a literal + into a space and eats any %xx the URL legitimately
@@ -1169,6 +1202,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
         @JavascriptInterface
         public void downloadsReady(boolean pending) {
             mustBeOurPage();
+            DownloadDiagnostics.event("js_ready", "pending", pending);
             runOnUiThread(new Runnable() { @Override public void run() {
                 ready = true;
                 deliverCommand();
@@ -1793,8 +1827,11 @@ public class FolioRuntime extends android.content.ContextWrapper {
         @JavascriptInterface
         public String saveWork(String json) {
             mustBeOurPage();
-            if (db == null) return "{\"error\":\"no database\"}";
+            long started = android.os.SystemClock.elapsedRealtime();
+            boolean saved = false;
+            DownloadDiagnostics.event("save_work_start");
             try {
+                if (db == null) return "{\"error\":\"no database\"}";
                 org.json.JSONObject w = new org.json.JSONObject(json);
                 String id = w.getString("workId");
                 /* The last gate. Every automatic path is supposed to have
@@ -1810,9 +1847,12 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 } finally {
                     db.endTransaction();
                 }
+                saved = true;
                 return "{\"ok\":true,\"workId\":" + quote(id) + "}";
             } catch (Exception e) {
                 return "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}";
+            } finally {
+                DownloadDiagnostics.event("save_work_end", "ageMs", android.os.SystemClock.elapsedRealtime() - started, "failed", !saved);
             }
         }
 
@@ -1925,6 +1965,30 @@ public class FolioRuntime extends android.content.ContextWrapper {
          * site data, travels in a backup, and can be read back exactly as it
          * was written instead of being rebuilt from a summary.
          */
+        /** Local numeric diagnostics; only explicit export opens a document picker. */
+        @JavascriptInterface
+        public void downloadDiagnostic(String event, String payload) {
+            mustBeOurPage();
+            DownloadDiagnostics.javascript(event, payload);
+        }
+
+        @JavascriptInterface
+        public void exportDownloadDiagnostics() {
+            mustBeOurPage();
+            runOnUiThread(new Runnable() { @Override public void run() {
+                try {
+                    MainActivity screen = activity.get();
+                    if (screen == null || screen.isDestroyed()) { diagnosticsResult(-1); return; }
+                    Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                        .setType("text/plain").putExtra(Intent.EXTRA_TITLE, "fanfolio-download-diagnostics-" + System.currentTimeMillis() + ".jsonl");
+                    screen.startActivityForResult(save, SAVE_DIAGNOSTICS);
+                } catch (Exception error) {
+                    DownloadDiagnostics.failure("export_picker_failed", error);
+                    diagnosticsResult(-1);
+                }
+            }});
+        }
+
         /**
          * Say that work is going on, so the system leaves the app running.
          *
@@ -1948,6 +2012,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(go);
                 else startService(go);
             } catch (Exception ignored) {
+                DownloadDiagnostics.failure("foreground_start_failed", ignored);
                 /* A refusal to start it is not a reason to stop downloading —
                    the work carries on for as long as the app is open. */
             }
@@ -2547,6 +2612,12 @@ public class FolioRuntime extends android.content.ContextWrapper {
     }
 
     void onActivityResult(int request, int result, Intent data) {
+        if (request == SAVE_DIAGNOSTICS) {
+            if (result != Activity.RESULT_OK || data == null || data.getData() == null) {
+                diagnosticsResult(0);
+            } else exportDiagnosticsTo(data.getData());
+            return;
+        }
         if (result != Activity.RESULT_OK || data == null) return;
         /*
          * Asked before the single-file guard below, deliberately.
@@ -2562,6 +2633,28 @@ public class FolioRuntime extends android.content.ContextWrapper {
         if (request == SAVE_DATABASE) { saveDatabaseTo(data.getData()); return; }
         if (request != PICK_DATABASE) return;
         importFrom(data.getData());
+    }
+
+    private void diagnosticsResult(final int result) {
+        runOnUiThread(new Runnable() { @Override public void run() {
+            toPage("window.__diagnosticsExported && window.__diagnosticsExported(" + result + ")");
+        }});
+    }
+
+    private void exportDiagnosticsTo(final Uri uri) {
+        new Thread(new Runnable() { @Override public void run() {
+            try {
+                byte[] report = DownloadDiagnostics.snapshot();
+                try (OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
+                    if (out == null) throw new IOException("no destination");
+                    out.write(report);
+                }
+                diagnosticsResult(1);
+            } catch (Exception error) {
+                DownloadDiagnostics.failure("export_failed", error);
+                diagnosticsResult(-1);
+            }
+        }}, "diagnostic-export").start();
     }
 
     /** What the picker came back with, and how many, so the page can begin. */

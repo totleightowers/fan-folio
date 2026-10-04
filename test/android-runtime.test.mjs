@@ -20,6 +20,7 @@ test('closing and recreating a screen retains one runtime and queue; cold servic
 import java.lang.ref.WeakReference;
 import java.util.concurrent.atomic.AtomicReference;
 public class FolioRuntime {
+  static class DownloadDiagnostics { static void event(String event, Object... values) {} }
   static FolioRuntime instance;
   static int creates;
   final Context application;

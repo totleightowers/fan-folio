@@ -2931,8 +2931,8 @@ test('a tick releases a wait that is owed, and only one that is owed', async () 
      looking at it. */
   let clock = 1_000_000;
   const scope = { window: {} };
-  const untilDue = new Function('setTimeout', 'clearTimeout', 'Date', 'window', source)(
-    () => 1, () => {}, { now: () => clock }, scope.window);
+  const untilDue = new Function('setTimeout', 'clearTimeout', 'Date', 'window', 'sampleDownloads', source)(
+    () => 1, () => {}, { now: () => clock }, scope.window, () => {});
 
   let done = false;
   const waiting = untilDue(28_000).then(() => { done = true; });

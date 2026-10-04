@@ -642,7 +642,7 @@ try {
   assert.match(await page.locator('.job-open').filter({ hasText: 'Restarted collection' }).innerText(), /20 of 23/);
   assert.equal(await page.locator('#downloads-pause').isVisible(), false);
   assert.equal(await page.locator('#downloads-resume').isVisible(), true);
-  assert.equal(await page.locator('.download-help').evaluate(el => el.open), false);
+  assert.equal(await page.locator('.download-help:not(#download-diagnostics)').evaluate(el => el.open), false);
   await page.locator('.job-act[aria-label="Try the 1 that never arrived again"]').waitFor();
   for (const width of [390, 900]) {
     await page.setViewportSize({ width, height: 940 });
