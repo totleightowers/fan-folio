@@ -7,6 +7,7 @@
  * be developed in a browser and shipped without changing a line of it.
  */
 
+import { createArchiveTransport } from './archive-transport.js';
 import { FF_VISITS } from './core/store/visits.js';
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
@@ -18,6 +19,15 @@ import { htmlToText, countWords } from './core/epub.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;
 export const isNative = Boolean(native);
+
+// Older shells and the browser dev server retain their existing HTTP adapter.
+const archiveTransport = createArchiveTransport({
+  native: isNative && nativeStatus().nativeArchiveRequests === true ? native : null,
+  fetchPage: url => fetch(`/__net/?url=${encodeURIComponent(url)}`),
+});
+export const archiveRequest = (url) => archiveTransport.request(url);
+export const pollArchiveRequests = () => archiveTransport.poll();
+if (typeof window !== 'undefined') window.__pollArchiveRequests = pollArchiveRequests;
 
 /**
  * One read-only query through the bridge.
@@ -408,7 +418,7 @@ export async function addWork(input) {
  * the one the archive redirected to.
  */
 async function workIdForChapter(chapterId) {
-  const res = await fetch(`/__net/?url=${encodeURIComponent(chapterUrl(chapterId))}`);
+  const res = await archiveRequest(chapterUrl(chapterId));
   const body = await res.text();
   if (!res.ok) throw new Error(`The archive answered ${res.status} for that chapter`);
   const found = body.match(/\/works\/(\d+)/);
@@ -425,7 +435,7 @@ async function workIdForChapter(chapterId) {
  * back the others.
  */
 async function addSeries(seriesId) {
-  const res = await fetch(`/__net/?url=${encodeURIComponent(seriesPage(seriesId))}`);
+  const res = await archiveRequest(seriesPage(seriesId));
   const body = await res.text();
   if (!res.ok) throw new Error(`The archive answered ${res.status} for that series`);
 
@@ -448,7 +458,7 @@ async function addSeries(seriesId) {
 
 /** One work: fetch the whole thing, parse it, hand it to the shell to store. */
 async function fetchAndSave(workId) {
-  const res = await fetch(`/__net/?url=${encodeURIComponent(workPage(workId))}`);
+  const res = await archiveRequest(workPage(workId));
   const body = await res.text();
   if (!res.ok) {
     /* 502 is the shell's proxy failing, not the archive refusing — the two are
@@ -940,7 +950,7 @@ export function signedIn() {
 
 /** GET a page through the ordinary proxy and hand back its HTML. */
 async function page(url) {
-  const res = await fetch(`/__net/?url=${encodeURIComponent(url)}`);
+  const res = await archiveRequest(url);
   const body = await res.text();
   if (!res.ok) throw new Error(`The archive answered ${res.status}`);
   return body;

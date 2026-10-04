@@ -10,7 +10,8 @@ const db = new DatabaseSync(':memory:'); db.exec(SCHEMA);
 const root = fileURLToPath(new URL('../../app/', import.meta.url));
 const fixture = await readFile(new URL('../fixtures/work-page.html', import.meta.url), 'utf8');
 const requests = [], errors = [], external = [], ready = [], diagnostics = [];
-let exportRequests = 0;
+let exportRequests = 0, nativeSerial = 0;
+const nativeResponses = new Map();
 const setQueue = (state, source = null) => {
   db.exec('DELETE FROM chapters; DELETE FROM works; DELETE FROM meta;');
   db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('queue', JSON.stringify([
@@ -25,6 +26,18 @@ const server = createServer(async (req,res) => {
     if (url.pathname === '/bridge') {
       let body=''; for await (const chunk of req) body+=chunk;
       const {method,args}=JSON.parse(body);
+      if (method==='startArchiveRequest') {
+        const target=new URL(args[0]);
+        assert.equal(target.origin,'https://archiveofourown.org');
+        assert.match(target.pathname,/^\/works\/[12]$/);
+        requests.push(target.pathname);
+        nativeResponses.set(++nativeSerial,{status:200,body:fixture});
+        return json(nativeSerial);
+      }
+      if (method==='takeArchiveResponse') {
+        const result=nativeResponses.get(args[0]); nativeResponses.delete(args[0]);
+        return json(result);
+      }
       if (method==='query') return json({rows:db.prepare(args[0]).all(...JSON.parse(args[1]))});
       if (method==='saveMeta') db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run(...args);
       if (method==='downloadsReady') ready.push(args[0]);
@@ -57,22 +70,30 @@ const origin=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch();
 const context=await browser.newContext();
 let page;
-async function open(command='',cooldown=0) {
+async function open(command='',cooldown=0,nativeTransport=false) {
   ready.length=0;
   page=await context.newPage();
-  await page.addInitScript(({command,cooldown})=>{
+  await page.addInitScript(({command,cooldown,nativeTransport})=>{
     window.testTime=Date.parse('2026-10-03T12:00:00Z');
     Date.now=()=>window.testTime;
     Math.random=()=>0;
+    if(nativeTransport) localStorage.removeItem('archive.pacing');
     if(cooldown) localStorage.setItem('archive.pacing',JSON.stringify({coolUntil:Date.now()+cooldown,lastArchiveAt:0}));
     const bridge=method=>(...args)=>{const req=new XMLHttpRequest();req.open('POST','/bridge',false);req.send(JSON.stringify({method,args}));return req.responseText;};
     window.ArchiveNative=new Proxy({
-      status:()=>JSON.stringify({hasDatabase:true,search:true}),signedIn:()=>true,
+      status:()=>JSON.stringify({hasDatabase:true,search:true,nativeArchiveRequests:nativeTransport}),signedIn:()=>true,
       takePendingOpen:()=>'',takePendingLink:()=>'',databaseSize:()=>1,
       takeDownloadCommand:()=>command,
-      ...Object.fromEntries(['query','saveMeta','saveWork','downloadsReady','downloadDiagnostic','exportDownloadDiagnostics'].map(method=>[method,bridge(method)])),
+      ...Object.fromEntries(['query','saveMeta','saveWork','downloadsReady','downloadDiagnostic','exportDownloadDiagnostics','startArchiveRequest','takeArchiveResponse'].map(method=>[method,bridge(method)])),
     },{get:(target,key)=>target[key]||(()=>'{}')});
-  },{command,cooldown});
+    if(nativeTransport) {
+      const ordinaryFetch=window.fetch;
+      window.fetch=(input,...args)=>{
+        if(String(input).includes('/__net/')) throw new Error('Browser archive request dispatch is suspended');
+        return ordinaryFetch(input,...args);
+      };
+    }
+  },{command,cooldown,nativeTransport});
   page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',route=>{if(new URL(route.request().url()).origin===origin)return route.continue();external.push(route.request().url());return route.abort();});
   await page.goto(origin);
@@ -125,6 +146,13 @@ try {
   for(const record of diagnostics) for(const value of Object.values(record.data)) {
     assert.ok(typeof value==='number' || typeof value==='boolean','bridge receives no story/account/error text');
   }
+  await page.close(); requests.length=0;
+  setQueue('running'); await open('',0,true);
+  await page.waitForFunction(()=>JSON.parse(window.ArchiveNative.query("SELECT value FROM meta WHERE key='queue'",'[]')).rows.some(row=>JSON.parse(row.value)[0].added===1));
+  await tick(600000);
+  await page.waitForFunction(()=>!window.__downloadsPending());
+  assert.deepEqual(requests,['/works/1','/works/2'],'native downloads progress while browser archive dispatch is unavailable');
+  assert.equal(saved()[0].added,2);
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   console.log('Cold Pause/Stop, saved pause, cooldown restoration and remaining-only downloads passed');
 } finally { await browser.close();await new Promise(resolve=>server.close(resolve));db.close(); }

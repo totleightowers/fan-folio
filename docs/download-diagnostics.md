@@ -49,3 +49,25 @@ is full or Android kills the process mid-write; ignore a malformed final JSONL l
 Validation uses synthetic downloads, journal restart/rotation and payload filtering,
 stream EOF/close/error cases, and browser export callbacks. Actual screen-off and
 vendor task-removal behavior still requires a report from an affected device.
+
+## Native archive transport
+
+Archive GETs on current Android builds start through the trusted native bridge,
+using a process-owned executor. They no longer require WebView `fetch` dispatch
+or response-body delivery. Results can be collected by a completion callback, a
+foreground timer, or the existing service tick. Older shells and the dev server
+retain the HTTP adapter. Network work never runs on Android's main thread or in
+the synchronous JavaScript bridge call.
+
+`native_archive_enqueued` and `native_archive_delivered` carry a process-local
+transport request number. `native_archive_response_ready` records status and byte
+count after the full response arrives; `native_archive_failed` records exception
+class only. Existing `request_*` events still describe individual HTTP attempts.
+No addresses or response content enter the diagnostic journal.
+
+There is one native transfer at a time, at most four uncollected requests, and a
+64 MiB decompressed response limit. A page reload discards obsolete results and
+queued reads. HTTP status/body semantics, cookies, redirect restrictions and
+network timeouts remain shared with the native proxy. An extended archive
+cooldown is checked again when a pacing wait wakes; listing responses publish
+429 cooldowns before the next caller receives its turn.

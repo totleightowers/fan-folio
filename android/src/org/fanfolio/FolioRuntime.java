@@ -74,6 +74,13 @@ public class FolioRuntime extends android.content.ContextWrapper {
     private volatile boolean ready;
     private final java.util.concurrent.atomic.AtomicReference<String> pendingCommand = new java.util.concurrent.atomic.AtomicReference<>();
 
+    private final ArchiveRequests archiveRequests = new ArchiveRequests(
+        java.util.concurrent.Executors.newSingleThreadExecutor(), new Runnable() { @Override public void run() {
+            ui.post(new Runnable() { @Override public void run() {
+                if (ready) toPage("window.__pollArchiveRequests && window.__pollArchiveRequests()");
+            }});
+        }});
+
     // Called only on the main thread, by either the service or the Activity.
     static FolioRuntime get(android.content.Context context) {
         if (instance == null) instance = new FolioRuntime(context.getApplicationContext());
@@ -110,6 +117,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap f) {
                 pageTrusted = HOST.equals(Uri.parse(url).getHost());
                 ready = false;
+                archiveRequests.discard();
                 DownloadDiagnostics.event("page_started", "trusted", pageTrusted);
             }
             @Override public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
@@ -1198,6 +1206,52 @@ public class FolioRuntime extends android.content.ContextWrapper {
             return command == null ? "" : command;
         }
 
+        /** Enqueue a read on Android, without waiting for WebView to dispatch fetch(). */
+        @JavascriptInterface
+        public int startArchiveRequest(final String raw) {
+            mustBeOurPage();
+            final URL url;
+            try {
+                url = new URL(raw);
+                if (!"https".equalsIgnoreCase(url.getProtocol()) || !isArchiveHost(url.getHost())
+                        || url.getUserInfo() != null || (url.getPort() != -1 && url.getPort() != 443))
+                    throw new IllegalArgumentException("Not an archive URL");
+            } catch (Exception error) { throw new IllegalArgumentException("Not an archive URL"); }
+            int id = archiveRequests.start(new java.util.concurrent.Callable<String>() {
+                @Override public String call() {
+                    try {
+                        WebResourceResponse response = proxy(url.toString());
+                        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                        try (InputStream in = response.getData()) {
+                            byte[] buffer = new byte[16384];
+                            int n;
+                            while ((n = in.read(buffer)) != -1) {
+                                // Bound a malformed/never-ending response, including decompressed bytes.
+                                if (bytes.size() + n > 64 * 1024 * 1024) throw new IOException("Archive response is too large");
+                                bytes.write(buffer, 0, n);
+                            }
+                        }
+                        DownloadDiagnostics.event("native_archive_response_ready", "status", response.getStatusCode(), "bytes", bytes.size());
+                        return new org.json.JSONObject().put("status", response.getStatusCode())
+                            .put("body", bytes.toString("UTF-8")).toString();
+                    } catch (Exception error) {
+                        DownloadDiagnostics.failure("native_archive_failed", error);
+                        return "{\"status\":502,\"body\":\"The app could not reach the archive\"}";
+                    }
+                }
+            });
+            DownloadDiagnostics.event("native_archive_enqueued", "transportRequest", id);
+            return id;
+        }
+
+        @JavascriptInterface
+        public String takeArchiveResponse(int id) {
+            mustBeOurPage();
+            String result = archiveRequests.take(id);
+            if (!result.isEmpty()) DownloadDiagnostics.event("native_archive_delivered", "transportRequest", id);
+            return result;
+        }
+
         /** Sent only after saved queues are restored, including on a service-only start. */
         @JavascriptInterface
         public void downloadsReady(boolean pending) {
@@ -1220,6 +1274,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
             mustBeOurPage();
             StringBuilder b = new StringBuilder("{");
             b.append("\"hasDatabase\":").append(db != null);
+            b.append(",\"nativeArchiveRequests\":true");
             b.append(",\"search\":").append(hasSearch());
             b.append(",\"signedIn\":").append(isSignedIn());
             b.append(",\"path\":").append(quote(databaseFile().getPath()));

@@ -1730,12 +1730,12 @@ test('everything asked of the archive shares one pace', () => {
   const fn = js.slice(js.indexOf('function paced('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /await turn/, 'turns are taken, not taken simultaneously');
-  assert.match(body, /nextGap\(\) - \(now - lastArchiveAt\)/,
+  assert.match(body, /gap - \(now - lastArchiveAt\)/,
     'measured from the last request anyone made, not from this caller last time');
   assert.match(body, /coolUntil - now/, 'and a cool-off everything honours');
 
   const page = js.slice(js.indexOf('async function archivePage('));
-  assert.match(page.slice(0, page.indexOf('\n}\n')), /paced\(\(\) => fetch\(/,
+  assert.match(page.slice(0, page.indexOf('\n}\n')), /paced\(async \(\) => \{\s*const res = await archiveRequest\(/,
     'index pages go through it');
   assert.match(js, /runTask: \(workId\) => paced\(/, 'and so does every work a job fetches');
 });
@@ -2931,8 +2931,8 @@ test('a tick releases a wait that is owed, and only one that is owed', async () 
      looking at it. */
   let clock = 1_000_000;
   const scope = { window: {} };
-  const untilDue = new Function('setTimeout', 'clearTimeout', 'Date', 'window', 'sampleDownloads', source)(
-    () => 1, () => {}, { now: () => clock }, scope.window, () => {});
+  const untilDue = new Function('setTimeout', 'clearTimeout', 'Date', 'window', 'sampleDownloads', 'pollArchiveRequests', source)(
+    () => 1, () => {}, { now: () => clock }, scope.window, () => {}, () => {});
 
   let done = false;
   const waiting = untilDue(28_000).then(() => { done = true; });

@@ -29,7 +29,7 @@ import { createSwipe } from './core/swipe.js';
 import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, retryImages, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, recordVisit, saveHistory, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
-  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady, downloadDiagnostic, exportDownloadDiagnostics,
+  keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady, archiveRequest, pollArchiveRequests, downloadDiagnostic, exportDownloadDiagnostics,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -4309,6 +4309,7 @@ function untilDue(ms) {
 /** The shell, saying time has passed. Only what is already owed goes. */
 let lastDiagnosticSample = 0;
 window.__tick = () => {
+  pollArchiveRequests();
   const now = Date.now();
   if (now - lastDiagnosticSample >= 60000) { lastDiagnosticSample = now; sampleDownloads(); }
   for (const entry of [...waitingOnTheArchive]) {
@@ -4326,12 +4327,18 @@ function paced(run) {
   archiveTurn = new Promise((r) => { release = r; });
   return (async () => {
     await turn;
-    const now = Date.now();
-    const owed = Math.max(coolUntil - now, nextGap() - (now - lastArchiveAt), 0);
-    if (owed > 0) await untilDue(owed);
-    lastArchiveAt = Date.now();
-    keepPacing();
     try {
+      const gap = nextGap();
+      // Another response may extend the shared cooldown while this turn waits.
+      // Recheck it on waking, including a wake from the native clock.
+      for (;;) {
+        const now = Date.now();
+        const owed = Math.max(coolUntil - now, gap - (now - lastArchiveAt), 0);
+        if (owed <= 0) break;
+        await untilDue(owed);
+      }
+      lastArchiveAt = Date.now();
+      keepPacing();
       return await run();
     } finally {
       release();
@@ -4344,11 +4351,15 @@ async function archivePage(url, { attempts = 4 } = {}) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (attempt) await wait(retryDelay(attempt));
     try {
-      const res = await paced(() => fetch(`/__net/?url=${encodeURIComponent(url)}`));
-      const body = await res.text();
-      if (res.ok) return body;
-      if (res.status === 429) slowDown();
-      failure = new Error(`the archive answered ${res.status}`);
+      const response = await paced(async () => {
+        const res = await archiveRequest(url);
+        const body = await res.text();
+        // Publish a rate-limit cooldown before releasing the next request's turn.
+        if (res.status === 429) slowDown();
+        return { res, body };
+      });
+      if (response.res.ok) return response.body;
+      failure = new Error(`the archive answered ${response.res.status}`);
     } catch (e) {
       failure = e;
     }

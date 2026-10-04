@@ -12,8 +12,8 @@ function clocks() {
   let now = 1000000;
   const window = {};
   const timers = new Map(); let serial = 0;
-  const waits = new Function('setTimeout', 'clearTimeout', 'Date', 'window', 'sampleDownloads', source + `\nreturn { queueWait: ${queueWait}, listingWait: ${listingWait} };`)(
-    fn => { timers.set(++serial, fn); return serial; }, id => timers.delete(id), { now: () => now }, window, () => {});
+  const waits = new Function('setTimeout', 'clearTimeout', 'Date', 'window', 'sampleDownloads', 'pollArchiveRequests', source + `\nreturn { queueWait: ${queueWait}, listingWait: ${listingWait} };`)(
+    fn => { timers.set(++serial, fn); return serial; }, id => timers.delete(id), { now: () => now }, window, () => {}, () => {});
   return { ...waits, tick: ms => { now += ms; return window.__tick(); } };
 }
 
