@@ -204,7 +204,21 @@ class Library {
       if (tables.length != 2) {
         throw const FormatException('This is not a Fan Folio library backup.');
       }
-      final health = await checked.rawQuery('PRAGMA quick_check');
+      var health = await checked.rawQuery('PRAGMA quick_check');
+      // A stale search index is rebuildable. Repair only those recognised
+      // indexes, on the staged copy, then demand a clean integrity result.
+      for (final table in ['chapter_fts', 'work_fts']) {
+        if (health.any(
+          (row) => row.values.contains(
+            'malformed inverted index for FTS4 table main.$table',
+          ),
+        )) {
+          await checked.execute(
+            "INSERT INTO $table($table) VALUES ('rebuild')",
+          );
+        }
+      }
+      health = await checked.rawQuery('PRAGMA quick_check');
       if (health.length != 1 || health.single.values.first != 'ok') {
         throw const FormatException('The library backup is damaged.');
       }

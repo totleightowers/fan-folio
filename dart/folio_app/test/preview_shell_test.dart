@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio_app/downloads.dart';
 import 'package:folio_app/library.dart';
@@ -15,8 +16,16 @@ import 'package:http/testing.dart';
 import 'test_database.dart';
 
 void main() {
-  setUpAll(() {
+  setUpAll(() async {
     prepareTestDatabase();
+    for (final (family, path) in [
+      ('Ahem', 'fonts/AtkinsonHyperlegible-Regular.ttf'),
+      ('Atkinson Hyperlegible', 'fonts/AtkinsonHyperlegible-Regular.ttf'),
+      ('Literata', 'fonts/Literata.ttf'),
+      ('MaterialIcons', 'fonts/MaterialIcons-Regular.otf'),
+    ]) {
+      await (FontLoader(family)..addFont(rootBundle.load(path))).load();
+    }
   });
 
   for (final width in [390.0, 1100.0]) {
@@ -60,6 +69,7 @@ void main() {
           RepaintBoundary(
             key: boundary,
             child: MaterialApp(
+              debugShowCheckedModeBanner: false,
               theme: themeFor(Ground.dark, Brightness.dark),
               home: Shell(initialLibrary: library, initialDownloads: downloads),
             ),
