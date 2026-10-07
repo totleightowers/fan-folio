@@ -686,11 +686,15 @@ class JobQueue {
   /// Bounded to the last forty: a record of recent work, not a log.
   List<SavedJob> save() {
     final keep = _jobs.where((j) => j.state != JobState.cancelled).toList();
-    final finished = keep.where((j) => j.state == JobState.done).toList();
+    final finished = keep
+        .where((j) => j.state == JobState.done && j.unfinished.isEmpty)
+        .toList();
     final recentFinished =
         finished.skip(finished.length > 40 ? finished.length - 40 : 0).toSet();
-    final recent = keep
-        .where((j) => j.state != JobState.done || recentFinished.contains(j));
+    final recent = keep.where((j) =>
+        j.state != JobState.done ||
+        j.unfinished.isNotEmpty ||
+        recentFinished.contains(j));
     return recent.map((j) {
       final settled = j.state == JobState.done;
       return SavedJob(

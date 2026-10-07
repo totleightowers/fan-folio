@@ -197,10 +197,11 @@ class _ReaderScreenState extends State<ReaderScreen>
   void _flushPlace() {
     final place = _pendingPlace;
     _pendingPlace = null;
-    if (place != null)
+    if (place != null) {
       unawaited(
         widget.library.savePlace(widget.work.workId, place.$1, place.$2),
       );
+    }
   }
 
   @override

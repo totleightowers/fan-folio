@@ -258,6 +258,9 @@ class Downloads extends ChangeNotifier {
     try {
       final found = await core.findNewBookmarks(
         fetchPage: (page) async {
+          if (!await _queue.waitUntilRunnable(job)) {
+            throw StateError('Listing stopped');
+          }
           final listing = core.parseListing(
             (await _client.get(Uri.parse(core.bookmarks(who, page)))).body,
           );
@@ -487,6 +490,9 @@ class Downloads extends ChangeNotifier {
       var found = 0;
       await core.walkListing(
         fetchPage: (page) async {
+          if (!await _queue.waitUntilRunnable(job)) {
+            throw StateError('Listing stopped');
+          }
           final listing = core.parseListing(
             (await _client.get(Uri.parse(core.authorWorks(byline, page)))).body,
           );

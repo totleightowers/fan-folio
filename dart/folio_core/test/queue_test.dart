@@ -153,8 +153,11 @@ void main() {
     final job = h.queue.list().single;
     expect(job.added, 1, reason: 'the busy one eventually arrived');
     expect(job.failed, 1, reason: 'and the deleted one did not');
-    expect(job.unfinished, 0,
-        reason: 'a work that is gone is gone; only a timeout is owed');
+    expect(calls, 4,
+        reason: 'three attempts for the transient error, one for the refusal');
+    expect(job.unfinished, 1,
+        reason:
+            'the refusal remains available for an explicit retry, never an automatic one');
     expect(h.queue.isStopped(id), isFalse);
   });
 

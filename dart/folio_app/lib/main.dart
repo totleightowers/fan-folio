@@ -746,20 +746,6 @@ class _Message extends StatelessWidget {
   final String text;
   final Ground ground;
 
-  Future<void> _startEmpty() async {
-    setState(() => _working = true);
-    try {
-      final library = await Library.create();
-      if (mounted) widget.onImported(library);
-    } catch (e) {
-      if (mounted)
-        setState(() {
-          _working = false;
-          _trouble = '$e';
-        });
-    }
-  }
-
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -817,6 +803,21 @@ class _NoLibraryState extends State<_NoLibrary> {
         _working = false;
         _trouble = '$e';
       });
+    }
+  }
+
+  Future<void> _startEmpty() async {
+    setState(() => _working = true);
+    try {
+      final library = await Library.create();
+      if (mounted) widget.onImported(library);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _working = false;
+          _trouble = '$e';
+        });
+      }
     }
   }
 
