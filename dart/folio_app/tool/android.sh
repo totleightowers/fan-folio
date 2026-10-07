@@ -11,7 +11,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-APP_ID="${APP_ID:-org.fanfolio.next}"
+APP_ID="${APP_ID:-org.fanfolio.preview}"
+[ "$APP_ID" = "org.fanfolio.preview" ] || {
+  echo "Flutter previews must use the isolated org.fanfolio.preview package" >&2
+  exit 1
+}
 
 echo "scaffolding android for $APP_ID"
 flutter create --platforms=android --org org.fanfolio --project-name folio_app .
@@ -82,7 +86,7 @@ head -12 "$root"
 # Labelled as what it is, so two Fan Folios on one phone can be told apart.
 manifest=android/app/src/main/AndroidManifest.xml
 if [ "$APP_ID" != "org.fanfolio" ]; then
-  sed -i 's/android:label="[^"]*"/android:label="Fan Folio 2"/' "$manifest"
+  sed -i 's/android:label="[^"]*"/android:label="Fan Folio Preview"/' "$manifest"
 fi
 
 grep -n "applicationId" "$gradle"
@@ -146,3 +150,29 @@ grep -n "INTERNET\|FOREGROUND_SERVICE_DATA_SYNC\|ForegroundService" "$manifest"
 # Said out loud, because the whole point of this is that its absence is silent.
 grep -q 'android.permission.INTERNET' "$manifest" \
   || { echo "no INTERNET permission in the manifest" >&2; exit 1; }
+
+# Release signing is injected from the runner environment, never generated.
+if [ -n "${FOLIO_KEYSTORE:-}" ]; then
+  python3 - "$gradle" <<'PYEOF'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1])
+s = p.read_text()
+if p.suffix != '.kts':
+    raise SystemExit('Release signing requires the Kotlin Gradle scaffold')
+s = s.replace('    buildTypes {', '''
+    signingConfigs {
+        create("preview") {
+            storeFile = file(System.getenv("FOLIO_KEYSTORE"))
+            storePassword = System.getenv("FOLIO_KEYSTORE_PASS")
+            keyAlias = "fanfolio"
+            keyPassword = System.getenv("FOLIO_KEYSTORE_PASS")
+        }
+    }
+    buildTypes {''')
+s = s.replace('signingConfigs.getByName("debug")', 'signingConfigs.getByName("preview")')
+if 'signingConfigs.getByName("preview")' not in s:
+    raise SystemExit('Release signing configuration was not applied')
+p.write_text(s)
+PYEOF
+fi

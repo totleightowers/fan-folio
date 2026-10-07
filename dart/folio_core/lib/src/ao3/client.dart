@@ -211,7 +211,13 @@ class ArchiveClient {
     http.Response response;
     try {
       response = await _http.get(url, headers: {
-        ...headers(),
+        ...headers()
+          ..removeWhere((key, _) =>
+              (key.toLowerCase() == 'cookie' ||
+                  key.toLowerCase() == 'referer') &&
+              !(url.scheme == 'https' &&
+                  (url.host == 'archiveofourown.org' ||
+                      url.host.endsWith('.archiveofourown.org')))),
         if (accept != null) 'Accept': accept,
         'Sec-Fetch-Dest': 'image',
         'Sec-Fetch-Mode': 'no-cors',

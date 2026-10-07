@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart';
@@ -12,6 +14,7 @@ import 'library.dart';
 import 'filter_sheet.dart';
 import 'person_screen.dart';
 import 'reader_screen.dart';
+import 'return_to_story.dart';
 import 'search_screen.dart';
 import 'session.dart';
 import 'settings_screen.dart';
@@ -48,7 +51,10 @@ class FolioApp extends StatelessWidget {
 /// action from either rather than a third place, because "search" is something
 /// you do to a library, not somewhere you go.
 class Shell extends StatefulWidget {
-  const Shell({super.key});
+  const Shell({this.initialLibrary, this.initialDownloads, super.key});
+
+  final Library? initialLibrary;
+  final Downloads? initialDownloads;
 
   @override
   State<Shell> createState() => _ShellState();
@@ -63,6 +69,9 @@ class _ShellState extends State<Shell> {
   bool _loading = true;
   String? _trouble;
   int _tab = 0;
+  WorkRow? _lastStory;
+  int _lastChapter = 1;
+  int _savedCount = 0;
 
   // what the Library tab is currently narrowed to
   Map<String, Object?> _view = const {'sort': 'added'};
@@ -108,14 +117,19 @@ class _ShellState extends State<Shell> {
 
   Future<void> _load() async {
     try {
-      final library = await Library.openExisting();
-      final session = await Session.load();
+      final library = widget.initialLibrary ?? await Library.openExisting();
+      final session = widget.initialDownloads?.session ?? await Session.load();
+      final downloads =
+          widget.initialDownloads ??
+          (library == null
+              ? null
+              : Downloads(library: library, session: session));
+      if (widget.initialDownloads == null) await downloads?.restore();
       if (!mounted) return;
       setState(() {
         _library = library;
-        _downloads = library == null
-            ? null
-            : Downloads(library: library, session: session);
+        _downloads = downloads;
+        _downloads?.addListener(_downloadsChanged);
         _keepWorking = _downloads == null ? null : KeepWorking(_downloads!);
         _loading = false;
       });
@@ -123,8 +137,12 @@ class _ShellState extends State<Shell> {
          holding now. Both are what 1.x did, and both were lost in the port:
          a made-up agent and a snapshot from sign-in is a request that matches
          nothing the archive knows about us. */
-      await _downloads?.useThisDevicesAgent();
-      await _downloads?.refreshCookies();
+      if (widget.initialDownloads == null) {
+        await _downloads?.useThisDevicesAgent();
+        await _downloads?.refreshCookies();
+      }
+      _downloads?.start();
+      await _reloadStory();
     } catch (e) {
       if (!mounted) return;
       // say what actually went wrong; a blank screen teaches nobody anything
@@ -135,24 +153,60 @@ class _ShellState extends State<Shell> {
     }
   }
 
-  void _adopt(Library library) {
+  Future<void> _adopt(Library library) async {
     // whoever was signed in still is: the session is kept beside the library
     // rather than inside it, so importing one does not sign anybody out
     final session = _downloads?.session ?? Session.none;
     _keepWorking?.dispose();
+    _downloads?.removeListener(_downloadsChanged);
+    await _downloads?.flush();
     _downloads?.dispose();
     final downloads = Downloads(library: library, session: session);
+    await downloads.restore();
+    await downloads.useThisDevicesAgent();
+    await downloads.refreshCookies();
+    downloads.addListener(_downloadsChanged);
+    if (!mounted) {
+      downloads.dispose();
+      return;
+    }
     setState(() {
       _library = library;
       _downloads = downloads;
       _keepWorking = KeepWorking(downloads);
       _loading = false;
+      _lastStory = null;
+      _libraryEpoch++;
     });
+    downloads.start();
+    await _reloadStory();
+  }
+
+  Future<void> _reloadStory() async {
+    final library = _library;
+    if (library == null) return;
+    final work = await library.returnToStory();
+    final place = work == null ? null : await library.placeIn(work.workId);
+    if (!mounted || library != _library) return;
+    setState(() {
+      _lastStory = work;
+      _lastChapter = place?.chapter ?? 1;
+    });
+  }
+
+  void _downloadsChanged() {
+    if (!mounted) return;
+    final saved = _downloads?.jobs.fold<int>(0, (n, job) => n + job.added) ?? 0;
+    if (saved == _savedCount) return;
+    _savedCount = saved;
+    unawaited(_home.currentState?.reload());
+    setState(() => _libraryEpoch++);
   }
 
   @override
   void dispose() {
     _keepWorking?.dispose();
+    _downloads?.removeListener(_downloadsChanged);
     _downloads?.dispose();
     super.dispose();
   }
@@ -165,7 +219,8 @@ class _ShellState extends State<Shell> {
   Future<void> _add() async {
     final downloads = _downloads;
     if (downloads == null) return;
-    await showAddByLink(context, downloads);
+    final added = await showAddByLink(context, downloads);
+    if (added && mounted) _goToTab(2);
   }
 
   /// The things that are about the library rather than about a work.
@@ -234,12 +289,14 @@ class _ShellState extends State<Shell> {
   /// What Continue reading is for: a shelf that says "carry on" and then
   /// shows a description is not carrying on. Everything else arrives at the
   /// work's own page first and comes through here afterwards.
-  Future<void> _resume(WorkRow work, {int chapter = 1}) async {
+  Future<void> _resume(WorkRow work, {int? chapter}) async {
     final library = _library;
     if (library == null) return;
+    final full = await library.work(work.workId);
     final chapters = await library.chapters(work.workId);
-    if (!mounted) return;
-    await _read(work, chapters, chapter);
+    final place = await library.placeIn(work.workId);
+    if (!mounted || full == null) return;
+    await _read(full, chapters, chapter ?? place?.chapter ?? 1);
   }
 
   Future<void> _read(
@@ -250,7 +307,7 @@ class _ShellState extends State<Shell> {
     final library = _library;
     if (library == null) return;
     final place = await library.placeIn(work.workId);
-    final at = chapter > 1 ? chapter : (place?.chapter ?? 1);
+    final at = chapter.clamp(1, chapters.isEmpty ? 1 : chapters.last.number);
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -272,6 +329,7 @@ class _ShellState extends State<Shell> {
     if (!mounted) return;
     // reading changes what Home has to say about itself
     await _home.currentState?.reload();
+    await _reloadStory();
   }
 
   /// One person, which a byline had no way of being until now.
@@ -382,8 +440,9 @@ class _ShellState extends State<Shell> {
 
   /// What the bar says it is showing.
   String get _title => switch (_tab) {
-    0 => 'Fan Folio',
-    2 => 'You',
+    0 => 'Home',
+    2 => 'Downloads',
+    3 => 'You',
     _ => _viewTitle,
   };
 
@@ -416,7 +475,20 @@ class _ShellState extends State<Shell> {
   }
 
   Widget _shell(Library library, Ground ground) {
-    return Scaffold(
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+    final destinations = const [
+      NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
+      NavigationDestination(
+        icon: Icon(Icons.menu_book_outlined),
+        label: 'Library',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.download_outlined),
+        label: 'Downloads',
+      ),
+      NavigationDestination(icon: Icon(Icons.person_outline), label: 'You'),
+    ];
+    final page = Scaffold(
       appBar: AppBar(
         title: Text(_title),
         actions: [
@@ -450,7 +522,13 @@ class _ShellState extends State<Shell> {
           ),
         ],
       ),
-      body: _tab == 2
+      body: _tab == 2 && _downloads != null
+          ? ActivityScreen(
+              downloads: _downloads!,
+              embedded: true,
+              onOpen: _openById,
+            )
+          : _tab == 3
           ? YouScreen(
               key: _you,
               library: library,
@@ -477,28 +555,48 @@ class _ShellState extends State<Shell> {
               onHold: _actOn,
               onPerson: _openPerson,
             ),
-      floatingActionButton: _tab == 2
+      floatingActionButton: _tab == 3
           ? null
           : FloatingActionButton(
               onPressed: _add,
               tooltip: 'Add a work',
               child: const Icon(Icons.add),
             ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: _goToTab,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
-          NavigationDestination(
-            icon: Icon(Icons.menu_book_outlined),
-            label: 'Library',
-          ),
-          /* Signing in lived behind a gear, which is where a thing goes when
-             nobody has decided it matters — and it is the gate for half of
-             what this app can do. */
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'You'),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_lastStory != null)
+            ReturnToStory(
+              work: _lastStory!,
+              chapter: _lastChapter,
+              onResume: () => _resume(_lastStory!),
+            ),
+          if (!wide)
+            NavigationBar(
+              selectedIndex: _tab,
+              onDestinationSelected: _goToTab,
+              destinations: destinations,
+            ),
         ],
       ),
+    );
+    if (!wide) return page;
+    return Row(
+      children: [
+        SafeArea(
+          child: NavigationRail(
+            selectedIndex: _tab,
+            labelType: NavigationRailLabelType.all,
+            onDestinationSelected: _goToTab,
+            destinations: [
+              for (final d in destinations)
+                NavigationRailDestination(icon: d.icon, label: Text(d.label)),
+            ],
+          ),
+        ),
+        const VerticalDivider(width: 1),
+        Expanded(child: page),
+      ],
     );
   }
 }
@@ -648,6 +746,20 @@ class _Message extends StatelessWidget {
   final String text;
   final Ground ground;
 
+  Future<void> _startEmpty() async {
+    setState(() => _working = true);
+    try {
+      final library = await Library.create();
+      if (mounted) widget.onImported(library);
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _working = false;
+          _trouble = '$e';
+        });
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Center(
     child: Padding(
@@ -716,7 +828,7 @@ class _NoLibraryState extends State<_NoLibrary> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'No library here yet',
+            'Fan Folio Preview',
             style: TextStyle(
               fontFamily: titleFace,
               fontSize: 22,
@@ -726,9 +838,8 @@ class _NoLibraryState extends State<_NoLibrary> {
           ),
           const SizedBox(height: 10),
           Text(
-            'This build keeps its own library, separate from the one your 1.x '
-            'app has, so nothing you rely on is touched. Back up from there '
-            'and bring the file in here.',
+            'An early Flutter preview with its own library. Your current Fan Folio '
+            'stays installed. Start empty, or bring in a copy of a library backup.',
             textAlign: TextAlign.center,
             style: TextStyle(color: widget.ground.inkMute, height: 1.5),
           ),
@@ -736,6 +847,10 @@ class _NoLibraryState extends State<_NoLibrary> {
           FilledButton(
             onPressed: _working ? null : _bringOneIn,
             child: Text(_working ? 'Bringing it in…' : 'Bring in a backup'),
+          ),
+          TextButton(
+            onPressed: _working ? null : _startEmpty,
+            child: const Text('Start an empty library'),
           ),
           if (_trouble != null) ...[
             const SizedBox(height: 16),

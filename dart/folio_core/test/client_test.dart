@@ -14,10 +14,29 @@ import 'package:test/test.dart';
 /// were written against.
 void main() {
   /// A pacer that keeps its order and its rules but does not actually wait.
-  Pacer instant({List<Duration>? slept}) => Pacer(
-        sleep: (d) async => slept?.add(d),
-        now: () => DateTime(2026),
-      );
+  Pacer instant({List<Duration>? slept}) {
+    var now = DateTime(2026);
+    return Pacer(
+        sleep: (d) async {
+          slept?.add(d);
+          now = now.add(d);
+        },
+        now: () => now);
+  }
+
+  test('an external image never receives archive cookies or the reading URL',
+      () async {
+    final client = ArchiveClient(
+        pacer: instant(),
+        cookies: {'session': 'synthetic'},
+        http_: MockClient((request) async {
+          expect(request.headers.containsKey('cookie'), isFalse);
+          expect(request.headers.containsKey('referer'), isFalse);
+          return http.Response.bytes([1, 2, 3], 200);
+        }));
+    await client.getBytes(Uri.parse('https://images.example.test/fixture.png'));
+    client.close();
+  });
 
   test('everything goes through the one clock, in order', () async {
     final asked = <String>[];

@@ -21,3 +21,7 @@ The next major version is **3**. It is implemented in feature slices, each with 
 v3 uses the same Android package and signing key as v2, so it updates the installed app and retains its data. The first navigation release changes no database schema or stored reading settings. The preserved v2 APK remains available; reinstalling an older APK over a later installation is not a supported downgrade path. Keep a library backup when switching installations.
 
 Commits and tags must be signed with the owner's key. When integrating v3 features, preserve those signed commits; do not squash or use a server-side rebase that rewrites them.
+
+## Flutter v4 previews
+
+The Flutter migration starts at **v4.0.0-alpha.1**. Preview APKs use the isolated `org.fanfolio.preview` package and are GitHub prereleases; v3 stays the stable download. See [the migration audit](flutter-migration.md) for parity gates and [the preview notes](flutter-preview-release.md) for current limits. A v4 tag is handled by the Flutter release workflow, never the WebView-shell release workflow.

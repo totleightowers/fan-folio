@@ -12,7 +12,14 @@ import 'package:test/test.dart';
 /// here is that each sends what the archive's own form asked for and nothing
 /// it did not — and that a form pointing anywhere else is refused.
 void main() {
-  Pacer instant() => Pacer(sleep: (_) async {}, now: () => DateTime(2026));
+  Pacer instant() {
+    var now = DateTime(2026);
+    return Pacer(
+        sleep: (d) async {
+          now = now.add(d);
+        },
+        now: () => now);
+  }
 
   http.Response page(String body, [int status = 200]) => http.Response.bytes(
         utf8.encode(body),

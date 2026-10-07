@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -16,10 +17,16 @@ import 'store.dart';
 /// request every seven seconds while every one of them believed it was making
 /// one every twenty-eight.
 class Downloads extends ChangeNotifier {
-  Downloads({required this.library, Session session = Session.none})
-    : _pacer = core.Pacer(),
-      _session = session {
-    _client = core.ArchiveClient(pacer: _pacer, cookies: session.cookies);
+  Downloads({
+    required this.library,
+    Session session = Session.none,
+    core.ArchiveClient Function(core.Pacer pacer)? clientFactory,
+    core.Pacer Function(Future<void> Function() checkpoint)? pacerFactory,
+  }) : _session = session {
+    _pacer = pacerFactory?.call(_persist) ?? core.Pacer(checkpoint: _persist);
+    _client =
+        clientFactory?.call(_pacer) ??
+        core.ArchiveClient(pacer: _pacer, cookies: session.cookies);
     _downloader = core.Downloader(
       client: _client,
       store: LibraryStore(library.db),
@@ -34,12 +41,84 @@ class Downloads extends ChangeNotifier {
       shouldRetry: core.isTransient,
       retryWait: core.retryDelay,
       verify: _downloader.missing,
+      // Keep failures visible for an explicit retry; don't repeat an entire
+      // failed pass and mix its counters with the original request.
+      maxRounds: 1,
       onEvent: (_, __, jobs) {
         _jobs = jobs;
-        notifyListeners();
+        if (!_restoring) unawaited(_persist().catchError((Object _) {}));
+        if (!_disposed) notifyListeners();
       },
     );
   }
+
+  static const _stateKey = 'flutter.downloads.v1';
+  Future<void> _writes = Future<void>.value();
+  Object? _persistenceError;
+  bool _restoring = false;
+  bool _disposed = false;
+
+  /// Read the queue before starting anything. Authentication and the Android
+  /// service are attached by the shell before start() is called.
+  Future<void> restore() async {
+    final rows = await library.db.rawQuery(
+      'SELECT value FROM meta WHERE key = ?',
+      [_stateKey],
+    );
+    if (rows.isEmpty) return;
+    final data =
+        jsonDecode(rows.single['value']! as String) as Map<String, dynamic>;
+    _restoring = true;
+    try {
+      _pacer.restore(Map<String, Object?>.from(data['pacer'] as Map));
+      for (final job in data['jobs'] as List) {
+        _queue.restore(
+          core.SavedJob.fromJson(Map<String, Object?>.from(job as Map)),
+          start: false,
+        );
+      }
+    } finally {
+      _restoring = false;
+    }
+  }
+
+  void start() {
+    _queue.startRestored();
+    notifyListeners();
+  }
+
+  /// Snapshots are immutable and writes stay in event order. A request waits
+  /// for its snapshot, so a failed disk write cannot silently lose the queue.
+  Future<void> _persist() {
+    if (_restoring || _disposed) return Future<void>.value();
+    final value = jsonEncode({
+      'pacer': _pacer.save(),
+      'jobs': [for (final job in _queue.save()) job.toJson()],
+    });
+    final next = _writes.then((_) async {
+      await library.db.rawInsert(
+        'INSERT INTO meta (key, value) VALUES (?, ?) '
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+        [_stateKey, value],
+      );
+      _persistenceError = null;
+    });
+    _writes = next.catchError((Object error) {
+      _persistenceError = error;
+    });
+    return next;
+  }
+
+  Future<void> flush() async {
+    await _writes;
+    if (_persistenceError != null) {
+      throw StateError('Downloads could not be saved. Check device storage.');
+    }
+  }
+
+  String? get storageProblem => _persistenceError == null
+      ? null
+      : 'Downloads could not be saved. Check device storage before continuing.';
 
   /// Fetch a work, and then the pictures in it.
   ///
@@ -49,6 +128,8 @@ class Downloads extends ChangeNotifier {
   /// everything else — a work with forty inline pictures is forty requests,
   /// and they are somebody else's bandwidth as much as the archive's.
   Future<void> _fetch(String workId) async {
+    await flush();
+    if (_disposed) return;
     await _downloader.run(workId);
     try {
       final chapters = await library.db.rawQuery(
@@ -70,7 +151,7 @@ class Downloads extends ChangeNotifier {
   }
 
   final Library library;
-  final core.Pacer _pacer;
+  late final core.Pacer _pacer;
   late final core.ArchiveClient _client;
   late final core.Downloader _downloader;
   late final core.Pictures _pictures;
@@ -141,7 +222,13 @@ class Downloads extends ChangeNotifier {
       );
     }
     await LibraryStore(library.db).allow(workId);
-    return _queue.add(author: 'Added by link', part: workId, workIds: [workId]);
+    final id = _queue.add(
+      author: 'Added by link',
+      part: workId,
+      workIds: [workId],
+    );
+    await flush();
+    return id;
   }
 
   /// Walk your bookmarks, queue what is not here, and reconcile the rest.
@@ -272,7 +359,9 @@ class Downloads extends ChangeNotifier {
   /// three of these, not all sixty.
   Future<int> addWorks(String label, List<String> workIds) async {
     await _remember();
-    return _queue.add(author: label, part: 'picked', workIds: workIds);
+    final id = _queue.add(author: label, part: 'picked', workIds: workIds);
+    await flush();
+    return id;
   }
 
   /// Walk one person's pages and write down what they describe.
@@ -544,6 +633,10 @@ class Downloads extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    for (final job in _jobs.toList()) {
+      _queue.stop(job.id);
+    }
     _client.close();
     super.dispose();
   }

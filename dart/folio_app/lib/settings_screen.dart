@@ -152,11 +152,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: Icon(Icons.folder_open, color: ground.inkMid),
             title: const Text('Bring in a backup'),
             subtitle: Text(
-              'From this app or from 1.x. What is here now is set aside, '
-              'not deleted.',
+              'Import is available when starting a fresh preview library. '
+              'Replacing an existing library is coming in a later preview.',
               style: TextStyle(fontSize: 12.5, color: ground.inkMute),
             ),
-            enabled: !_working,
+            enabled: false,
             onTap: _bringOneIn,
           ),
           if (_working)

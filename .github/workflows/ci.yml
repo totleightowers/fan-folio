@@ -119,6 +119,15 @@ jobs:
           ./tool/android.sh
           flutter build apk --debug
 
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: flutter-preview
+          path: |
+            dart/folio_app/build/app/outputs/flutter-apk/app-debug.apk
+            dart/folio_app/preview-screenshots/
+          if-no-files-found: ignore
+
   lint:
     name: Static analysis
     runs-on: ubuntu-latest

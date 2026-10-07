@@ -1,7 +1,7 @@
 name: folio_app
-description: Fan Folio 2 — your saved fiction, offline and searchable.
+description: Fan Folio Preview — Flutter migration.
 publish_to: none
-version: 2.0.0
+version: 4.0.0-alpha.1
 
 environment:
   sdk: ^3.5.0
@@ -41,6 +41,7 @@ dependencies:
   flutter_foreground_task: ^11.0.0
 
 dev_dependencies:
+  http: ^1.2.0
   flutter_test:
     sdk: flutter
   # sqflite on a machine with no phone attached, so backing a library up and

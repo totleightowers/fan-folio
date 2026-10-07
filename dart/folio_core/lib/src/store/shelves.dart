@@ -39,7 +39,8 @@ class Shelf {
 SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
        w.complete, w.rating, w.has_text, w.skin_css,
        r.chapter AS at_chapter, r.chapters_read, r.marked_later,
-       (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
+       (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
+       (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
 FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
 WHERE $shownWhere ORDER BY $order LIMIT $limit''';
 

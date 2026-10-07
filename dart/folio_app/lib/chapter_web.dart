@@ -1,4 +1,6 @@
 import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -43,11 +45,15 @@ class SkinnedChapterView extends StatefulWidget {
     required this.skinCss,
     required this.settings,
     this.pictures = const {},
+    this.startOffset = 0,
+    this.onScrolled,
     required this.plainly,
     super.key,
   });
 
   final String chapterHtml;
+  final double startOffset;
+  final void Function(ScrollMetrics)? onScrolled;
 
   /// The pictures this work carries, by the address its markup points at.
   final Map<String, ({String mime, Uint8List bytes})> pictures;
@@ -153,6 +159,71 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   /// work, but the words are more of it, and a reader staring at nothing has
   /// no way to know whether the chapter is empty or the engine gave up.
   bool _plainly = false;
+  double _offset = 0;
+  bool _restoring = true;
+  static Future<String>? _fonts;
+
+  static Future<String> _fontCss() async {
+    final css = StringBuffer();
+    for (final (family, file, weight, style) in [
+      ('Literata', 'Literata.ttf', '100 900', 'normal'),
+      (
+        'Atkinson Hyperlegible',
+        'AtkinsonHyperlegible-Regular.ttf',
+        '400',
+        'normal',
+      ),
+      (
+        'Atkinson Hyperlegible',
+        'AtkinsonHyperlegible-Italic.ttf',
+        '400',
+        'italic',
+      ),
+      (
+        'Atkinson Hyperlegible',
+        'AtkinsonHyperlegible-Bold.ttf',
+        '700',
+        'normal',
+      ),
+      (
+        'Atkinson Hyperlegible',
+        'AtkinsonHyperlegible-BoldItalic.ttf',
+        '700',
+        'italic',
+      ),
+    ]) {
+      final bytes = await rootBundle.load('fonts/$file');
+      final data = base64Encode(
+        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+      );
+      css.writeln(
+        "@font-face { font-family: '$family'; font-weight: $weight; font-style: $style; src: url(data:font/ttf;base64,$data); }",
+      );
+    }
+    return css.toString();
+  }
+
+  Future<void> _report(
+    InAppWebViewController controller,
+    int y,
+    double viewport,
+    double density,
+  ) async {
+    if (_restoring) return;
+    _offset = y / density;
+    final height = await controller.getContentHeight();
+    if (!mounted || height == null) return;
+    widget.onScrolled?.call(
+      FixedScrollMetrics(
+        minScrollExtent: 0,
+        maxScrollExtent: math.max(0, height - viewport),
+        pixels: _offset,
+        viewportDimension: viewport,
+        axisDirection: AxisDirection.down,
+        devicePixelRatio: density,
+      ),
+    );
+  }
 
   /// Did anything actually come out?
   ///
@@ -181,6 +252,7 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   @override
   void initState() {
     super.initState();
+    _offset = widget.startOffset;
     _prepare();
   }
 
@@ -200,9 +272,13 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
   Future<void> _prepare() async {
     try {
       final archiveCss = await rootBundle.loadString('assets/ao3-work.css');
-      final page = _page(archiveCss);
+      final fonts = await (_fonts ??= _fontCss());
+      final page = _page('$archiveCss\n$fonts');
       if (!mounted) return;
-      setState(() => _document = page);
+      setState(() {
+        _restoring = true;
+        _document = page;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() => _trouble = '$e');
@@ -224,6 +300,7 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
     return '''
 <!doctype html>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>$archiveCss</style>
 <style>
@@ -236,10 +313,11 @@ class _SkinnedChapterViewState extends State<SkinnedChapterView> {
     font-size: ${s.size}px;
     font-weight: ${s.weight};
     line-height: ${s.lineHeight};
-    padding: ${s.margin}px;
+    padding: 0;
     text-align: ${s.justified ? 'justify' : 'start'};
     overflow-x: clip;
   }
+  body { padding: ${s.margin}px; }
   #workskin img, img { max-width: 100%; height: auto; }
   a { color: ${hex(ground.accent)}; }
 </style>
@@ -265,36 +343,56 @@ ${withPictures(widget.chapterHtml, widget.pictures)}
     if (document == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return InAppWebView(
-      initialData: InAppWebViewInitialData(
-        data: document,
-        baseUrl: WebUri('https://archiveofourown.org/'),
-        mimeType: 'text/html',
-        encoding: 'utf-8',
-      ),
-      initialSettings: InAppWebViewSettings(
-        /* Off. This is a stranger's markup rendered next to somebody's
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final density = Theme.of(context).platform == TargetPlatform.android
+            ? MediaQuery.devicePixelRatioOf(context)
+            : 1.0;
+        return InAppWebView(
+          key: ValueKey(document),
+          initialData: InAppWebViewInitialData(
+            data: document,
+            baseUrl: WebUri('https://archiveofourown.org/'),
+            mimeType: 'text/html',
+            encoding: 'utf-8',
+          ),
+          initialSettings: InAppWebViewSettings(
+            /* Off. This is a stranger's markup rendered next to somebody's
            library, and nothing in a work has any business running. */
-        javaScriptEnabled: false,
-        /* And it reaches nothing. The chapter, the archive's stylesheet and
+            javaScriptEnabled: false,
+            useShouldOverrideUrlLoading: true,
+            /* And it reaches nothing. The chapter, the archive's stylesheet and
            the work's own skin are all handed over as text; anything else a
            skin names — a background, a webfont, a hotlinked picture — sits on
            somebody else's server, and fetching it says when and where this
            work was read to a host the reader never chose. An offline reader
            that quietly phones out is not one. */
-        blockNetworkLoads: true,
-        blockNetworkImage: true,
-        /* Painted rather than transparent. A transparent webview that has
+            blockNetworkLoads: true,
+            allowFileAccess: false,
+            allowContentAccess: false,
+            blockNetworkImage: true,
+            /* Painted rather than transparent. A transparent webview that has
            failed to render looks exactly like the page behind it, which is
            how a broken chapter reads as an empty one. */
-        transparentBackground: false,
-        supportZoom: false,
-        disableHorizontalScroll: true,
-      ),
-      onReceivedError: (_, __, error) => _wentWrong(error.description),
-      onReceivedHttpError: (_, __, response) =>
-          _wentWrong('the page answered ${response.statusCode}'),
-      onLoadStop: (controller, _) => _didItPaint(controller),
+            transparentBackground: false,
+            supportZoom: false,
+            disableHorizontalScroll: true,
+          ),
+          onReceivedError: (_, __, error) => _wentWrong(error.description),
+          onReceivedHttpError: (_, __, response) =>
+              _wentWrong('the page answered ${response.statusCode}'),
+          shouldOverrideUrlLoading: (_, action) async =>
+              NavigationActionPolicy.CANCEL,
+          onScrollChanged: (controller, _, y) =>
+              _report(controller, y, constraints.maxHeight, density),
+          onLoadStop: (controller, _) async {
+            await _didItPaint(controller);
+            if (!mounted) return;
+            await controller.scrollTo(x: 0, y: (_offset * density).round());
+            _restoring = false;
+          },
+        );
+      },
     );
   }
 }

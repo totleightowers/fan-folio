@@ -52,17 +52,17 @@ class Ground {
   /// Warm neutrals hold their warmth in the dark: a grey inversion of a paper
   /// app reads as a different, colder product wearing the same layout.
   static const Ground dark = Ground(
-    paper: Color(0xFF1A1C1E),
-    surface: Color(0xFF212426),
-    sunken: Color(0xFF171A1C),
-    line: Color(0xFF2E3134),
-    lineSoft: Color(0xFF26292B),
+    paper: Color(0xFF151E1B),
+    surface: Color(0xFF1E2925),
+    sunken: Color(0xFF101915),
+    line: Color(0xFF394B42),
+    lineSoft: Color(0xFF2B3B33),
     ink: Color(0xFFDCD9D4),
     inkMid: Color(0xFFB5B0A9),
     inkMute: Color(0xFF948E86),
     inkFaint: Color(0xFF6F6A64),
-    accent: Color(0xFFD98A72),
-    onAccent: Color(0xFF241512),
+    accent: Color(0xFFB6CFB4),
+    onAccent: Color(0xFF152018),
   );
 
   /// Paper, for people who read on it. Not a filter over the light theme —
@@ -96,8 +96,8 @@ class Ground {
     inkMid: Color(0xFFA5A09A),
     inkMute: Color(0xFF847F79),
     inkFaint: Color(0xFF615D58),
-    accent: Color(0xFFD98A72),
-    onAccent: Color(0xFF241512),
+    accent: Color(0xFFB6CFB4),
+    onAccent: Color(0xFF152018),
   );
 }
 

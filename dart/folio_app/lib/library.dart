@@ -20,6 +20,7 @@ class WorkRow {
     this.hasText = false,
     this.skinCss,
     this.rating,
+    this.relationship,
     this.language,
     this.complete,
     this.published,
@@ -46,6 +47,7 @@ class WorkRow {
        them and a work's own page does, so both read the same class and the
        page asks the wider question. */
     rating: row['rating'] as String?,
+    relationship: row['relationship'] as String?,
     language: row['language'] as String?,
     complete: row.containsKey('complete') && row['complete'] != null
         ? row['complete'] == 1
@@ -71,6 +73,7 @@ class WorkRow {
   final String? skinCss;
 
   final String? rating;
+  final String? relationship;
   final String? language;
 
   /// Null when nobody asked. A work whose completeness is unknown is not a
@@ -90,6 +93,8 @@ class WorkRow {
 
   /// The line under a card: what it is, how long, and whether it is here.
   String get facts => [
+    if (rating != null) rating!,
+    if (relationship != null) relationship!,
     if (fandom != null) fandom!,
     if (words != null) '${_thousands(words!)} words',
     if (chapterCount != null && chapterCount! > 1) '$chapterCount chapters',
@@ -316,8 +321,27 @@ class Library {
     );
   }
 
+  /// The last readable work, including rereads. Presence is checked against
+  /// chapters, so imported copies with old has_text flags still qualify.
+  Future<WorkRow?> returnToStory() async {
+    final rows = await db.rawQuery("""
+      SELECT w.work_id FROM works w JOIN reading r ON r.work_id = w.work_id
+      WHERE COALESCE(w.hidden, 0) = 0 AND r.opened_at IS NOT NULL
+        AND EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id
+                    AND length(COALESCE(c.html, '')) > 0)
+      ORDER BY r.opened_at DESC, r.updated_at DESC, w.work_id LIMIT 1
+    """);
+    return rows.isEmpty ? null : work('${rows.first['work_id']}');
+  }
+
   /// Opened, without saying where — a peek must not move the bookmark.
-  Future<void> opened(String workId) => markOpened(_Runner(db), workId);
+  Future<void> opened(String workId) async {
+    await db.rawInsert(
+      "INSERT INTO reading (work_id, opened_at) VALUES (?, strftime('%Y-%m-%d %H:%M:%f','now')) "
+      'ON CONFLICT(work_id) DO UPDATE SET opened_at = excluded.opened_at',
+      [workId],
+    );
+  }
 
   /// Where in the work, and how far down the page.
   Future<void> savePlace(String workId, int chapter, double offset) =>

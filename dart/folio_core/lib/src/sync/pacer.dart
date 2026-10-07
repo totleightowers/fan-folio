@@ -42,10 +42,27 @@ class Pacer {
     math.Random? random,
     Future<void> Function(Duration)? sleep,
     DateTime Function()? now,
+    this.checkpoint,
   })  : _gap = gap,
         _random = random ?? math.Random(),
         _sleep = sleep ?? ((d) => Future<void>.delayed(d)),
         _now = now ?? DateTime.now;
+
+  /// Persist pacing before another request may leave the process.
+  final Future<void> Function()? checkpoint;
+
+  Map<String, Object?> save() => {
+        'lastAt': _lastAt?.millisecondsSinceEpoch,
+        'coolUntil': _coolUntil?.millisecondsSinceEpoch,
+      };
+
+  void restore(Map<String, Object?> saved) {
+    DateTime? stamp(String key) => saved[key] is num
+        ? DateTime.fromMillisecondsSinceEpoch((saved[key] as num).toInt())
+        : null;
+    _lastAt = stamp('lastAt');
+    _coolUntil = stamp('coolUntil');
+  }
 
   final Duration _gap;
   final math.Random _random;
@@ -75,12 +92,26 @@ class Pacer {
     return (() async {
       await mine;
       try {
-        final owed = _owed();
-        if (owed > Duration.zero) await _sleep(owed);
+        // Draw the gap once. Recheck a cooldown extended while asleep.
+        final due = _now().add(_owed());
+        for (;;) {
+          final until = _coolUntil != null && _coolUntil!.isAfter(due)
+              ? _coolUntil!
+              : due;
+          final owed = until.difference(_now());
+          if (owed <= Duration.zero) break;
+          await _sleep(owed);
+        }
         _lastAt = _now();
+        await checkpoint?.call();
         return await task();
       } finally {
-        completer.complete();
+        try {
+          // A 429 is durable before the next waiting caller is released.
+          await checkpoint?.call();
+        } finally {
+          completer.complete();
+        }
       }
     })();
   }

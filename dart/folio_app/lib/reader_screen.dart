@@ -46,7 +46,8 @@ class ReaderScreen extends StatefulWidget {
   State<ReaderScreen> createState() => _ReaderScreenState();
 }
 
-class _ReaderScreenState extends State<ReaderScreen> {
+class _ReaderScreenState extends State<ReaderScreen>
+    with WidgetsBindingObserver {
   late int _chapter = widget.startAt;
 
   /// Which way the last turn went, so the new chapter comes in from the side
@@ -80,6 +81,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _openedAt = widget.startOffset;
     // Opening a work is what puts it on the Continue reading shelf, and
     // nothing else records it: a work opened and read without scrolling would
@@ -91,6 +93,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _flushPlace();
     _settling?.cancel();
     _prefsSettling?.cancel();
     // a setting changed and then left behind by closing the reader is still a
@@ -162,6 +166,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Turn to a chapter. The place moves with it, from the top.
   void _turn(int to) {
     if (to < 1 || to > _total) return;
+    _settling?.cancel();
+    _pendingPlace = null;
     setState(() {
       _forwards = to > _chapter;
       _chapter = to;
@@ -186,6 +192,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
     _turn(sideways < 0 ? _chapter + 1 : _chapter - 1);
   }
 
+  (int, double)? _pendingPlace;
+
+  void _flushPlace() {
+    final place = _pendingPlace;
+    _pendingPlace = null;
+    if (place != null)
+      unawaited(
+        widget.library.savePlace(widget.work.workId, place.$1, place.$2),
+      );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _flushPlace();
+      _savePrefs();
+    }
+  }
+
   /// Where the reader has got to in the chapter on screen.
   ///
   /// Remembered after the scrolling stops, not during it: writing on every
@@ -195,6 +220,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final span = at.maxScrollExtent;
     _through.value = span <= 0 ? 1 : (at.pixels / span).clamp(0, 1);
 
+    _pendingPlace = (chapter, at.pixels);
     _settling?.cancel();
     _settling = Timer(
       const Duration(milliseconds: 400),
@@ -204,6 +230,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   Future<void> _settle(int chapter, ScrollMetrics at) async {
     if (!mounted) return;
+    _pendingPlace = null;
     await widget.library.savePlace(widget.work.workId, chapter, at.pixels);
 
     /* Reaching the end is a real event with a real write behind it. The rule
@@ -517,25 +544,24 @@ class _ChapterPageState extends State<_ChapterPage> {
         );
       }
 
-      /* The skin is the work: a chat fic, a letter in another hand. There is
-         no being faithful to that without a cascade, so those chapters go to
-         the engine the archive renders them with. */
-      if (core.needsWebView(skinCss: widget.work.skinCss)) {
-        return SkinnedChapterView(
-          chapterHtml: html,
-          skinCss: widget.work.skinCss,
-          pictures: widget.pictures,
-          settings: ReadingChrome.from(
-            widget.prefs,
-            ground: widget.ground,
-            dark: widget.dark,
-          ),
-          plainly: (why) => _plain(html, why),
-        );
-      }
-
-      WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
-      return _plain(html, null);
+      // Every work keeps its HTML/CSS. The native view is a recovery path
+      // if the embedded browser cannot render the saved chapter.
+      return SkinnedChapterView(
+        chapterHtml: html,
+        skinCss: widget.work.skinCss,
+        pictures: widget.pictures,
+        startOffset: widget.startOffset,
+        onScrolled: widget.onScrolled,
+        settings: ReadingChrome.from(
+          widget.prefs,
+          ground: widget.ground,
+          dark: widget.dark,
+        ),
+        plainly: (why) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _restore());
+          return _plain(html, why);
+        },
+      );
     },
   );
 

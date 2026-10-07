@@ -14,7 +14,14 @@ import 'package:test/test.dart';
 /// down rather than retried for ever, and that nothing decides where a
 /// request goes except the work itself.
 void main() {
-  Pacer instant() => Pacer(sleep: (_) async {}, now: () => DateTime(2026));
+  Pacer instant() {
+    var now = DateTime(2026);
+    return Pacer(
+        sleep: (d) async {
+          now = now.add(d);
+        },
+        now: () => now);
+  }
 
   /// A one-pixel GIF, which is a real image and small enough to write down.
   final aPicture = base64Decode(

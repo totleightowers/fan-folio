@@ -38,7 +38,14 @@ void main() {
   final workHtml =
       File('../../test/fixtures/work-page.html').readAsStringSync();
 
-  Pacer instant() => Pacer(sleep: (_) async {}, now: () => DateTime(2026));
+  Pacer instant() {
+    var now = DateTime(2026);
+    return Pacer(
+        sleep: (d) async {
+          now = now.add(d);
+        },
+        now: () => now);
+  }
 
   /// A page as the archive actually sends one: bytes, and a charset.
   http.Response html(String body, int status) => http.Response.bytes(

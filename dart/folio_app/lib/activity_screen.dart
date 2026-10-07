@@ -11,7 +11,14 @@ import 'theme.dart';
 /// keep the app open. So the queue is visible, and pausable, and says why it
 /// is waiting when it is waiting rather than working.
 class ActivityScreen extends StatelessWidget {
-  const ActivityScreen({required this.downloads, super.key});
+  const ActivityScreen({
+    required this.downloads,
+    this.embedded = false,
+    this.onOpen,
+    super.key,
+  });
+  final bool embedded;
+  final void Function(String workId)? onOpen;
 
   final Downloads downloads;
 
@@ -20,7 +27,7 @@ class ActivityScreen extends StatelessWidget {
     final ground = groundOf(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Activity')),
+      appBar: embedded ? null : AppBar(title: const Text('Downloads')),
       body: ListenableBuilder(
         listenable: downloads,
         builder: (context, _) {
@@ -30,6 +37,11 @@ class ActivityScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
+              if (downloads.storageProblem != null)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(downloads.storageProblem!),
+                ),
               if (cooling != null) _Cooling(until: cooling, ground: ground),
               if (jobs.isEmpty)
                 Padding(
@@ -41,8 +53,20 @@ class ActivityScreen extends StatelessWidget {
                     style: TextStyle(color: ground.inkMute, height: 1.5),
                   ),
                 ),
-              for (final job in jobs)
+              for (final job in jobs) ...[
                 _JobTile(job: job, downloads: downloads, ground: ground),
+                if (onOpen != null &&
+                    job.author == 'Added by link' &&
+                    job.added > 0)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextButton.icon(
+                      onPressed: () => onOpen!(job.part),
+                      icon: const Icon(Icons.menu_book_outlined),
+                      label: const Text('Open work'),
+                    ),
+                  ),
+              ],
             ],
           );
         },

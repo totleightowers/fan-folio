@@ -96,6 +96,7 @@ class _Job {
 
   JobState state = JobState.queued;
   int done = 0;
+  int completedBefore = 0;
   int added = 0;
   int failed = 0;
   int attempt = 0;
@@ -115,8 +116,8 @@ class _Job {
         author: author,
         part: part,
         state: state,
-        total: workIds.isNotEmpty ? workIds.length : wasTotal,
-        done: done,
+        total: workIds.isNotEmpty ? completedBefore + workIds.length : wasTotal,
+        done: completedBefore + done,
         added: added,
         failed: failed,
         open: open,
@@ -527,7 +528,7 @@ class JobQueue {
          */
         job.failed += 1;
         job.lastError = '$e';
-        if (shouldRetry('$e')) job.unfinished.add(job.workIds[job.done]);
+        job.unfinished.add(job.workIds[job.done]);
         job.attempt = 0;
         job.retrying = null;
       }
@@ -574,6 +575,7 @@ class JobQueue {
     if (owed.isNotEmpty && job.rounds < maxRounds) {
       job.workIds = owed;
       job.done = 0;
+      job.completedBefore = 0;
       job.unfinished = [];
       job.state = JobState.queued;
       _announce('again', job);
@@ -583,7 +585,7 @@ class JobQueue {
 
     /* Out of rounds with work still missing: owed, not delivered, so it is
        kept and saved rather than quietly counted as done. */
-    if (owed.isNotEmpty) job.unfinished = owed;
+    if (owed.isNotEmpty) job.unfinished = {...job.unfinished, ...owed}.toList();
     job.state = JobState.done;
     _announce('finished', job);
     _pump();
@@ -599,6 +601,7 @@ class JobQueue {
     if (again.isEmpty) return false;
     job.workIds = [...again];
     job.done = 0;
+    job.completedBefore = 0;
     job.added = 0;
     job.failed = 0;
     job.unfinished = [];
@@ -617,7 +620,7 @@ class JobQueue {
   /// job that had finished came back as nothing at all. This restores the
   /// record — what was asked for and how it went — and only the ones with work
   /// left are handed to the runner.
-  int restore(SavedJob saved) {
+  int restore(SavedJob saved, {bool start = true}) {
     final owed = [...saved.workIds];
     final job = _Job(
       id: _nextId++,
@@ -630,6 +633,8 @@ class JobQueue {
       // list it may have finished with
       wasTotal: saved.total != 0 ? saved.total : owed.length,
     )
+      ..completedBefore =
+          saved.total > owed.length ? saved.total - owed.length : 0
       ..added = saved.added
       ..failed = saved.failed
       ..page = saved.page
@@ -637,19 +642,34 @@ class JobQueue {
       ..rounds = saved.rounds
       ..lastError = saved.lastError
       ..say = saved.say
-      ..unfinished = saved.state == JobState.done ? [...saved.unfinished] : []
-      ..state = saved.state == JobState.done ? JobState.done : JobState.queued;
+      ..unfinished = [...saved.unfinished]
+      ..done = saved.state == JobState.done ? owed.length : 0
+      ..state = switch (saved.state) {
+        JobState.done => JobState.done,
+        JobState.cancelled => JobState.cancelled,
+        JobState.paused || JobState.pausing => JobState.paused,
+        _ => saved.open ? JobState.paused : JobState.queued,
+      };
+    if (saved.open && job.state != JobState.cancelled) {
+      // The listing producer is not alive after a process restart.
+      job.open = false;
+      job.say =
+          'Listing interrupted. Resume known works; add the author again to finish the list.';
+    }
 
     /* Anything owed by a job that had not finished goes back to waiting; a
        finished one stays finished, with what it never got still named. */
-    if (job.state != JobState.done && job.workIds.isEmpty) {
+    if (job.state == JobState.queued && job.workIds.isEmpty) {
       job.state = job.open ? JobState.listing : JobState.done;
     }
     _jobs.add(job);
     _announce('restored', job);
-    if (job.state == JobState.queued) _pump();
+    if (start && job.state == JobState.queued) _pump();
     return job.id;
   }
+
+  /// Start only after all saved jobs and the shared pacer have been restored.
+  void startRestored() => _pump();
 
   /// The jobs themselves, not a summary of them.
   ///
@@ -666,18 +686,22 @@ class JobQueue {
   /// Bounded to the last forty: a record of recent work, not a log.
   List<SavedJob> save() {
     final keep = _jobs.where((j) => j.state != JobState.cancelled).toList();
-    final recent = keep.length > 40 ? keep.sublist(keep.length - 40) : keep;
+    final finished = keep.where((j) => j.state == JobState.done).toList();
+    final recentFinished =
+        finished.skip(finished.length > 40 ? finished.length - 40 : 0).toSet();
+    final recent = keep
+        .where((j) => j.state != JobState.done || recentFinished.contains(j));
     return recent.map((j) {
       final settled = j.state == JobState.done;
       return SavedJob(
         author: j.author,
         part: j.part,
         state: j.state,
-        workIds: settled
-            ? [...j.unfinished]
-            : [...j.workIds.skip(j.done), ...j.unfinished],
+        workIds: settled ? [...j.unfinished] : [...j.workIds.skip(j.done)],
         unfinished: [...j.unfinished],
-        total: j.workIds.isNotEmpty ? j.workIds.length : j.wasTotal,
+        total: j.workIds.isNotEmpty
+            ? j.completedBefore + j.workIds.length
+            : j.wasTotal,
         added: j.added,
         failed: j.failed,
         open: j.open,
