@@ -50,7 +50,8 @@ void main() {
     expect(
       downloads.busy,
       isFalse,
-      reason: 'synthetic download did not settle',
+      reason:
+          'synthetic download did not settle: ${downloads.jobs.map((j) => j.retrying ?? j.lastError).join('; ')}',
     );
     await downloads.flush();
   }
@@ -69,6 +70,11 @@ void main() {
       });
       await downloads.addByLink('https://archiveofourown.org/works/58374928');
       await finished(downloads);
+      expect(
+        downloads.jobs.single.failed,
+        0,
+        reason: downloads.jobs.single.lastError,
+      );
       final works = await library.works();
       expect(works.single.workId, '58374928');
       expect(works.single.hasText, isTrue);
@@ -120,7 +126,11 @@ void main() {
     final downloads = engine((_) async {
       calls++;
       expect(clock.isBefore(until), isFalse);
-      return http.Response(fixture, 200);
+      return http.Response.bytes(
+        utf8.encode(fixture),
+        200,
+        headers: {'content-type': 'text/html; charset=utf-8'},
+      );
     });
     await downloads.restore();
     downloads.start();

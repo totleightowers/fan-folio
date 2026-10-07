@@ -27,3 +27,5 @@ cookies.txt
 # anybody here, and a kept copy drifts from what the installed Flutter wants.
 dart/folio_app/android/
 dart/folio_app/build/
+
+dart/folio_app/preview-screenshots/

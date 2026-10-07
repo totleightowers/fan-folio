@@ -357,6 +357,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     final system = MediaQuery.platformBrightnessOf(context);
     final brightness = brightnessOf(_prefs.theme, system);
     final ground = readingGround(_prefs.theme, system);
+    final displayedChapter = _chapter;
     final dark = brightness == Brightness.dark;
 
     return Theme(
@@ -443,7 +444,7 @@ class _ReaderScreenState extends State<ReaderScreen>
               startOffset: _chapter == widget.startAt ? widget.startOffset : 0,
               pictures: _pictures,
               onFetchPicture: widget.downloads == null ? null : _fetchPicture,
-              onScrolled: (at) => _scrolled(_chapter, at),
+              onScrolled: (at) => _scrolled(displayedChapter, at),
             ),
           ),
         ),
