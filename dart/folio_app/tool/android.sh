@@ -109,6 +109,14 @@ import sys
 
 path = sys.argv[1]
 xml = open(path).read()
+# Apply the same deliberate-export policy as the stable app. In particular,
+# the private session file must not enter Android cloud or device backups.
+xml = re.sub(r'android:allowBackup="[^"]*"', 'android:allowBackup="false"', xml)
+if 'android:allowBackup=' not in xml:
+    xml = xml.replace('    <application', '    <application android:allowBackup="false"', 1)
+if 'android:dataExtractionRules=' not in xml:
+    xml = xml.replace('    <application', '    <application android:dataExtractionRules="@xml/data_extraction_rules"', 1)
+
 
 # Reaching the archive at all.
 #
@@ -156,6 +164,8 @@ cp -r ../../android/res/mipmap-* android/app/src/main/res/
 mkdir -p android/app/src/main/res/drawable android/app/src/main/res/values
 cp ../../android/res/drawable/ic_launcher_foreground.xml android/app/src/main/res/drawable/
 cp ../../android/res/values/ic_launcher_background.xml android/app/src/main/res/values/
+mkdir -p android/app/src/main/res/xml
+cp ../../android/res/xml/data_extraction_rules.xml android/app/src/main/res/xml/
 
 # Release signing is injected from the runner environment, never generated.
 if [ -n "${FOLIO_KEYSTORE:-}" ]; then

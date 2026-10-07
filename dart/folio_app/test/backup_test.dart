@@ -254,7 +254,14 @@ void main() {
     if (now.existsSync()) {
       expect(now.readAsStringSync(), isNot(contains(stale)));
     }
-    expect(File(at('archive.db-shm')).existsSync(), isTrue);
+    final shared = File(at('archive.db-shm'));
+    if (shared.existsSync()) {
+      expect(shared.readAsBytesSync(), isNot('nor this'.codeUnits));
+    }
+    expect(
+      (await back.db.rawQuery('PRAGMA quick_check')).single.values.single,
+      'ok',
+    );
     expect((await back.work('58374928'))?.title, 'Stale');
     await back.close();
   });
