@@ -7,7 +7,8 @@ import 'package:folio_app/library.dart';
 import 'package:folio_core/folio_core.dart' as core;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'test_database.dart';
 
 void main() {
   late Directory scratch;
@@ -16,8 +17,7 @@ void main() {
   final fixture = File('../../test/fixtures/work-page.html').readAsStringSync();
 
   setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    prepareTestDatabase();
   });
   setUp(() async {
     scratch = await Directory.systemTemp.createTemp('folio-preview-journey');

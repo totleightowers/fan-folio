@@ -768,7 +768,7 @@ class _NoLibrary extends StatefulWidget {
   const _NoLibrary({required this.ground, required this.onImported});
 
   final Ground ground;
-  final void Function(Library) onImported;
+  final Future<void> Function(Library) onImported;
 
   @override
   State<_NoLibrary> createState() => _NoLibraryState();
@@ -796,7 +796,7 @@ class _NoLibraryState extends State<_NoLibrary> {
       // and a library worth keeping is too big to read into memory
       final library = await Library.importFromStream(picked.readAsByteStream());
       if (!mounted) return;
-      widget.onImported(library);
+      await widget.onImported(library);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -810,7 +810,7 @@ class _NoLibraryState extends State<_NoLibrary> {
     setState(() => _working = true);
     try {
       final library = await Library.create();
-      if (mounted) widget.onImported(library);
+      if (mounted) await widget.onImported(library);
     } catch (e) {
       if (mounted) {
         setState(() {

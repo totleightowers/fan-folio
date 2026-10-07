@@ -4,7 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio_app/library.dart';
 import 'package:folio_core/folio_core.dart' as core;
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'test_database.dart';
 
 /// Backing a library up, and getting it back.
 ///
@@ -16,8 +17,7 @@ void main() {
   late Directory scratch;
 
   setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    prepareTestDatabase();
   });
 
   setUp(() async {

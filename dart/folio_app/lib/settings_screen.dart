@@ -26,7 +26,7 @@ class SettingsScreen extends StatefulWidget {
 
   final Library library;
   final Downloads? downloads;
-  final void Function(Library) onImported;
+  final Future<void> Function(Library) onImported;
   final VoidCallback onBlocked;
   final VoidCallback onActivity;
 
@@ -117,7 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       final library = await Library.importFromStream(picked.readAsByteStream());
       if (!mounted) return;
-      widget.onImported(library);
+      await widget.onImported(library);
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;

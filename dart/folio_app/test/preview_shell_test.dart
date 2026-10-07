@@ -11,12 +11,12 @@ import 'package:folio_app/return_to_story.dart';
 import 'package:folio_app/theme.dart';
 import 'package:folio_core/folio_core.dart' as core;
 import 'package:http/testing.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'test_database.dart';
 
 void main() {
   setUpAll(() {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    prepareTestDatabase();
   });
 
   for (final width in [390.0, 1100.0]) {
