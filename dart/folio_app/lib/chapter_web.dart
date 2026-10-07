@@ -12,11 +12,9 @@ import 'theme.dart';
 
 /// A chapter read the way its author wrote it.
 ///
-/// Most works are laid out as native text. This is for the ones carrying a
-/// work skin, where the CSS *is* the work: a chat fic, a newspaper clipping, a
-/// letter in a different hand. There is no way to be faithful to that without
-/// a cascade, so those chapters are rendered by the same engine the archive
-/// renders them with.
+/// All works retain their HTML and CSS. The native text renderer is used only
+/// as a fallback if the embedded browser cannot render the chapter.
+///
 /// Stored pictures, put where their addresses were.
 ///
 /// In the chapter's markup and in the author's own stylesheet alike: a skin
@@ -134,12 +132,7 @@ class ReadingChrome {
 
 /// The face, as a CSS stack.
 ///
-/// Literata and Atkinson ship with the app as Flutter assets, which a WebView
-/// cannot reach: it has its own resource loader and no view of the bundle. So
-/// a skinned chapter asks for the family by name — a device that has it uses
-/// it — and names a real fallback after it rather than landing on whatever the
-/// engine defaults to. The native reader, which is most reading, has the
-/// actual files.
+/// Font bytes are embedded in the offline document, with system fallbacks.
 String cssFamily(ReadingFace face) => switch (face) {
   ReadingFace.literata => "Literata, Georgia, 'Times New Roman', serif",
   ReadingFace.atkinson =>

@@ -201,8 +201,9 @@ class Library {
       final tables = await checked.rawQuery(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('works','chapters')",
       );
-      if (tables.length != 2)
+      if (tables.length != 2) {
         throw const FormatException('This is not a Fan Folio library backup.');
+      }
       final health = await checked.rawQuery('PRAGMA quick_check');
       if (health.length != 1 || health.single.values.first != 'ok') {
         throw const FormatException('The library backup is damaged.');
