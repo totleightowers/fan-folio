@@ -110,6 +110,22 @@ void main() {
     return library;
   }
 
+  test('a corrupt import leaves the current library intact', () async {
+    final library = await aLibraryWith(title: 'Keep this copy');
+    await library.close();
+    await expectLater(
+      Library.importFromStream(Stream.value([1, 2, 3]), at('archive.db')),
+      throwsA(anything),
+    );
+    final kept = (await Library.openExisting(at('archive.db')))!;
+    expect((await kept.work('58374928'))?.title, 'Keep this copy');
+    await kept.close();
+    expect(
+      scratch.listSync().where((f) => f.path.contains('.importing-')),
+      isEmpty,
+    );
+  });
+
   test('everything goes out and everything comes back', () async {
     final library = await aLibraryWith(title: 'The Long Way Down');
     final bytes = await library.backupTo(at('backup.db'));

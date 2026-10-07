@@ -185,32 +185,52 @@ class Library {
     final destination = at ?? await defaultPath();
     await Directory(p.dirname(destination)).create(recursive: true);
 
-    final existing = File(destination);
-    if (existing.existsSync()) {
-      /* Kept, not overwritten. Somebody importing over a library they have
-         already read in is replacing it on purpose, and being wrong about
-         that should cost them a rename rather than the library. */
-      await existing.rename(
-        '$destination.replaced-${DateTime.now().millisecondsSinceEpoch}',
-      );
-    }
-    // the write-ahead log and its index belong to the file they were written
-    // beside; carried over they describe a database that is no longer there
-    for (final suffix in ['-wal', '-shm']) {
-      final stale = File('$destination$suffix');
-      if (stale.existsSync()) await stale.delete();
-    }
-
-    final out = File(destination).openWrite();
+    // Validate and migrate a separate file before touching the current one.
+    final incoming = File(
+      '$destination.importing-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    Database? checked;
     try {
-      await out.addStream(bytes);
-    } finally {
-      await out.close();
-    }
+      final out = incoming.openWrite();
+      try {
+        await out.addStream(bytes);
+      } finally {
+        await out.close();
+      }
+      checked = await openDatabase(incoming.path);
+      final tables = await checked.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('works','chapters')",
+      );
+      if (tables.length != 2)
+        throw const FormatException('This is not a Fan Folio library backup.');
+      final health = await checked.rawQuery('PRAGMA quick_check');
+      if (health.length != 1 || health.single.values.first != 'ok') {
+        throw const FormatException('The library backup is damaged.');
+      }
+      await prepare(_Runner(checked));
+      await checked.close();
+      checked = null;
 
-    final db = await openDatabase(destination);
-    await prepare(_Runner(db));
-    return Library._(db, destination);
+      final existing = File(destination);
+      if (existing.existsSync()) {
+        await existing.rename(
+          '$destination.replaced-${DateTime.now().microsecondsSinceEpoch}',
+        );
+      }
+      for (final suffix in ['-wal', '-shm']) {
+        final stale = File('$destination$suffix');
+        if (stale.existsSync()) await stale.delete();
+      }
+      await incoming.rename(destination);
+      final db = await openDatabase(destination);
+      return Library._(db, destination);
+    } finally {
+      await checked?.close();
+      for (final suffix in ['', '-wal', '-shm']) {
+        final remaining = File('${incoming.path}$suffix');
+        if (remaining.existsSync()) await remaining.delete();
+      }
+    }
   }
 
   Future<List<WorkRow>> works([Map<String, Object?> filters = const {}]) async {

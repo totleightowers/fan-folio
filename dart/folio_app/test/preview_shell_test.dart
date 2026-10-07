@@ -81,17 +81,17 @@ void main() {
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);
-        final image =
-            await (boundary.currentContext!.findRenderObject()!
-                    as RenderRepaintBoundary)
-                .toImage();
-        final png = await image.toByteData(format: ui.ImageByteFormat.png);
         await tester.runAsync(() async {
+          final image =
+              await (boundary.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary)
+                  .toImage();
+          final png = await image.toByteData(format: ui.ImageByteFormat.png);
           await Directory('preview-screenshots').create();
           await File('preview-screenshots/home-${width.toInt()}.png')
               .writeAsBytes(png!.buffer.asUint8List());
+          image.dispose();
         });
-        image.dispose();
         await tester.tap(find.text('Library').last);
         await settleDatabase();
         expect(find.byType(ReturnToStory), findsOneWidget);
