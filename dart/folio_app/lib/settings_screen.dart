@@ -118,6 +118,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final library = await Library.importFromStream(picked.readAsByteStream());
       if (!mounted) return;
       await widget.onImported(library);
+      if (!mounted) return;
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;

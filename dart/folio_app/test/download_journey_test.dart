@@ -79,6 +79,15 @@ void main() {
       expect(works.single.workId, '58374928');
       expect(works.single.hasText, isTrue);
       expect(await library.chapterHtml('58374928', 1), isNotEmpty);
+      expect(
+        (await library.searchText('folks')).map((hit) => hit.workId),
+        contains('58374928'),
+      );
+      expect(
+        (await library.searchMeta(works.single.title.split(' ').first))
+            .map((work) => work.workId),
+        contains('58374928'),
+      );
       expect(requests, isNotEmpty);
       await library.opened('58374928');
       await library.savePlace('58374928', 1, 384);
