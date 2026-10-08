@@ -13,6 +13,7 @@ void main() {
   testWidgets('Android service opens the library and accepts a UI command', (
     tester,
   ) async {
+    debugPrint('FOLIO_SERVICE_TEST_STARTED');
     prepareDownloadService();
     await tester.pumpWidget(
       const MaterialApp(home: Scaffold(body: Text('Service test'))),
@@ -37,6 +38,10 @@ void main() {
       ui = RemoteDownloads(library: library, session: Session.none);
       await ui.restore();
       expect(ui.jobs, hasLength(1));
+      debugPrint('FOLIO_SERVICE_TEST_PASSED');
+    } catch (error, stack) {
+      debugPrint('FOLIO_SERVICE_TEST_FAILED: $error\n$stack');
+      rethrow;
     } finally {
       ui?.dispose();
       await FlutterForegroundTask.stopService();

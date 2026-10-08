@@ -58,6 +58,11 @@ void main() {
             // Avoid a platform WebView in this host widget test.
             'html': null,
           });
+          await library.db.insert('chapters', {
+            'work_id': '1',
+            'number': 2,
+            'html': '<p>A saved chapter.</p>',
+          });
           await library.opened('1');
           await library.savePlace('1', 1, 240);
         });
@@ -123,7 +128,7 @@ void main() {
         await tester.tap(find.text('The next chapter').first);
         await settleDatabase();
         expect(find.byType(WorkScreen), findsOneWidget);
-        await tester.tap(find.text('Carry on'));
+        await tester.tap(find.text('Carry on, chapter 1'));
         await settleDatabase();
         expect(find.byType(ReaderScreen), findsOneWidget);
         await tester.tap(find.byTooltip('Go to'));

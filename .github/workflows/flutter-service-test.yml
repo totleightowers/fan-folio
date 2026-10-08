@@ -59,7 +59,26 @@ jobs:
           adb install -g build/app/outputs/flutter-apk/app-debug.apk
       - name: Run on Android
         working-directory: dart/folio_app
-        run: timeout --signal=INT --kill-after=20s 5m flutter test integration_test/download_service_test.dart -d emulator-5554 --timeout 3m --reporter expanded
+        run: |
+          # Launch without the Flutter CLI's paused-at-start VM attachment.
+          # The integration-test APK runs its assertions and emits the result.
+          adb logcat -c
+          adb shell am start -W -n org.fanfolio.preview/org.fanfolio.folio_app.MainActivity
+          for attempt in $(seq 1 90); do
+            adb logcat -d > /tmp/service-logcat.txt
+            if grep -q FOLIO_SERVICE_TEST_FAILED /tmp/service-logcat.txt; then
+              cat /tmp/service-logcat.txt
+              exit 1
+            fi
+            if grep -q FOLIO_SERVICE_TEST_PASSED /tmp/service-logcat.txt; then
+              cat /tmp/service-logcat.txt
+              exit 0
+            fi
+            echo "Waiting for service test: $attempt"
+            sleep 2
+          done
+          cat /tmp/service-logcat.txt
+          exit 1
       - name: Capture Android diagnostics
         if: always()
         run: |
