@@ -1,4 +1,6 @@
-# v4.0.0-alpha.2 — clearer work details
+# v4.0.0-alpha.2 — clearer work details and a distinct preview icon
+
+Flutter Preview now has its own blue open-book launcher icon, including Android adaptive and themed-icon variants. The stable app retains its existing artwork. Regenerate preview assets with `node tools/make-icon.mjs --preview`.
 
 The preview now uses higher-contrast text across its light, dark, sepia and black palettes. Work-page labels are larger, tag and author buttons have visible outlines and 48-point minimum tap targets, and the reading action uses explicit foreground/background colours. Meaningful text colours are checked against 4.5:1 and control outlines against 3:1 on each shared surface. Widget tests exercise the work page at normal and 200% text size, including button labels and tap targets.
 

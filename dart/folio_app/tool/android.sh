@@ -159,11 +159,11 @@ grep -n "INTERNET\|FOREGROUND_SERVICE_DATA_SYNC\|ForegroundService" "$manifest"
 grep -q 'android.permission.INTERNET' "$manifest" \
   || { echo "no INTERNET permission in the manifest" >&2; exit 1; }
 
-# Carry the established launcher artwork into the isolated preview.
-cp -r ../../android/res/mipmap-* android/app/src/main/res/
+# A distinct launcher for the isolated preview, including themed icons.
+cp -r branding/res/mipmap-* android/app/src/main/res/
 mkdir -p android/app/src/main/res/drawable android/app/src/main/res/values
-cp ../../android/res/drawable/ic_launcher_foreground.xml android/app/src/main/res/drawable/
-cp ../../android/res/values/ic_launcher_background.xml android/app/src/main/res/values/
+cp branding/res/drawable/ic_launcher_foreground.xml android/app/src/main/res/drawable/
+cp branding/res/values/ic_launcher_background.xml android/app/src/main/res/values/
 mkdir -p android/app/src/main/res/xml
 cp ../../android/res/xml/data_extraction_rules.xml android/app/src/main/res/xml/
 
