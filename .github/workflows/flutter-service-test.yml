@@ -58,6 +58,7 @@ jobs:
           flutter build apk --debug --target integration_test/download_service_test.dart
           adb install -g build/app/outputs/flutter-apk/app-debug.apk
       - name: Run on Android
+        timeout-minutes: 5
         working-directory: dart/folio_app
         run: |
           # Launch without the Flutter CLI's paused-at-start VM attachment.
