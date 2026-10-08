@@ -627,7 +627,7 @@ class Library {
         await copy.close();
       }
       final file = await File(snapshot).rename(destination);
-      return file.length();
+      return await file.length();
     } finally {
       await staging.delete(recursive: true);
     }

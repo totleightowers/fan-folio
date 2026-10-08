@@ -30,7 +30,9 @@ void prepareDownloadService() {
       eventAction: ForegroundTaskEventAction.repeat(5000),
       allowWakeLock: true,
       allowWifiLock: true,
-      allowAutoRestart: true,
+      // START_STICKY permits system recovery; do not schedule a restart alarm
+      // after Android has deliberately stopped a data-sync service.
+      allowAutoRestart: false,
       stopWithTask: false,
       autoRunOnBoot: false,
     ),
