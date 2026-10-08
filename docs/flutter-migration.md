@@ -28,7 +28,7 @@ On Android, one foreground-service isolate owns the queue, archive client and sh
 
 Private bounded diagnostics record lifecycle events and minute-by-minute numeric progress, with export from Settings. They exclude cookies, work URLs, titles and downloaded content. A report exported while a write is in progress can have an incomplete final line.
 
-Host tests disconnect/reconnect the UI during a synthetic download and check timeout-paused recovery. They cannot establish that a particular Android device keeps the service alive. Screen-off, task removal, OEM battery restrictions and process restarts remain device gates. Long author reconciliation actions do not yet have a durable listing cursor. Backup export while a worker is writing also remains a migration gate.
+Host tests disconnect/reconnect the UI during a synthetic download and check timeout-paused recovery. They cannot establish that a particular Android device keeps the service alive. Screen-off, task removal, OEM battery restrictions and process restarts remain device gates. Long author reconciliation actions do not yet have a durable listing cursor. Backup export uses a consistent SQLite snapshot while the worker writes, with staging and integrity checks before sharing. It requires SQLite 3.27 or newer; older SQLite versions fail explicitly rather than copy an unsafe live file. Large-library device validation remains outstanding.
 
 ## Feature audit and order of migration
 

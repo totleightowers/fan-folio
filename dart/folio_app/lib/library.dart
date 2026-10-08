@@ -591,21 +591,46 @@ class Library {
         }
       });
 
-  /// Copy the whole library out to a file somebody picked.
-  ///
-  /// The database runs in WAL mode, so it is really several files: copying
-  /// archive.db alone silently drops whatever the write-ahead log still holds,
-  /// which is the most recent reading of all. Checkpointing first folds the
-  /// log back into the file being copied — a backup that is missing the last
-  /// hour is worse than no backup, because it is trusted.
+  /// Make a consistent SQLite snapshot while the service may be writing.
+  /// A checkpoint followed by copying archive.db races another connection.
   Future<int> backupTo(String destination) async {
-    try {
-      await db.rawQuery('PRAGMA wal_checkpoint(TRUNCATE)');
-    } catch (_) {
-      // an un-checkpointable library still copies; it may just lag a little
+    if (p.equals(p.absolute(path), p.absolute(destination))) {
+      throw ArgumentError('A backup cannot replace the open library.');
     }
-    final copy = await File(path).copy(destination);
-    return copy.lengthSync();
+    final version =
+        (await db.rawQuery('SELECT sqlite_version() AS v')).single['v']
+            as String;
+    final parts = version.split('.').map(int.parse).toList();
+    if (parts[0] < 3 || (parts[0] == 3 && parts[1] < 27)) {
+      throw StateError(
+        'This Android SQLite version cannot make a safe live backup. SQLite 3.27 or newer is required.',
+      );
+    }
+    final staging = await Directory(p.dirname(destination))
+        .createTemp('.folio-backup-');
+    try {
+      final snapshot = p.join(staging.path, 'snapshot.db');
+      await db.execute('VACUUM INTO ?', [snapshot]);
+      final copy = await openDatabase(snapshot, singleInstance: false);
+      try {
+        await copy.rawQuery('PRAGMA journal_mode=DELETE');
+        // VACUUM can change implicit rowids. Rebuild the external-content
+        // chapter index against the snapshot's rows before sharing it.
+        await copy.execute(
+          "INSERT INTO chapter_fts(chapter_fts) VALUES ('rebuild')",
+        );
+        final check = await copy.rawQuery('PRAGMA quick_check');
+        if (check.length != 1 || check.single.values.single != 'ok') {
+          throw StateError('The backup did not pass its integrity check.');
+        }
+      } finally {
+        await copy.close();
+      }
+      final file = await File(snapshot).rename(destination);
+      return file.length();
+    } finally {
+      await staging.delete(recursive: true);
+    }
   }
 
   /// What a backup of this library should be called.

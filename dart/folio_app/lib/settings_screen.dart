@@ -62,8 +62,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
          memory in order to save it, and a backup the app filed somewhere of
          its own choosing is one nobody can find on the day the phone is
          gone — so the reader says where it goes, and it goes off the phone.
-         The copy is checkpointed first, because the database is in WAL mode
-         and archive.db alone is missing the most recent reading of all. */
+         SQLite creates a consistent snapshot, including committed WAL data,
+         while the service may continue writing to the original. */
       final scratch = await getTemporaryDirectory();
       final copy = p.join(scratch.path, Library.backupName());
       final bytes = await widget.library.backupTo(copy);

@@ -10,6 +10,6 @@ Install **fanfolio-preview.apk** as **Fan Folio Preview**, alongside the stable 
 
 Host tests cover a download completing after UI disposal, reconnection without a duplicate queue, and paused recovery after a service timeout. Real-device screen-off, task dismissal, process death and battery-management behaviour still need validation. This alpha does not promise uninterrupted background execution on every Android device.
 
-The preview is not feature-complete. Per-work download outcomes, durable author-listing cursors, EPUB import, OTP/Most read, deep links and the full version-history interface remain migration work. Do not export a library backup while downloads are active; concurrent-writer backup handling remains a migration gate.
+The preview is not feature-complete. Per-work download outcomes, durable author-listing cursors, EPUB import, OTP/Most read, deep links and the full version-history interface remain migration work. Backup export now uses a consistent SQLite snapshot while downloads write, and checks it before sharing. Export requires SQLite 3.27 or newer; older Android SQLite versions show an error instead of making an unsafe copy.
 
 The stable release remains [v3.14.3](https://github.com/totleightowers/fan-folio/releases/tag/v3.14.3). Keep it for your main library during migration.

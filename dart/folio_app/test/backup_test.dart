@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -229,6 +230,59 @@ void main() {
     final place = await back.placeIn('latest');
     expect(place?.chapter, 9, reason: 'the write-ahead log was folded in');
     await back.close();
+  });
+
+  test('live backup includes WAL writes despite a pinned reader and preserves search', () async {
+    final library = await aLibraryWith(title: 'Live snapshot');
+    final observer = (await Library.openExisting(at('archive.db'), false))!;
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    final pinned = observer.db.transaction((txn) async {
+      await txn.rawQuery('SELECT COUNT(*) FROM chapters');
+      entered.complete();
+      await release.future;
+    });
+    Library? backup;
+    try {
+      await entered.future;
+      await library.db.rawQuery('PRAGMA busy_timeout=0');
+      await library.db.insert('chapters', {
+        'rowid': 1000,
+        'work_id': '58374928',
+        'number': 2,
+        'html': '<p>Snapshot needle</p>',
+        'text': 'Snapshot needle',
+      });
+      await library.db.execute(
+        "INSERT INTO chapter_fts(chapter_fts) VALUES ('rebuild')",
+      );
+      final checkpoint = await library.db.rawQuery(
+        'PRAGMA wal_checkpoint(TRUNCATE)',
+      );
+      expect(
+        checkpoint.single.values.first,
+        1,
+        reason: 'the pinned reader prevents a complete checkpoint',
+      );
+      await library.backupTo(at('backup.db'));
+      backup = (await Library.openExisting(at('backup.db')))!;
+      expect(await backup.chapterHtml('58374928', 2), contains('needle'));
+      final found = await backup.db.rawQuery(
+        "SELECT chapters.number FROM chapter_fts JOIN chapters ON chapters.rowid=chapter_fts.docid WHERE chapter_fts MATCH 'needle'",
+      );
+      expect(found.single['number'], 2);
+      release.complete();
+      await pinned;
+      await observer.close();
+      // Closing the worker connection must leave the UI connection usable.
+      expect((await library.work('58374928'))?.title, 'Live snapshot');
+    } finally {
+      if (!release.isCompleted) release.complete();
+      await pinned;
+      await observer.close();
+      await backup?.close();
+      await library.close();
+    }
   });
 
   test('the stale log beside a library is not carried over', () async {
