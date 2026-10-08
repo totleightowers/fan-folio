@@ -1,122 +1,171 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:folio_core/folio_core.dart' as core;
 
+import 'download_worker.dart';
 import 'downloads.dart';
+import 'library.dart';
+import 'session.dart';
+import 'worker_diagnostics.dart';
 
-/// Asking Android not to stop the app while there is work owed.
-///
-/// A download is an hour of one request every half minute, and a backgrounded
-/// app is not allowed to make them. Without this a long walk dies the moment
-/// somebody answers a message, which on a phone is most of the time — and it
-/// dies silently, which is the worse half.
-///
-/// This only holds the process open and shows what is going on. The queue
-/// stays in the app's own isolate, next to the library it is writing to,
-/// because a second isolate means a second connection to the same SQLite file
-/// and a second idea of whose turn it is with the archive. 1.x made the same
-/// choice for the same reason: the page kept its queue and the shell only
-/// asked Android for room.
-class KeepWorking {
-  KeepWorking(this.downloads) {
-    downloads.addListener(_changed);
+bool get supportsDownloadService =>
+    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+void prepareDownloadService() {
+  if (!supportsDownloadService) return;
+  FlutterForegroundTask.initCommunicationPort();
+  FlutterForegroundTask.init(
+    androidNotificationOptions: AndroidNotificationOptions(
+      channelId: 'fanfolio_downloads',
+      channelName: 'Downloading',
+      channelDescription: 'Progress of downloads running in the background.',
+      channelImportance: NotificationChannelImportance.LOW,
+      priority: NotificationPriority.LOW,
+      onlyAlertOnce: true,
+    ),
+    iosNotificationOptions: const IOSNotificationOptions(),
+    foregroundTaskOptions: ForegroundTaskOptions(
+      eventAction: ForegroundTaskEventAction.repeat(5000),
+      allowWakeLock: true,
+      allowWifiLock: true,
+      allowAutoRestart: true,
+      stopWithTask: false,
+      autoRunOnBoot: false,
+    ),
+  );
+}
+
+@pragma('vm:entry-point')
+void downloadServiceEntry() {
+  FlutterForegroundTask.setTaskHandler(DownloadTaskHandler());
+}
+
+class DownloadTaskHandler extends TaskHandler {
+  DownloadWorker? _worker;
+  Library? _library;
+  WorkerDiagnostics? _diagnostics;
+  Future<void>? _ready;
+  int _ticks = 0;
+
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) {
+    return _ready = _open(starter);
   }
 
-  final Downloads downloads;
-  bool _running = false;
-  String _said = '';
-
-  static bool get _supported =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-
-  /// Set up the channel once, before anything asks for the service.
-  static void prepare() {
-    if (!_supported) return;
-    FlutterForegroundTask.init(
-      androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'fanfolio_downloads',
-        channelName: 'Downloading',
-        channelDescription:
-            'Shown while works are being fetched, so Android leaves the app '
-            'running.',
-        // low: this is a progress note, not news. A download that pings is a
-        // download somebody turns off.
-        channelImportance: NotificationChannelImportance.LOW,
-        priority: NotificationPriority.LOW,
-        onlyAlertOnce: true,
-      ),
-      iosNotificationOptions: const IOSNotificationOptions(),
-      foregroundTaskOptions: ForegroundTaskOptions(
-        // nothing to run over there: the work is in this isolate
-        eventAction: ForegroundTaskEventAction.nothing(),
-        allowWakeLock: true,
-        allowWifiLock: true,
-      ),
-    );
-  }
-
-  Future<void> _changed() async {
-    if (!_supported) return;
-    final busy = downloads.busy;
-    final saying = _summary();
-
-    if (busy && !_running) {
-      _running = true;
-      _said = saying;
-      /* Asked for the first time it is actually needed rather than at
-         startup: a reader who never downloads anything should never be asked
-         whether this app may notify them. */
-      await FlutterForegroundTask.requestNotificationPermission();
-      await FlutterForegroundTask.startService(
-        serviceTypes: [ForegroundServiceTypes.dataSync],
-        notificationTitle: 'Fan Folio',
-        notificationText: saying,
+  Future<void> _open(TaskStarter starter) async {
+    try {
+      _diagnostics = WorkerDiagnostics(await WorkerDiagnostics.location());
+      await _diagnostics!.event('worker_start', {
+        'system': starter == TaskStarter.system,
+      });
+      // A separate connection: closing the service must not close the UI's DB.
+      final library = await Library.openExisting(null, false);
+      if (library == null) throw StateError('No preview library is available.');
+      _library = library;
+      final engine = LocalDownloads(
+        library: library,
+        session: await Session.load(),
       );
-      return;
-    }
-
-    if (busy && saying != _said) {
-      _said = saying;
-      /* Kept truthful rather than kept up to the second. A notification that
-         still says "downloading" an hour after the last work arrived is how
-         an app teaches somebody to ignore it. */
-      await FlutterForegroundTask.updateService(notificationText: saying);
-      return;
-    }
-
-    if (!busy && _running) {
-      _running = false;
+      _worker = DownloadWorker(
+        engine,
+        send: FlutterForegroundTask.sendDataToMain,
+        whenIdle: () async {
+          await FlutterForegroundTask.stopService();
+        },
+      );
+      await _worker!.start();
+      await _notice();
+    } catch (_) {
+      await _diagnostics?.event('worker_start_failed');
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'fatal',
+        'error': 'The download worker could not start. Export its diagnostic report from Settings.',
+      });
       await FlutterForegroundTask.stopService();
     }
   }
 
-  /// One line about everything, because a notification has one line.
-  String _summary() {
-    final jobs = downloads.jobs.where(
-      (job) =>
-          job.state != core.JobState.done &&
-          job.state != core.JobState.cancelled,
+  Future<void> _notice() async {
+    final engine = _worker?.engine;
+    if (engine == null) return;
+    final total = engine.jobs.fold<int>(0, (n, j) => n + j.total);
+    final done = engine.jobs.fold<int>(0, (n, j) => n + j.done);
+    final text = engine.storageProblem != null
+        ? 'Paused: check device storage'
+        : engine.cooling != null
+        ? 'Waiting for the archive — downloads are saved'
+        : engine.busy
+        ? '$done of $total processed'
+        : 'Finishing archive requests';
+    await FlutterForegroundTask.updateService(
+      notificationTitle: 'Fan Folio Preview',
+      notificationText: text,
     );
-    if (jobs.isEmpty) return 'Finishing up';
+  }
 
-    final done = jobs.fold<int>(0, (n, job) => n + job.done);
-    final total = jobs.fold<int>(0, (n, job) => n + job.total);
-    final open = jobs.any((job) => job.open);
+  @override
+  void onReceiveData(Object data) {
+    if (data is! Map) return;
+    unawaited(_receive(Map<String, dynamic>.from(data)));
+  }
 
-    final cooling = downloads.cooling;
-    if (cooling != null) {
-      final minutes = cooling.difference(DateTime.now()).inMinutes;
-      return minutes < 1
-          ? 'Waiting a moment for the archive'
-          : 'Waiting $minutes min — the archive asked for room';
+  Future<void> _receive(Map<String, dynamic> data) async {
+    await _ready;
+    final worker = _worker;
+    if (worker == null) return;
+    await _diagnostics?.event('command_received');
+    await worker.receive(data);
+    await _notice();
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {
+    _worker?.publish();
+    unawaited(_notice());
+    if (++_ticks % 12 == 0) {
+      final worker = _worker;
+      if (worker != null)
+        unawaited(
+          _diagnostics?.event('heartbeat', {
+            'busy': worker.engine.busy,
+            'jobs': worker.engine.jobs.length,
+            'saved': worker.engine.jobs.fold<int>(0, (n, j) => n + j.added),
+            'failed': worker.engine.jobs.fold<int>(0, (n, j) => n + j.failed),
+            'progressAgeSeconds': DateTime.now()
+                .difference(worker.lastProgress)
+                .inSeconds,
+          }),
+        );
     }
-
-    if (total == 0) return 'Reading the list';
-    return open ? '$done of $total so far' : '$done of $total';
   }
 
-  void dispose() {
-    downloads.removeListener(_changed);
-    if (_running && _supported) FlutterForegroundTask.stopService();
+  @override
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    await _diagnostics?.event('worker_stop', {'timeout': isTimeout});
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'stopped',
+      'timeout': isTimeout,
+    });
+    try {
+      await _worker?.close(timeout: isTimeout);
+    } finally {
+      await _library?.db.close();
+    }
   }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == 'pause')
+      unawaited(
+        _worker?.receive({
+          'id': 'notification:${DateTime.now().microsecondsSinceEpoch}',
+          'method': 'pauseAll',
+          'args': <String, dynamic>{},
+        }),
+      );
+  }
+
+  @override
+  void onNotificationPressed() => FlutterForegroundTask.launchApp();
 }

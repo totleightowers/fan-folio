@@ -16,9 +16,10 @@ import 'package:path_provider/path_provider.dart';
 /// asking the reader for a second password. What it is not is a thing that
 /// leaves the device by accident.
 class Session {
-  const Session({required this.cookies, this.username});
+  const Session({required this.cookies, this.username, this.userAgent});
 
   final Map<String, String> cookies;
+  final String? userAgent;
 
   /// Who the archive last said we were. A name to show, not proof of
   /// anything — the cookie behind it can be revoked on the site at any time.
@@ -45,6 +46,7 @@ class Session {
             ? {for (final e in jar.entries) '${e.key}': '${e.value}'}
             : const {},
         username: held['username'] as String?,
+        userAgent: held['userAgent'] as String?,
       );
     } catch (_) {
       // an unreadable session is a reader who has to sign in again, which is
@@ -56,7 +58,11 @@ class Session {
   Future<void> save() async {
     final file = await _file();
     await file.writeAsString(
-      jsonEncode({'cookies': cookies, 'username': username}),
+      jsonEncode({
+        'cookies': cookies,
+        'username': username,
+        'userAgent': userAgent,
+      }),
       flush: true,
     );
   }

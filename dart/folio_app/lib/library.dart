@@ -143,10 +143,13 @@ class Library {
     return p.join(dir.path, fileName);
   }
 
-  static Future<Library?> openExisting([String? at]) async {
+  static Future<Library?> openExisting([
+    String? at,
+    bool singleInstance = true,
+  ]) async {
     final path = at ?? await defaultPath();
     if (!File(path).existsSync()) return null;
-    final db = await openDatabase(path);
+    final db = await openDatabase(path, singleInstance: singleInstance);
     /* Whatever wrote this file, and whenever. A library is kept for years,
        backed up, carried between phones and opened by a version written long
        afterwards, so what is missing is added before anything is asked of

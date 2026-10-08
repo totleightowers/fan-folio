@@ -10,6 +10,7 @@ import 'blocked_screen.dart';
 import 'downloads.dart';
 import 'home_screen.dart';
 import 'keep_working.dart';
+import 'remote_downloads.dart';
 import 'library.dart';
 import 'filter_sheet.dart';
 import 'person_screen.dart';
@@ -28,9 +29,14 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   // set up before anything can ask for it; nothing is shown until there is
   // work, and nobody is asked for permission until then either
-  KeepWorking.prepare();
+  prepareDownloadService();
   runApp(const FolioApp());
 }
+
+Downloads _downloadsFor(Library library, Session session) =>
+    supportsDownloadService
+    ? RemoteDownloads(library: library, session: session)
+    : Downloads(library: library, session: session);
 
 class FolioApp extends StatelessWidget {
   const FolioApp({super.key});
@@ -65,7 +71,6 @@ class _ShellState extends State<Shell> {
   final GlobalKey<YouScreenState> _you = GlobalKey<YouScreenState>();
   Library? _library;
   Downloads? _downloads;
-  KeepWorking? _keepWorking;
   bool _loading = true;
   String? _trouble;
   int _tab = 0;
@@ -121,16 +126,13 @@ class _ShellState extends State<Shell> {
       final session = widget.initialDownloads?.session ?? await Session.load();
       final downloads =
           widget.initialDownloads ??
-          (library == null
-              ? null
-              : Downloads(library: library, session: session));
+          (library == null ? null : _downloadsFor(library, session));
       if (widget.initialDownloads == null) await downloads?.restore();
       if (!mounted) return;
       setState(() {
         _library = library;
         _downloads = downloads;
         _downloads?.addListener(_downloadsChanged);
-        _keepWorking = _downloads == null ? null : KeepWorking(_downloads!);
         _loading = false;
       });
       /* Present as the browser this device has, and carry the cookies it is
@@ -157,11 +159,10 @@ class _ShellState extends State<Shell> {
     // whoever was signed in still is: the session is kept beside the library
     // rather than inside it, so importing one does not sign anybody out
     final session = _downloads?.session ?? Session.none;
-    _keepWorking?.dispose();
     _downloads?.removeListener(_downloadsChanged);
     await _downloads?.flush();
     _downloads?.dispose();
-    final downloads = Downloads(library: library, session: session);
+    final downloads = _downloadsFor(library, session);
     await downloads.restore();
     await downloads.useThisDevicesAgent();
     await downloads.refreshCookies();
@@ -173,7 +174,6 @@ class _ShellState extends State<Shell> {
     setState(() {
       _library = library;
       _downloads = downloads;
-      _keepWorking = KeepWorking(downloads);
       _loading = false;
       _lastStory = null;
       _libraryEpoch++;
@@ -205,7 +205,6 @@ class _ShellState extends State<Shell> {
 
   @override
   void dispose() {
-    _keepWorking?.dispose();
     _downloads?.removeListener(_downloadsChanged);
     _downloads?.dispose();
     super.dispose();

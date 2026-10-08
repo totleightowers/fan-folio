@@ -16,17 +16,72 @@ import 'store.dart';
 /// each waited their own half minute, so three things running together made a
 /// request every seven seconds while every one of them believed it was making
 /// one every twenty-eight.
-class Downloads extends ChangeNotifier {
-  Downloads({
+abstract class Downloads extends ChangeNotifier {
+  Downloads.base();
+  factory Downloads({
+    required Library library,
+    Session session = Session.none,
+    core.ArchiveClient Function(core.Pacer)? clientFactory,
+    core.Pacer Function(Future<void> Function())? pacerFactory,
+  }) = LocalDownloads;
+
+  Library get library;
+  List<core.JobView> get jobs;
+  Session get session;
+  String? get signedInAs;
+  String? get storageProblem;
+  DateTime? get cooling;
+  bool get busy;
+  bool get canAct;
+  Future<void> restore();
+  void start();
+  Future<void> flush();
+  Future<void> useThisDevicesAgent();
+  Future<void> refreshCookies();
+  Future<int> addByLink(String link);
+  Future<int> addWorks(String label, List<String> workIds);
+  Future<int> syncBookmarks();
+  Future<int> syncPerson(
+    String byline, {
+    required bool bookmarks,
+    bool andFetch = true,
+    void Function(int page, int? pages, int found)? onProgress,
+  });
+  Future<core.ListingCost> costOfAuthor(String byline);
+  Future<int> addAuthor(String byline);
+  Future<bool> leaveKudos(String workId);
+  Future<void> bookmark(
+    String workId, {
+    String notes = '',
+    String tags = '',
+    bool private = false,
+    bool rec = false,
+  });
+  Future<void> comment(String workId, String text);
+  Future<Uint8List?> fetchPicture(String workId, String src);
+  Future<int> fetchPicturesFor(String workId);
+  bool pause(int id);
+  bool resume(int id);
+  bool stop(int id);
+  bool remove(int id);
+  bool rerun(int id);
+  Future<void> adoptSession(Map<String, String> cookies, String who);
+  Future<void> signOut();
+}
+
+class LocalDownloads extends Downloads {
+  LocalDownloads({
     required this.library,
     Session session = Session.none,
     core.ArchiveClient Function(core.Pacer pacer)? clientFactory,
     core.Pacer Function(Future<void> Function() checkpoint)? pacerFactory,
-  }) : _session = session {
+  }) : _session = session,
+       super.base() {
     _pacer = pacerFactory?.call(_persist) ?? core.Pacer(checkpoint: _persist);
     _client =
         clientFactory?.call(_pacer) ??
         core.ArchiveClient(pacer: _pacer, cookies: session.cookies);
+    if (session.userAgent != null) _client.useAgent(session.userAgent!);
     _downloader = core.Downloader(
       client: _client,
       store: LibraryStore(library.db),
@@ -60,6 +115,7 @@ class Downloads extends ChangeNotifier {
 
   /// Read the queue before starting anything. Authentication and the Android
   /// service are attached by the shell before start() is called.
+  @override
   Future<void> restore() async {
     final rows = await library.db.rawQuery(
       'SELECT value FROM meta WHERE key = ?',
@@ -82,6 +138,7 @@ class Downloads extends ChangeNotifier {
     }
   }
 
+  @override
   void start() {
     _queue.startRestored();
     notifyListeners();
@@ -109,6 +166,7 @@ class Downloads extends ChangeNotifier {
     return next;
   }
 
+  @override
   Future<void> flush() async {
     await _writes;
     if (_persistenceError != null) {
@@ -116,6 +174,7 @@ class Downloads extends ChangeNotifier {
     }
   }
 
+  @override
   String? get storageProblem => _persistenceError == null
       ? null
       : 'Downloads could not be saved. Check device storage before continuing.';
@@ -150,6 +209,7 @@ class Downloads extends ChangeNotifier {
     }
   }
 
+  @override
   final Library library;
   late final core.Pacer _pacer;
   late final core.ArchiveClient _client;
@@ -158,10 +218,13 @@ class Downloads extends ChangeNotifier {
   late final core.JobQueue _queue;
 
   List<core.JobView> _jobs = const [];
+  @override
   List<core.JobView> get jobs => _jobs;
 
   Session _session;
+  @override
   Session get session => _session;
+  @override
   String? get signedInAs => _session.username;
 
   /// Present as the browser this device actually has.
@@ -169,10 +232,32 @@ class Downloads extends ChangeNotifier {
   /// 1.x asked Android for it and sent that. Asked once, because it does not
   /// change while the app is running, and quietly: a device that will not say
   /// leaves the fallback in place rather than failing to download anything.
+  Future<void> setAgent(String agent) async {
+    _client.useAgent(agent);
+    _session = Session(
+      cookies: _session.cookies,
+      username: _session.username,
+      userAgent: agent,
+    );
+    await _session.save();
+  }
+
+  Future<void> setSession(Map<String, String> cookies, String? who) async {
+    _client.setCookies(cookies);
+    _session = Session(
+      cookies: cookies,
+      username: who,
+      userAgent: _session.userAgent,
+    );
+    await _session.save();
+    notifyListeners();
+  }
+
+  @override
   Future<void> useThisDevicesAgent() async {
     try {
       final agent = await InAppWebViewController.getDefaultUserAgent();
-      if (agent.isNotEmpty) _client.useAgent(agent);
+      if (agent.isNotEmpty) await setAgent(agent);
     } catch (_) {
       // not worth a single failed request, let alone a failed startup
     }
@@ -184,6 +269,7 @@ class Downloads extends ChangeNotifier {
   /// The archive reissues them — a session is refreshed, Cloudflare grants
   /// clearance again — and a snapshot taken once goes stale while the
   /// browser on the same device is holding the current set.
+  @override
   Future<void> refreshCookies() async {
     try {
       final jar = await CookieManager.instance().getCookies(
@@ -192,7 +278,11 @@ class Downloads extends ChangeNotifier {
       if (jar.isEmpty) return;
       final held = {for (final c in jar) c.name: '${c.value}'};
       _client.setCookies(held);
-      _session = Session(cookies: held, username: _session.username);
+      _session = Session(
+        cookies: held,
+        username: _session.username,
+        userAgent: _session.userAgent,
+      );
       await _session.save();
     } catch (_) {
       // the session already in hand is better than none
@@ -200,11 +290,14 @@ class Downloads extends ChangeNotifier {
   }
 
   /// Whether the archive has asked to be left alone, and until when.
+  @override
   DateTime? get cooling => _pacer.coolingUntil;
 
+  @override
   bool get busy => _jobs.any(
     (job) =>
         job.state == core.JobState.running ||
+        job.state == core.JobState.pausing ||
         job.state == core.JobState.queued ||
         job.state == core.JobState.listing,
   );
@@ -213,6 +306,7 @@ class Downloads extends ChangeNotifier {
   ///
   /// Asking for a work by name plainly outranks a refusal made last month, so
   /// this drops the tombstone first. Nothing automatic does.
+  @override
   Future<int> addByLink(String link) async {
     final target = core.linkTarget(link);
     final workId = target.workId;
@@ -239,6 +333,7 @@ class Downloads extends ChangeNotifier {
   /// so never recorded a bookmark on a work it already held — and stopped
   /// walking at the first page of familiar works, leaving genuinely new
   /// bookmarks further down unseen.
+  @override
   Future<int> syncBookmarks() async {
     final who = _session.username;
     if (who == null) {
@@ -345,7 +440,7 @@ class Downloads extends ChangeNotifier {
   /// Their works, or their bookmarks. A listing page describes twenty works
   /// for one request, which is why this is worth having at all: it is the
   /// difference between knowing what somebody has written and downloading it.
-  Future<core.Listing> peek(
+  Future<core.Listing> _peek(
     String byline, {
     bool bookmarks = false,
     int page = 1,
@@ -360,6 +455,7 @@ class Downloads extends ChangeNotifier {
   ///
   /// Which is most of what somebody actually wants from a person's page:
   /// three of these, not all sixty.
+  @override
   Future<int> addWorks(String label, List<String> workIds) async {
     await _remember();
     final id = _queue.add(author: label, part: 'picked', workIds: workIds);
@@ -373,6 +469,7 @@ class Downloads extends ChangeNotifier {
   /// browsable for the price of reading an index — rather than downloading
   /// sixty works to find out what they are. Nothing is fetched here; what
   /// arrives is a shelf of descriptions, and any one of them can be asked for.
+  @override
   Future<int> syncPerson(
     String byline, {
     required bool bookmarks,
@@ -385,7 +482,7 @@ class Downloads extends ChangeNotifier {
 
     await core.walkListing(
       fetchPage: (page) async {
-        final listing = await peek(byline, bookmarks: bookmarks, page: page);
+        final listing = await _peek(byline, bookmarks: bookmarks, page: page);
         final ids = [for (final blurb in listing.works) blurb.workId];
         seen.addAll(ids);
         added += await saveStubs(
@@ -465,6 +562,7 @@ class Downloads extends ChangeNotifier {
   /// size first is what lets a small author start instantly and a large one
   /// ask permission rather than quietly committing an hour of somebody's
   /// evening and the archive's patience.
+  @override
   Future<core.ListingCost> costOfAuthor(String byline) async {
     final page = await _client.get(Uri.parse(core.authorWorks(byline)));
     return core.listingCost(core.parseListing(page.body).total);
@@ -477,6 +575,7 @@ class Downloads extends ChangeNotifier {
   /// held still belongs in the list. The first page is queued the moment it
   /// lands and the rest arrives as it is read — waiting for the whole walk
   /// first is a minute or two of an app that looks like it did nothing.
+  @override
   Future<int> addAuthor(String byline) async {
     await _remember();
     final job = _queue.add(author: byline, part: 'works', open: true);
@@ -528,20 +627,23 @@ class Downloads extends ChangeNotifier {
   /// Kudos are permanent, a comment notifies the author, a bookmark appears
   /// on a profile. None of them can be taken back from here, so each is its
   /// own deliberate act rather than a side effect of reading.
-  core.Acts get acts => core.Acts(_client);
+  core.Acts get _acts => core.Acts(_client);
 
+  @override
   bool get canAct => _session.username != null;
 
   /// Leave kudos, and remember that they were left.
   ///
   /// The archive accepts them once per work per person and there is no way to
   /// ask afterwards whether they were, so the answer is kept here.
+  @override
   Future<bool> leaveKudos(String workId) async {
-    final done = await acts.kudos(workId);
+    final done = await _acts.kudos(workId);
     await _mark(workId, 'kudos_given');
     return done.already;
   }
 
+  @override
   Future<void> bookmark(
     String workId, {
     String notes = '',
@@ -549,7 +651,7 @@ class Downloads extends ChangeNotifier {
     bool private = false,
     bool rec = false,
   }) async {
-    await acts.bookmark(
+    await _acts.bookmark(
       workId,
       notes: notes,
       tags: tags,
@@ -560,8 +662,9 @@ class Downloads extends ChangeNotifier {
     if (rec) await _mark(workId, 'rec');
   }
 
+  @override
   Future<void> comment(String workId, String text) =>
-      acts.comment(workId, text);
+      _acts.comment(workId, text);
 
   Future<void> _mark(String workId, String column) async {
     await library.db.rawUpdate(
@@ -577,6 +680,7 @@ class Downloads extends ChangeNotifier {
   /// it belongs, so a picture somebody asked for once is theirs — offline,
   /// next time, and in a backup. Null when it could not be had, which the
   /// reader is told rather than left to infer from a gap.
+  @override
   Future<Uint8List?> fetchPicture(String workId, String src) async {
     final got = await _pictures.fetch(src);
     await LibraryPictures(library.db).put(workId, got);
@@ -591,6 +695,7 @@ class Downloads extends ChangeNotifier {
   /// were never got, one that has been revised since, and an author's skin,
   /// whose own assets 1.x never collected because it looked only for img
   /// tags and a stylesheet says url(...).
+  @override
   Future<int> fetchPicturesFor(String workId) async {
     final chapters = await library.db.rawQuery(
       'SELECT html FROM chapters WHERE work_id = ?',
@@ -605,10 +710,15 @@ class Downloads extends ChangeNotifier {
     return _pictures.fetchFor(workId, html, skinCss: skin);
   }
 
+  @override
   bool pause(int id) => _queue.pause(id);
+  @override
   bool resume(int id) => _queue.resume(id);
+  @override
   bool stop(int id) => _queue.stop(id);
+  @override
   bool remove(int id) => _queue.remove(id);
+  @override
   bool rerun(int id) => _queue.rerun(id);
 
   /// Take on the session somebody just signed in with.
@@ -621,15 +731,21 @@ class Downloads extends ChangeNotifier {
   /// Kept beside the library rather than inside it, so it does not travel in
   /// a backup — a backup is made to be handed to a new phone, and a session
   /// cookie inside one is an account somebody else can sign into.
+  @override
   Future<void> adoptSession(Map<String, String> cookies, String who) async {
     await useThisDevicesAgent();
     _client.setCookies(cookies);
-    _session = Session(cookies: cookies, username: who);
+    _session = Session(
+      cookies: cookies,
+      username: who,
+      userAgent: _session.userAgent,
+    );
     await _session.save();
     notifyListeners();
   }
 
   /// Sign out here, which is not signing out there.
+  @override
   Future<void> signOut() async {
     _client.forget();
     _session = Session.none;

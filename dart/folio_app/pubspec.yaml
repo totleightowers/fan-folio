@@ -37,8 +37,8 @@ dependencies:
   # A download is an hour of one request every half minute, and Android stops
   # a backgrounded app from making them. This holds a foreground service open
   # while there is work, which is the only way the walk survives somebody
-  # answering a message. The work itself stays in the app's own isolate.
-  flutter_foreground_task: ^11.0.0
+  # answering a message. A separate service isolate owns the download engine.
+  flutter_foreground_task: ^11.0.3
 
 dev_dependencies:
   http: ^1.2.0

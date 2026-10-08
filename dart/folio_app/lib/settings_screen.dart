@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'downloads.dart';
 import 'library.dart';
 import 'theme.dart';
+import 'worker_diagnostics.dart';
 
 /// The things that are about the library rather than about a work.
 ///
@@ -37,6 +38,20 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _working = false;
   String? _said;
+  Future<void> _exportDownloads() async {
+    try {
+      final path = await WorkerDiagnostics.export();
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(path)],
+          subject: 'Fan Folio Preview download diagnostics',
+        ),
+      );
+    } catch (e) {
+      if (mounted) setState(() => _said = 'Could not export diagnostics: $e');
+    }
+  }
+
   Future<void> _backUp() async {
     setState(() {
       _working = true;
@@ -137,6 +152,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
+          ListTile(
+            leading: const Icon(Icons.bug_report_outlined),
+            title: const Text('Export download diagnostics'),
+            subtitle: const Text(
+              'Worker lifecycle and progress, without story content or session cookies.',
+            ),
+            onTap: _exportDownloads,
+          ),
           _Heading('The library', ground: ground),
           ListTile(
             leading: Icon(Icons.save_alt, color: ground.inkMid),
