@@ -1,3 +1,9 @@
+# v4.0.0-alpha.2 — clearer work details
+
+The preview now uses higher-contrast text across its light, dark, sepia and black palettes. Work-page labels are larger, tag and author buttons have visible outlines and 48-point minimum tap targets, and the reading action uses explicit foreground/background colours. Meaningful text colours are checked against 4.5:1 and control outlines against 3:1 on each shared surface. Widget tests exercise the work page at normal and 200% text size, including button labels and tap targets.
+
+This is a targeted accessibility improvement, not a full WCAG conformance claim. Physical-device TalkBack, keyboard and WebView checks remain necessary. The download-worker migration continues separately; this release still has the alpha.1 background limitations below.
+
 The first Flutter migration preview. Install `fanfolio-preview.apk` as **Fan Folio Preview**, alongside your existing app. It uses separate storage and does not replace v3.
 
 This alpha establishes adding a work by link, persistent download jobs and cooldowns, library browsing, HTML reading, and returning to a saved reading position. It also adds responsive phone/tablet navigation and the Return to the story pill.

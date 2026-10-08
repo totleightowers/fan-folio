@@ -287,7 +287,7 @@ class _WorkScreenState extends State<WorkScreen> {
               Text(
                 work.summary!,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 16,
                   height: 1.55,
                   color: ground.inkMid,
                 ),
@@ -370,13 +370,16 @@ class _WorkScreenState extends State<WorkScreen> {
       rows.addAll([
         Padding(
           padding: const EdgeInsets.only(top: 12, bottom: 6),
-          child: Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10.5,
-              letterSpacing: 0.9,
-              fontWeight: FontWeight.w600,
-              color: ground.inkFaint,
+          child: Semantics(
+            header: true,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                letterSpacing: 0.3,
+                fontWeight: FontWeight.w600,
+                color: ground.inkFaint,
+              ),
             ),
           ),
         ),
@@ -438,24 +441,23 @@ class _Live extends StatelessWidget {
   final bool strong;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: strong ? ground.accent.withValues(alpha: 0.10) : ground.sunken,
-    borderRadius: BorderRadius.circular(Radii.pill),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(Radii.pill),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
-            color: strong ? ground.accent : ground.inkMid,
-          ),
-        ),
+  Widget build(BuildContext context) => TextButton(
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      minimumSize: const Size(48, 48),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      backgroundColor: ground.surface,
+      foregroundColor: strong ? ground.accent : ground.ink,
+      side: BorderSide(color: ground.line),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(Radii.field),
+      ),
+      textStyle: TextStyle(
+        fontSize: 14,
+        fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
       ),
     ),
+    child: Text(text),
   );
 }
 
@@ -487,7 +489,7 @@ class _Facts extends StatelessWidget {
 
     return Text(
       said.join(' · '),
-      style: TextStyle(fontSize: 13, height: 1.5, color: ground.inkMute),
+      style: TextStyle(fontSize: 14, height: 1.5, color: ground.inkMute),
     );
   }
 }
@@ -516,8 +518,8 @@ class _Chapters extends StatelessWidget {
         Text(
           'CHAPTERS',
           style: TextStyle(
-            fontSize: 10.5,
-            letterSpacing: 0.9,
+            fontSize: 12.5,
+            letterSpacing: 0.3,
             fontWeight: FontWeight.w600,
             color: ground.inkFaint,
           ),

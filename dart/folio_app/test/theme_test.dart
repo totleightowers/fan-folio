@@ -4,6 +4,37 @@ import 'package:folio_core/folio_core.dart';
 import 'package:folio_app/theme.dart';
 
 void main() {
+  double contrast(Color a, Color b) {
+    final values = [a.computeLuminance(), b.computeLuminance()]..sort();
+    return (values.last + 0.05) / (values.first + 0.05);
+  }
+
+  test('all meaningful text and control outlines meet minimum contrast on every surface', () {
+    for (final g in [Ground.light, Ground.dark, Ground.sepia, Ground.black]) {
+      for (final background in [g.paper, g.surface, g.sunken]) {
+        for (final foreground in [
+          g.ink,
+          g.inkMid,
+          g.inkMute,
+          g.inkFaint,
+          g.accent,
+        ]) {
+          expect(contrast(foreground, background), greaterThanOrEqualTo(4.5));
+        }
+        expect(contrast(g.line, background), greaterThanOrEqualTo(3));
+      }
+      expect(contrast(g.accent, g.onAccent), greaterThanOrEqualTo(4.5));
+      final theme = themeFor(
+        g,
+        g == Ground.dark || g == Ground.black
+            ? Brightness.dark
+            : Brightness.light,
+      );
+      expect(theme.colorScheme.onSurface, g.ink);
+      expect(theme.floatingActionButtonTheme.foregroundColor, g.onAccent);
+    }
+  });
+
   test('the two grounds are the same vocabulary, said twice', () {
     /* A theme restates the words; it does not invent new ones. Warm neutrals
        hold their warmth in the dark, because a grey inversion of a paper app
