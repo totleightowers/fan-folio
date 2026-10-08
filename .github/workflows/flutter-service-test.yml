@@ -59,7 +59,7 @@ jobs:
           adb install -g build/app/outputs/flutter-apk/app-debug.apk
       - name: Run on Android
         working-directory: dart/folio_app
-        run: flutter test integration_test/download_service_test.dart -d emulator-5554 --timeout 3m
+        run: timeout --signal=INT --kill-after=20s 5m flutter test integration_test/download_service_test.dart -d emulator-5554 --timeout 3m --reporter expanded
       - name: Capture Android diagnostics
         if: always()
         run: |

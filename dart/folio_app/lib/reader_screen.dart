@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
+import 'app_destination.dart';
 import 'archive_acts.dart';
 import 'chapter_web.dart';
 import 'downloads.dart';
@@ -25,6 +26,7 @@ class ReaderScreen extends StatefulWidget {
     required this.chapters,
     this.downloads,
     this.onShowWork,
+    this.onNavigate,
     this.startAt = 1,
     this.startOffset = 0,
     super.key,
@@ -38,6 +40,7 @@ class ReaderScreen extends StatefulWidget {
   /// The work's own page. Offered from the title, for the times the reader
   /// arrived here straight from Continue reading and never saw it.
   final VoidCallback? onShowWork;
+  final ValueChanged<AppDestination>? onNavigate;
 
   final int startAt;
   final double startOffset;
@@ -194,14 +197,18 @@ class _ReaderScreenState extends State<ReaderScreen>
 
   (int, double)? _pendingPlace;
 
-  void _flushPlace() {
+  Future<void> _flushPlace() async {
     final place = _pendingPlace;
     _pendingPlace = null;
     if (place != null) {
-      unawaited(
-        widget.library.savePlace(widget.work.workId, place.$1, place.$2),
-      );
+      await widget.library.savePlace(widget.work.workId, place.$1, place.$2);
     }
+  }
+
+  Future<void> _navigate(AppDestination destination) async {
+    _settling?.cancel();
+    await _flushPlace();
+    if (mounted) widget.onNavigate?.call(destination);
   }
 
   @override
@@ -398,6 +405,25 @@ class _ReaderScreenState extends State<ReaderScreen>
             ),
           ),
           actions: [
+            if (widget.onNavigate != null)
+              PopupMenuButton<AppDestination>(
+                tooltip: 'Go to',
+                icon: const Icon(Icons.menu),
+                onSelected: _navigate,
+                itemBuilder: (_) => [
+                  for (final destination in AppDestination.values)
+                    PopupMenuItem(
+                      value: destination,
+                      child: Row(
+                        children: [
+                          Icon(destination.icon),
+                          const SizedBox(width: 16),
+                          Text(destination.label),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
             /* Where somebody actually decides to leave kudos is the end of a
                chapter, not a shelf. Only offered when there is a session
                behind it: a button that fails when pressed is worse than one

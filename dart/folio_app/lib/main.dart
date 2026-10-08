@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart';
 
 import 'activity_screen.dart';
+import 'app_destination.dart';
 import 'add_sheet.dart';
 import 'blocked_screen.dart';
 import 'downloads.dart';
@@ -316,6 +317,7 @@ class _ShellState extends State<Shell> {
           chapters: chapters,
           downloads: _downloads,
           onShowWork: () => _open(work),
+          onNavigate: _navigateFromReader,
           startAt: at,
           startOffset: openingOffset(
             chapter: at,
@@ -329,6 +331,40 @@ class _ShellState extends State<Shell> {
     // reading changes what Home has to say about itself
     await _home.currentState?.reload();
     await _reloadStory();
+  }
+
+  void _navigateFromReader(AppDestination destination) {
+    final library = _library;
+    if (library == null) return;
+    // Work and author pages can be underneath the reader. Leave that whole
+    // stack so the selected destination is visible immediately.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    switch (destination) {
+      case AppDestination.home:
+        _goToTab(0);
+      case AppDestination.library:
+        _goToTab(1);
+      case AppDestination.downloads:
+        _goToTab(2);
+      case AppDestination.you:
+        _goToTab(3);
+      case AppDestination.search:
+        _openSearch(library);
+      case AppDestination.settings:
+        _openSettings(library);
+    }
+  }
+
+  void _openSearch(Library library) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(
+          library: library,
+          onOpen: (workId, {int chapter = 1}) =>
+              _openById(workId, chapter: chapter),
+        ),
+      ),
+    );
   }
 
   /// One person, which a byline had no way of being until now.
@@ -496,7 +532,7 @@ class _ShellState extends State<Shell> {
               icon: Badge(
                 isLabelVisible: _narrowed,
                 label: Text('$_narrowCount'),
-                child: const Icon(Icons.filter_list),
+                child: const Icon(Icons.filter_alt_outlined),
               ),
               tooltip: 'Filters',
               onPressed: () => _openFilters(library),
@@ -504,15 +540,7 @@ class _ShellState extends State<Shell> {
           IconButton(
             icon: const Icon(Icons.search),
             tooltip: 'Search',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => SearchScreen(
-                  library: library,
-                  onOpen: (workId, {int chapter = 1}) =>
-                      _openById(workId, chapter: chapter),
-                ),
-              ),
-            ),
+            onPressed: () => _openSearch(library),
           ),
           IconButton(
             icon: const Icon(Icons.settings_outlined),

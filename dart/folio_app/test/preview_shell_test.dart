@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folio_app/downloads.dart';
 import 'package:folio_app/library.dart';
 import 'package:folio_app/main.dart';
+import 'package:folio_app/reader_screen.dart';
+import 'package:folio_app/work_screen.dart';
 import 'package:folio_app/return_to_story.dart';
 import 'package:folio_app/theme.dart';
 import 'package:folio_core/folio_core.dart' as core;
@@ -52,7 +54,9 @@ void main() {
           await library.db.insert('chapters', {
             'work_id': '1',
             'number': 1,
-            'html': '<p>Here is the story.</p>',
+            // Navigation must also work while chapter text is unavailable.
+            // Avoid a platform WebView in this host widget test.
+            'html': null,
           });
           await library.opened('1');
           await library.savePlace('1', 1, 240);
@@ -109,6 +113,53 @@ void main() {
         await settleDatabase();
         expect(find.textContaining('Nothing in the queue'), findsOneWidget);
         expect(find.byType(ReturnToStory), findsOneWidget);
+        expect(tester.takeException(), isNull);
+
+        // Enter through a work page so the navigation has to leave both
+        // routes, not just pop the reader back to its description.
+        await tester.tap(find.text('Library').last);
+        await settleDatabase();
+        expect(find.byIcon(Icons.filter_alt_outlined), findsOneWidget);
+        await tester.tap(find.text('The next chapter').first);
+        await settleDatabase();
+        expect(find.byType(WorkScreen), findsOneWidget);
+        await tester.tap(find.text('Carry on'));
+        await settleDatabase();
+        expect(find.byType(ReaderScreen), findsOneWidget);
+        await tester.tap(find.byTooltip('Go to'));
+        await tester.pumpAndSettle();
+        for (final label in [
+          'Home',
+          'Library',
+          'Downloads',
+          'You',
+          'Search',
+          'Settings',
+        ]) {
+          expect(find.text(label), findsOneWidget);
+        }
+        await tester.tap(find.text('Downloads'));
+        await settleDatabase();
+        expect(find.byType(ReaderScreen), findsNothing);
+        expect(find.byType(WorkScreen), findsNothing);
+        expect(find.textContaining('Nothing in the queue'), findsOneWidget);
+        expect(find.byType(ReturnToStory), findsOneWidget);
+
+        // The pill remains a route back to the saved chapter after a jump.
+        await tester.tap(find.byType(ReturnToStory));
+        await settleDatabase();
+        expect(find.byType(ReaderScreen), findsOneWidget);
+        await tester.tap(find.byTooltip('Go to'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Library'));
+        await settleDatabase();
+        expect(find.byType(LibraryList), findsOneWidget);
+        expect(find.byType(ReturnToStory), findsOneWidget);
+        await tester.runAsync(() async {
+          final place = await library.placeIn('1');
+          expect(place?.chapter, 1);
+          expect(place?.offset, 240);
+        });
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(() async {
