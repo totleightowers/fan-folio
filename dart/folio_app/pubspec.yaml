@@ -41,6 +41,8 @@ dependencies:
   flutter_foreground_task: ^11.0.3
 
 dev_dependencies:
+  integration_test:
+    sdk: flutter
   http: ^1.2.0
   flutter_test:
     sdk: flutter

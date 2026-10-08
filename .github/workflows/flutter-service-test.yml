@@ -1,0 +1,64 @@
+name: Android download service
+
+on:
+  pull_request:
+    paths:
+      - 'dart/**'
+      - '.github/workflows/flutter-service-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e
+        with:
+          channel: stable
+          cache: true
+      - name: Start Android emulator
+        run: |
+          sudo chmod 666 /dev/kvm
+          sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
+          echo no | avdmanager create avd -n folio-service -k 'system-images;android-35;google_apis;x86_64' --force
+          "$ANDROID_HOME/emulator/emulator" -avd folio-service -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
+          timeout 180 adb wait-for-device
+          for i in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1 ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb shell input keyevent 82
+      - name: Build service integration test
+        working-directory: dart/folio_app
+        run: |
+          flutter pub get
+          ./tool/android.sh
+          flutter build apk --debug --target integration_test/download_service_test.dart
+          adb install -g build/app/outputs/flutter-apk/app-debug.apk
+      - name: Run on Android
+        working-directory: dart/folio_app
+        run: flutter test integration_test/download_service_test.dart -d emulator-5554 --timeout 3m
+      - name: Capture Android diagnostics
+        if: always()
+        run: |
+          adb logcat -d > /tmp/service-logcat.txt || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: android-service-diagnostics
+          path: |
+            /tmp/emulator.log
+            /tmp/service-logcat.txt
