@@ -58,15 +58,18 @@ class DownloadTaskHandler extends TaskHandler {
   }
 
   Future<void> _open(TaskStarter starter) async {
+    var stage = 0;
     try {
       _diagnostics = WorkerDiagnostics(await WorkerDiagnostics.location());
       await _diagnostics!.event('worker_start', {
         'system': starter == TaskStarter.system,
       });
       // A separate connection: closing the service must not close the UI's DB.
+      stage = 1;
       final library = await Library.openExisting(null, false);
       if (library == null) throw StateError('No preview library is available.');
       _library = library;
+      stage = 2;
       final engine = LocalDownloads(
         library: library,
         session: await Session.load(),
@@ -78,10 +81,15 @@ class DownloadTaskHandler extends TaskHandler {
           await FlutterForegroundTask.stopService();
         },
       );
+      stage = 3;
       await _worker!.start();
+      await _diagnostics?.event('worker_ready');
       await _notice();
-    } catch (_) {
-      await _diagnostics?.event('worker_start_failed');
+    } catch (error, stack) {
+      await _diagnostics?.event('worker_start_failed', {'stage': stage});
+      if (kDebugMode) {
+        debugPrint('Worker startup stage $stage: ${error.runtimeType}\n$stack');
+      }
       FlutterForegroundTask.sendDataToMain({
         'type': 'fatal',
         'error': 'The download worker could not start. Export its diagnostic report from Settings.',

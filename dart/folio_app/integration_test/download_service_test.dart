@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -48,5 +46,5 @@ void main() {
       }
       await library.close();
     }
-  }, timeout: const Timeout(Duration(minutes: 2)));
+  });
 }
