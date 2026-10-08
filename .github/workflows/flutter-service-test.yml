@@ -33,6 +33,8 @@ jobs:
           export PATH="/usr/local/lib/android/sdk/platform-tools:$PATH"
           echo /usr/local/lib/android/sdk/platform-tools >> "$GITHUB_PATH"
           sudo chmod 666 /dev/kvm
+          df -h /
+          trap 'cat /tmp/emulator.log || true' ERR
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
           echo no | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager create avd -n folio-service -k 'system-images;android-35;google_apis;x86_64' --force
           "/usr/local/lib/android/sdk/emulator/emulator" -avd folio-service -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
@@ -57,7 +59,8 @@ jobs:
       - name: Capture Android diagnostics
         if: always()
         run: |
-          adb logcat -d > /tmp/service-logcat.txt || true
+          cat /tmp/emulator.log || true
+          timeout 15 adb logcat -d > /tmp/service-logcat.txt || true
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
