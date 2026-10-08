@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:folio_core/folio_core.dart' as core;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'download_worker.dart';
@@ -47,6 +48,7 @@ class DownloadTaskHandler extends TaskHandler {
   WorkerDiagnostics? _diagnostics;
   Future<void>? _ready;
   int _ticks = 0;
+  bool _stopping = false;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) {
@@ -82,21 +84,33 @@ class DownloadTaskHandler extends TaskHandler {
         'type': 'fatal',
         'error': 'The download worker could not start. Export its diagnostic report from Settings.',
       });
-      await FlutterForegroundTask.stopService();
+      // Do not wait for onDestroy here: it waits for initialization to settle.
+      unawaited(FlutterForegroundTask.stopService().then((_) {}));
     }
   }
 
   Future<void> _notice() async {
     final engine = _worker?.engine;
-    if (engine == null) return;
-    final total = engine.jobs.fold<int>(0, (n, j) => n + j.total);
-    final done = engine.jobs.fold<int>(0, (n, j) => n + j.done);
+    if (engine == null || _stopping) return;
+    final active = engine.jobs.where(
+      (j) => [
+        core.JobState.listing,
+        core.JobState.queued,
+        core.JobState.running,
+        core.JobState.pausing,
+      ].contains(j.state),
+    );
+    final total = active.fold<int>(0, (n, j) => n + j.total);
+    final done = active.fold<int>(0, (n, j) => n + j.done);
+    final listing = active.any((j) => j.open);
     final text = engine.storageProblem != null
         ? 'Paused: check device storage'
         : engine.cooling != null
         ? 'Waiting for the archive — downloads are saved'
         : engine.busy
-        ? '$done of $total processed'
+        ? listing
+              ? '$done processed · finding works'
+              : '$done of $total processed'
         : 'Finishing archive requests';
     await FlutterForegroundTask.updateService(
       notificationTitle: 'Fan Folio Preview',
@@ -106,14 +120,14 @@ class DownloadTaskHandler extends TaskHandler {
 
   @override
   void onReceiveData(Object data) {
-    if (data is! Map) return;
+    if (_stopping || data is! Map) return;
     unawaited(_receive(Map<String, dynamic>.from(data)));
   }
 
   Future<void> _receive(Map<String, dynamic> data) async {
     await _ready;
     final worker = _worker;
-    if (worker == null) return;
+    if (worker == null || _stopping) return;
     await _diagnostics?.event('command_received');
     await worker.receive(data);
     await _notice();
@@ -121,11 +135,12 @@ class DownloadTaskHandler extends TaskHandler {
 
   @override
   void onRepeatEvent(DateTime timestamp) {
+    if (_stopping) return;
     _worker?.publish();
     unawaited(_notice());
     if (++_ticks % 12 == 0) {
       final worker = _worker;
-      if (worker != null)
+      if (worker != null) {
         unawaited(
           _diagnostics?.event('heartbeat', {
             'busy': worker.engine.busy,
@@ -137,26 +152,31 @@ class DownloadTaskHandler extends TaskHandler {
                 .inSeconds,
           }),
         );
+      }
     }
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
+    _stopping = true;
+    await _ready;
     await _diagnostics?.event('worker_stop', {'timeout': isTimeout});
-    FlutterForegroundTask.sendDataToMain({
-      'type': 'stopped',
-      'timeout': isTimeout,
-    });
     try {
       await _worker?.close(timeout: isTimeout);
+    } catch (_) {
+      await _diagnostics?.event('worker_checkpoint_failed');
     } finally {
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'stopped',
+        'timeout': isTimeout,
+      });
       await _library?.db.close();
     }
   }
 
   @override
   void onNotificationButtonPressed(String id) {
-    if (id == 'pause')
+    if (id == 'pause' && !_stopping) {
       unawaited(
         _worker?.receive({
           'id': 'notification:${DateTime.now().microsecondsSinceEpoch}',
@@ -164,6 +184,7 @@ class DownloadTaskHandler extends TaskHandler {
           'args': <String, dynamic>{},
         }),
       );
+    }
   }
 
   @override

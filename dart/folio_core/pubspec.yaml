@@ -4,7 +4,7 @@ description: >-
   query, archive parsing, pacing and queue persistence. Pure Dart so behaviour
   can be tested independently of the Flutter UI and Android lifecycle.
 publish_to: none
-version: 4.0.0-alpha.2
+version: 4.0.0-alpha.3
 
 environment:
   sdk: ^3.5.0

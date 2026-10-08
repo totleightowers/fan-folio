@@ -121,10 +121,11 @@ class RemoteDownloads extends Downloads {
     if (_disposed || !_connected) return;
     if (!await FlutterForegroundTask.isRunningService && !_disposed) {
       _connected = false;
-      if (busy || _pending.isNotEmpty)
+      if (busy || _pending.isNotEmpty) {
         _fail(
           'Downloads were interrupted. The queue is saved; resume it from Downloads.',
         );
+      }
     }
   }
 
@@ -146,8 +147,9 @@ class RemoteDownloads extends Downloads {
         ],
         callback: downloadServiceEntry,
       );
-      if (result is ServiceRequestFailure)
+      if (result is ServiceRequestFailure) {
         throw StateError('Android could not start downloads: ${result.error}');
+      }
     }
     // Only the read-only handshake may be retried. Never replay an archive action.
     for (var attempt = 0; attempt < 30; attempt++) {

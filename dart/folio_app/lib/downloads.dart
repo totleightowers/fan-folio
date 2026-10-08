@@ -20,7 +20,7 @@ abstract class Downloads extends ChangeNotifier {
   Downloads.base();
   factory Downloads({
     required Library library,
-    Session session = Session.none,
+    Session session,
     core.ArchiveClient Function(core.Pacer)? clientFactory,
     core.Pacer Function(Future<void> Function())? pacerFactory,
   }) = LocalDownloads;

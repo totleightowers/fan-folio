@@ -22,12 +22,20 @@ Preview builds use `org.fanfolio.preview` and separate storage. They are signed 
 - All chapter bodies use the HTML renderer; scroll position is saved on navigation/backgrounding as well as after scrolling. Native text remains a renderer failure fallback.
 - External image requests do not carry archive cookies.
 
+## Service ownership slice (alpha.3)
+
+On Android, one foreground-service isolate owns the queue, archive client and shared pacer. Screens send commands and observe snapshots; disposing the UI does not stop the engine. The service opens its own SQLite connection, persists work before dispatch, restores pending work on a system restart, and stops after ten idle seconds. Android data-sync timeouts pause/checkpoint remaining jobs for explicit resumption; this does not evade system execution limits. There is no boot-triggered download start.
+
+Private bounded diagnostics record lifecycle events and minute-by-minute numeric progress, with export from Settings. They exclude cookies, work URLs, titles and downloaded content. A report exported while a write is in progress can have an incomplete final line.
+
+Host tests disconnect/reconnect the UI during a synthetic download and check timeout-paused recovery. They cannot establish that a particular Android device keeps the service alive. Screen-off, task removal, OEM battery restrictions and process restarts remain device gates. Long author reconciliation actions do not yet have a durable listing cursor. Backup export while a worker is writing also remains a migration gate.
+
 ## Feature audit and order of migration
 
 | Journey | Existing Dart implementation | Remaining gate |
 | --- | --- | --- |
 | Add a work / offline reading | Parser, database, paced client, reader | First slice regression tests; Android WebView/device validation |
-| Background downloads | Dart queue, foreground-service notification | Service-owned worker, lifecycle diagnostics, sticky restart, timeout policy, screen-off test |
+| Background downloads | Service-owned Dart queue, persisted pacing, diagnostics, notification pause and timeout checkpoint | Physical-device screen-off/task dismissal/process restart and timeout validation |
 | Download inspection and retries | Aggregate job rows | Per-work outcomes, failure reasons, durable listing cursor, prioritise newly opened work |
 | Home / library | Shelves, filters, search, cards | Approved v3 visual layout, rating/relationship on every card, compact metadata, consistent full-card actions |
 | Return to story | First slice shell pill | Extend consistently to nested author/settings/work routes |

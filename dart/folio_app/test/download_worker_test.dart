@@ -126,6 +126,93 @@ void main() {
   });
 
   test(
+    'Android timeout checkpoints paused work and rejects late commands',
+    () async {
+      final scratch = await Directory.systemTemp.createTemp('folio-timeout');
+      final library = await Library.create('${scratch.path}/library.db');
+      final requested = Completer<void>();
+      final release = Completer<void>();
+      var now = DateTime(2026);
+      var requests = 0;
+      LocalDownloads makeEngine() => LocalDownloads(
+        library: library,
+        pacerFactory: (checkpoint) => core.Pacer(
+          now: () => now,
+          sleep: (d) async {
+            now = now.add(d);
+          },
+          checkpoint: checkpoint,
+        ),
+        clientFactory: (pacer) => core.ArchiveClient(
+          pacer: pacer,
+          http_: MockClient((_) async {
+            requests++;
+            if (!requested.isCompleted) requested.complete();
+            await release.future;
+            throw http.ClientException('Service stopped');
+          }),
+        ),
+      );
+      final replies = <Map<String, Object?>>[];
+      final first = DownloadWorker(
+        makeEngine(),
+        send: replies.add,
+        whenIdle: () async {},
+      );
+      DownloadWorker? restored;
+      try {
+        await first.start();
+        await first.receive({
+          'id': 'add',
+          'method': 'addWorks',
+          'args': {
+            'label': 'Timeout test',
+            'ids': ['58374928', '58374929'],
+          },
+        });
+        await requested.future.timeout(const Duration(seconds: 2));
+        await first.close(timeout: true);
+        release.complete();
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        final before = requests;
+        restored = DownloadWorker(
+          makeEngine(),
+          send: replies.add,
+          whenIdle: () async {},
+        );
+        await restored.start();
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+        expect(restored.engine.jobs.single.state, core.JobState.paused);
+        expect(restored.engine.jobs.single.total, 2);
+        expect(restored.engine.jobs.single.done, 0);
+        expect(
+          requests,
+          before,
+          reason: 'Android timeout must not silently restart downloads',
+        );
+        await first.receive({
+          'id': 'too-late',
+          'method': 'addWorks',
+          'args': {
+            'label': 'Late',
+            'ids': ['999'],
+          },
+        });
+        expect(replies.last['id'], 'too-late');
+        expect(replies.last['error'], contains('stopping'));
+        expect(restored.engine.jobs, hasLength(1));
+      } finally {
+        if (!release.isCompleted) release.complete();
+        await restored?.close();
+        // The first worker was closed explicitly before reconstructing state.
+        if (restored == null) await first.close();
+        await library.close();
+        await scratch.delete(recursive: true);
+      }
+    },
+  );
+
+  test(
     'diagnostics exclude strings and rotate without losing the current record',
     () async {
       final scratch = await Directory.systemTemp.createTemp('folio-worker-log');

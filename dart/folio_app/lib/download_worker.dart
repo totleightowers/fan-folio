@@ -39,8 +39,16 @@ class DownloadWorker {
     }
     if (!engine.busy && _commands == 0) {
       _idle ??= Timer(const Duration(seconds: 10), () async {
+        _idle = null;
         if (_closed || engine.busy || _commands != 0) return;
-        await engine.flush();
+        try {
+          await engine.flush();
+        } catch (_) {
+          send({
+            'type': 'fatal',
+            'error': 'Downloads could not be saved. Check device storage before resuming.',
+          });
+        }
         // No await between the final state check and closing command intake.
         if (_closed || engine.busy || _commands != 0) return;
         _closed = true;
@@ -195,6 +203,7 @@ class DownloadWorker {
     engine.removeListener(_changed);
     try {
       await engine.flush();
+      send({'type': 'state', ...downloadState(engine)});
     } finally {
       engine.dispose();
     }
