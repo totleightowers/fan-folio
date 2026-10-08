@@ -95,7 +95,7 @@ class RemoteDownloads extends Downloads {
         _connected = false;
       case 'stopped':
         _connected = false;
-        if (raw['timeout'] == true || _pending.isNotEmpty) {
+        if (raw['timeout'] == true || busy || _pending.isNotEmpty) {
           _fail(
             'Android stopped the download worker. Progress is saved; reopen Downloads to resume.',
           );

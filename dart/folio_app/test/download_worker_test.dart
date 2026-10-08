@@ -79,6 +79,11 @@ void main() {
       ui = RemoteDownloads(library: library, session: Session.none);
       await ui.restore();
       await ui.addByLink('https://archiveofourown.org/works/58374928');
+      // An unexpected service stop must not leave an apparently live queue.
+      for (final callback in FlutterForegroundTask.dataCallbacks.toList()) {
+        callback({'type': 'stopped', 'timeout': false});
+      }
+      expect(ui.storageProblem, contains('Android stopped'));
       ui.dispose();
       ui = null;
       gate.complete();
