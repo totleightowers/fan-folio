@@ -615,7 +615,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 int chapter = Math.max(1, Integer.parseInt(uri.getQueryParameter("chapter")));
                 String result;
                 synchronized (imageLock) {
-                    result = path.endsWith("/retry") ? retryImages(workId)
+                    result = path.endsWith("/retry") ? retryImages(workId, chapter, uri.getQueryParameter("broken"))
                         : fetchNextImage(workId, chapter, !"false".equals(uri.getQueryParameter("proxy")));
                 }
                 Map<String, String> h = headers(); h.put("Cache-Control", "no-store");
@@ -946,7 +946,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
         java.util.Set<String> seen = new java.util.HashSet<>();
         // New failures cool down for a day. Legacy dead rows get another chance.
         try (Cursor c = db.rawQuery("SELECT url FROM images WHERE work_id = ? AND "
-                + "(status = 'stored' OR (status = 'failed' AND julianday(fetched_at) > julianday('now', '-1 day')))",
+                + "((status = 'stored' AND length(sha256) = 64 AND length(bytes) > 0) OR (status = 'failed' AND julianday(fetched_at) > julianday('now', '-1 day')))",
                 new String[]{ workId })) {
             while (c.moveToNext()) seen.add(c.getString(0));
         }
@@ -972,10 +972,35 @@ public class FolioRuntime extends android.content.ContextWrapper {
             new String[]{ ImageFetcher.REGION_IMAGE, ImageFetcher.REMOVED_IMAGE });
     }
 
-    private String retryImages(String workId) {
+    private String retryImages(String workId, int chapter, String broken) throws org.json.JSONException {
         if (db == null) return errorJson("No library open");
-        int count = db.delete("images", "work_id = ? AND (status IS NULL OR status != 'stored' OR sha256 IN (?, ?))",
+        int count = db.delete("images", "work_id = ? AND (status IS NULL OR status != 'stored' OR sha256 IS NULL OR length(sha256) != 64 OR bytes IS NULL OR length(bytes) = 0 OR sha256 IN (?, ?))",
             new String[]{ workId, ImageFetcher.REGION_IMAGE, ImageFetcher.REMOVED_IMAGE });
+        // A browser decode/404 failure is evidence too. The stored flag alone
+        // cannot prove that the local image loads. Match the displayed hash so
+        // a late retry cannot discard a newer copy, and constrain it to sources
+        // actually present in this chapter. Packaged EPUB images are preserved.
+        org.json.JSONArray failed = new org.json.JSONArray(broken == null ? "[]" : broken);
+        java.util.Set<String> sources = new java.util.HashSet<>();
+        try (Cursor c = db.rawQuery("SELECT html FROM chapters WHERE work_id = ? AND number = ?",
+                new String[]{ workId, String.valueOf(chapter) })) {
+            while (c.moveToNext()) {
+                String html = c.getString(0);
+                if (html == null) continue;
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                    "<img\\b[^>]*\\bsrc=\"(https?://[^\"]+)\"", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(html);
+                while (m.find()) sources.add(m.group(1).replace("&amp;", "&"));
+            }
+        }
+        for (int i = 0; i < failed.length(); i++) {
+            org.json.JSONObject image = failed.optJSONObject(i);
+            if (image == null) continue;
+            String url = image.optString("url"), sha = image.optString("sha256");
+            if (!sources.contains(url) || !sha.matches("[0-9a-f]{64}")) continue;
+            count += db.delete("images", "work_id = ? AND url = ? AND sha256 = ?",
+                new String[]{ workId, url, sha });
+        }
+        DownloadDiagnostics.event("image_retry", "reportedBroken", failed.length(), "chapterSources", sources.size(), "reset", count);
         return "{\"reset\":" + count + "}";
     }
 
@@ -984,6 +1009,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
         if (db == null) return errorJson("No library open");
         SQLiteDatabase library = db;
         String target = nextImageFor(workId, chapter);
+        DownloadDiagnostics.event("image_selection", "found", target != null);
         if (target == null) return "{\"done\":true}";
         try {
             ImageFetcher fetcher = new ImageFetcher(new ImageFetcher.Connections() {
@@ -994,11 +1020,13 @@ public class FolioRuntime extends android.content.ContextWrapper {
             ImageFetcher.Picture picture = fetcher.fetch(target, allowProxy);
             if (db != library || !library.isOpen()) return errorJson("Library changed while loading image");
             String stored = storeImageResult(library, workId, target, picture);
+            DownloadDiagnostics.event("image_saved", "saved", stored != null, "bytes", picture.bytes.length, "proxied", picture.proxied);
             if (stored == null) return "{\"done\":true}";
             org.json.JSONObject out = new org.json.JSONObject();
             out.put("url", target); out.put("sha256", stored); out.put("proxied", picture.proxied);
             return out.toString();
         } catch (Exception e) {
+            DownloadDiagnostics.failure("image_fetch_failed", e);
             String stored = storeImageResult(library, workId, target, null);
             if (stored != null) return "{\"url\":" + org.json.JSONObject.quote(target)
                 + ",\"sha256\":" + org.json.JSONObject.quote(stored) + "}";
@@ -1016,7 +1044,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 if (!c.moveToFirst()) return null;
             }
             try (Cursor c = library.rawQuery("SELECT sha256 FROM images WHERE work_id = ? AND url = ? "
-                    + "AND status = 'stored' AND sha256 IS NOT NULL AND length(bytes) > 0",
+                    + "AND status = 'stored' AND length(sha256) = 64 AND length(bytes) > 0",
                     new String[]{ workId, target })) {
                 if (c.moveToFirst() && !ImageFetcher.placeholder(c.getString(0))) return c.getString(0);
             }

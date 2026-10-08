@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createImageCollector } from '../app/core/images.js';
+import { createImageCollector, brokenStoredImages } from '../app/core/images.js';
 
 function setup(overrides = {}) {
   const shown = [], progress = [], requests = [];
@@ -68,4 +68,10 @@ test('a disabled proxy applies to each subsequent request', async () => {
 test('storage failures cannot create an endless download loop', async () => {
   const { collector } = setup({ fetchNext: async () => ({ url: 'a', error: 'storage full' }) });
   await assert.rejects(collector.start('1', 1), /storage full/);
+});
+
+test('retry identifies broken saved images without discarding pending, healthy or packaged copies', () => {
+  const sha = 'a'.repeat(64);
+  const img = (overrides = {}) => ({complete:true,naturalWidth:0,dataset:{stored:'1',remoteSrc:'https://example.org/art.gif'},getAttribute:()=>`/img/${sha}?recovered=1`,...overrides});
+  assert.deepEqual(brokenStoredImages([img(),img(),img({complete:false}),img({naturalWidth:20}),img({dataset:{stored:'1',remoteSrc:'Images/art.gif'}}),img({dataset:{remoteSrc:'https://example.org/new.gif'}})]),[{url:'https://example.org/art.gif',sha256:sha}]);
 });

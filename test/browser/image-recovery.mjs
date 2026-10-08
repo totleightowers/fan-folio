@@ -20,7 +20,7 @@ db.exec("INSERT INTO reading(work_id,chapter,opened_at) VALUES('1',1,'2026-09-22
 db.prepare("INSERT INTO images(work_id,url,sha256,mime,bytes,status) VALUES('1',?,?, 'image/png',?,'stored')").run(held,goodHash,png);
 let attempts = 0, resets = 0, releaseFirst;
 const firstResponse = new Promise(resolve => { releaseFirst = resolve; });
-const requested = [], external = [], errors = [];
+const requested = [], retried = [], external = [], errors = [];
 const root = fileURLToPath(new URL('../../app/', import.meta.url));
 const server = createServer(async (req,res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -33,6 +33,12 @@ const server = createServer(async (req,res) => {
     }
     if (url.pathname === '/__images/retry') {
       resets++;
+      const broken = JSON.parse(url.searchParams.get('broken') || '[]');
+      retried.push(broken);
+      for (const {url:src,sha256} of broken) {
+        assert.equal(src,source,'only the broken source should be retried');
+        db.prepare('DELETE FROM images WHERE work_id=? AND url=? AND sha256=?').run(url.searchParams.get('workId'),src,sha256);
+      }
       db.prepare("DELETE FROM images WHERE work_id=? AND status!='stored'").run(url.searchParams.get('workId'));
       return json({reset:1});
     }
@@ -46,6 +52,7 @@ const server = createServer(async (req,res) => {
         return json({url:source,error:'Image host answered 429'});
       }
       db.prepare("INSERT INTO images(work_id,url,sha256,mime,bytes,status) VALUES('1',?,?,'image/png',?,'stored')").run(source,recoveredHash,png);
+      db.prepare('UPDATE images SET fetched_at=? WHERE url=?').run(String(attempts),source);
       return json({url:source,sha256:recoveredHash,proxied:true});
     }
     if (url.pathname.startsWith('/img/')) {
@@ -102,6 +109,29 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('#workskin img').length === 2 && [...document.querySelectorAll('#workskin img')].every(img => img.complete && img.naturalWidth>0));
   assert.equal(attempts,2,'reopening renders the saved image without another upstream attempt');
   assert.ok(requested.some(r => r.proxy==='false'),'proxy opt-out persists after reload');
+  // Regression: storage says success, but the browser cannot decode the saved bytes.
+  db.prepare('UPDATE images SET bytes=?,fetched_at=? WHERE url=?').run(Buffer.from('truncated GIF'),'broken-fixture',source);
+  await page.reload();
+  await page.locator('.resume-action').first().click();
+  await page.waitForFunction(() => { const i=document.querySelectorAll('#workskin img')[1]; return i?.complete && !i.naturalWidth && i.dataset.stored==='1'; });
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-images').click();
+  await page.waitForFunction(() => [...document.querySelectorAll('#workskin img')].every(i=>i.complete && i.naturalWidth>0));
+  assert.deepEqual(retried.at(-1),[{url:source,sha256:recoveredHash}]);
+  assert.equal(attempts,3,'a broken stored image must actually be fetched again');
+  assert.equal(db.prepare('SELECT sha256 FROM images WHERE url=?').get(held).sha256,goodHash);
+  await page.reload();
+  await page.locator('.resume-action').first().click();
+  await page.waitForFunction(() => [...document.querySelectorAll('#workskin img')].every(i=>i.complete && i.naturalWidth>0));
+  assert.equal(attempts,3,'the repaired saved copy also loads after reopening');
+  await page.locator('#workskin').evaluate(el => {
+    const i=document.createElement('img'); i.dataset.remoteSrc='Images/missing.gif'; i.src=''; el.append(i);
+  });
+  await page.waitForFunction(() => { const i=document.querySelector('#workskin img:last-child'); return i?.complete && !i.naturalWidth; });
+  await page.locator('#reader-more').click();
+  await page.locator('#reader-images').click();
+  await page.locator('#toast').filter({hasText:'no downloadable source found'}).waitFor();
+  assert.equal(attempts,3,'packaged images are not sent to a remote host');
   assert.deepEqual(errors,[]);
   assert.deepEqual(external,[],'the browser never contacts Imgur, AO3 or the proxy directly');
   console.log('Image retry, cached reopening, preserved illustrations and proxy settings passed');

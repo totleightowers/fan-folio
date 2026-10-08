@@ -37,3 +37,15 @@ export function createImageCollector({ fetchNext, isCurrent, proxy, onImage, onP
     },
   };
 }
+
+/** Only completed, broken local loads are retried; a pending image is not a failure. */
+export function brokenStoredImages(images) {
+  const found = new Map();
+  for (const img of images) {
+    if (!img.complete || img.naturalWidth > 0 || img.dataset.stored !== '1') continue;
+    const url = img.dataset.remoteSrc;
+    const sha = /^\/img\/([a-f0-9]{64})(?:[?]|$)/.exec(img.getAttribute('src') || '')?.[1];
+    if (sha && /^https?:\/\//i.test(url || '')) found.set(url, { url, sha256: sha });
+  }
+  return [...found.values()];
+}

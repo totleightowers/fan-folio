@@ -241,8 +241,8 @@ const LOCAL = {
     if (!row) throw new Error('no such chapter');
     const work = one('SELECT skin_css FROM works WHERE work_id = ?', [workId]);
     const images = new Map(
-      sql("SELECT url, sha256 FROM images WHERE work_id = ? AND status = 'stored'", [workId])
-        .map((i) => [i.url, `/img/${i.sha256}`])
+      sql("SELECT url, sha256, fetched_at FROM images WHERE work_id = ? AND status = 'stored' AND length(sha256) = 64 AND length(bytes) > 0", [workId])
+        .map((i) => [i.url, `/img/${i.sha256}?saved=${encodeURIComponent(i.fetched_at || "")}`])
     );
     return { number: row.number, title: row.title,
       ...renderChapter(row, { skinCss: work?.skin_css ?? null, images }) };
@@ -270,8 +270,8 @@ const LOCAL = {
     if (!row) throw new Error('no such version');
     const work = one('SELECT title, skin_css FROM works WHERE work_id = ?', [workId]);
     const images = new Map(
-      sql("SELECT url, sha256 FROM images WHERE work_id = ? AND status = 'stored'", [workId])
-        .map((i) => [i.url, `/img/${i.sha256}`])
+      sql("SELECT url, sha256, fetched_at FROM images WHERE work_id = ? AND status = 'stored' AND length(sha256) = 64 AND length(bytes) > 0", [workId])
+        .map((i) => [i.url, `/img/${i.sha256}?saved=${encodeURIComponent(i.fetched_at || "")}`])
     );
     return {
       ...row,
@@ -569,9 +569,9 @@ export async function fetchNextImage(workId, { chapter = 1, proxy = true } = {})
   return response.json();
 }
 
-export async function retryImages(workId, chapter = 1) {
+export async function retryImages(workId, chapter = 1, broken = []) {
   if (!isNative) throw new Error('Image recovery needs the Android app');
-  const params = new URLSearchParams({ workId: String(workId), chapter: String(chapter) });
+  const params = new URLSearchParams({ workId: String(workId), chapter: String(chapter), broken: JSON.stringify(broken) });
   const response = await fetch(`/__images/retry?${params}`, { cache: 'no-store' });
   if (!response.ok) throw new Error('Images could not be retried');
   const out = await response.json();

@@ -84,7 +84,10 @@ test('native image selection retries legacy failures and respects the cooldown',
   try {
     db.exec(SCHEMA);
     for (const [url,status,date] of [['good','stored',null],['old','dead',null],['recent','failed',new Date().toISOString()],['due','failed','2020-01-01']]) {
-      db.prepare('INSERT INTO images(work_id,url,status,fetched_at) VALUES(?,?,?,?)').run('1',url,status,date);
+      db.prepare('INSERT INTO images(work_id,url,status,fetched_at,sha256,mime,bytes) VALUES(?,?,?,?,?,?,?)').run('1',url,status,date,'a'.repeat(64),'image/png',Buffer.from([1]));
+    }
+    for (const [url,bytes,sha,mime] of [['empty',Buffer.alloc(0),'a'.repeat(64),'image/png'],['nohash',Buffer.from([1]),null,'image/png']]) {
+      db.prepare("INSERT INTO images(work_id,url,status,bytes,sha256,mime) VALUES('1',?,'stored',?,?,?)").run(url,bytes,sha,mime);
     }
     const query = sqlFrom('"SELECT url FROM images WHERE work_id = ? AND "', 'new String[]{ workId }');
     assert.deepEqual(db.prepare(query).all('1').map(r => r.url).sort(), ['good','recent']);
@@ -94,11 +97,25 @@ test('manual recovery preserves valid copies and other works', () => {
   const db = new DatabaseSync(':memory:');
   try {
     db.exec(SCHEMA);
-    for (const [id,url,status,sha] of [['1','good','stored','goodhash'],['1','blocked','stored','bad1'],['1','failed','failed',null],['2','other','failed',null]]) {
-      db.prepare('INSERT INTO images(work_id,url,status,sha256) VALUES(?,?,?,?)').run(id,url,status,sha);
+    for (const [id,url,status,sha] of [['1','good','stored','a'.repeat(64)],['1','blocked','stored','bad1'],['1','failed','failed',null],['2','other','failed',null]]) {
+      db.prepare('INSERT INTO images(work_id,url,status,sha256,mime,bytes) VALUES(?,?,?,?,?,?)').run(id,url,status,sha,'image/png',Buffer.from([1]));
     }
     const where = sqlFrom('"work_id = ? AND (status IS NULL', 'new String[]{ workId, ImageFetcher.REGION_IMAGE');
     db.prepare('DELETE FROM images WHERE '+where).run('1','bad1','bad2');
     assert.deepEqual(db.prepare('SELECT url FROM images ORDER BY url').all().map(r => r.url), ['good','other']);
+  } finally { db.close(); }
+});
+
+test('broken saved-image retry is scoped to the work, URL and displayed revision', () => {
+  const db = new DatabaseSync(':memory:');
+  try {
+    db.exec(SCHEMA);
+    for (const [id,url,sha] of [['1','broken','old'],['1','healthy','good'],['2','broken','old']]) {
+      db.prepare("INSERT INTO images(work_id,url,status,sha256) VALUES(?,?,'stored',?)").run(id,url,sha);
+    }
+    const where = sqlFrom('"work_id = ? AND url = ? AND sha256 = ?"', 'new String[]{ workId, url, sha }');
+    assert.equal(db.prepare('DELETE FROM images WHERE '+where).run('1','broken','stale').changes,0);
+    assert.equal(db.prepare('DELETE FROM images WHERE '+where).run('1','broken','old').changes,1);
+    assert.deepEqual(db.prepare('SELECT work_id,url FROM images ORDER BY work_id').all().map(r=>[r.work_id,r.url]),[['1','healthy'],['2','broken']]);
   } finally { db.close(); }
 });

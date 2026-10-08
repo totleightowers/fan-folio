@@ -9,7 +9,7 @@
 
 import { diagnosticProgress, diagnosticQueue } from './download-diagnostics.js';
 import { visitLabel } from './core/store/visits.js';
-import { createImageCollector } from './core/images.js';
+import { createImageCollector, brokenStoredImages } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
 import { walkHistory } from './core/sync/history.js';
 import { jobSource } from './core/sync/job-source.js';
@@ -3372,7 +3372,7 @@ const imageCollector = createImageCollector({
   onImage(out) {
     for (const img of $$('#workskin img[data-remote-src]')) {
       if (img.dataset.remoteSrc !== out.url) continue;
-      img.src = `/img/${out.sha256}`;
+      img.src = `/img/${out.sha256}?recovered=${Date.now()}`;
       img.dataset.stored = '1';
       img.classList.remove('ar-missing-image');
     }
@@ -3396,10 +3396,16 @@ $('#reader-images').onclick = async () => {
   try {
     await imageCollector.cancel();
     if (showing() !== 'reader' || current.workId !== workId || current.chapter !== chapter || viewingArchive) return;
-    await retryImages(workId, chapter);
+    const broken = brokenStoredImages($$('#workskin img'));
+    await retryImages(workId, chapter, broken);
     toast('Retrying missing images…');
     const result = await collectImages(workId);
-    if (!result.cancelled) toast(result.saved || result.failed ? imageResult(result) : 'No missing images in this chapter');
+    if (!result.cancelled) {
+      const missing = $$('#workskin img').filter(img => img.complete && img.naturalWidth === 0).length;
+      toast(result.saved || result.failed ? imageResult(result)
+        : missing ? `${missing} image${missing === 1 ? '' : 's'} unavailable · no downloadable source found`
+          : 'No missing images in this chapter');
+    }
   } catch (e) { toast(e.message); }
   finally { button.disabled = false; }
 };

@@ -2402,7 +2402,7 @@ test('tag groups label above, not beside', () => {
 test('image arrivals update the current chapter without rebuilding it', () => {
   assert.match(js, /createImageCollector\(/);
   assert.match(js, /img\[data-remote-src\]/);
-  assert.match(js, /img\.src = `\/img\/\$\{out\.sha256\}`/);
+  assert.match(js, /img\.src = `\/img\/\$\{out\.sha256\}\?recovered=/);
   assert.match(js, /current\.workId === workId && current\.chapter === chapter/);
 });
 
