@@ -32,12 +32,16 @@ jobs:
         run: |
           export PATH="/usr/local/lib/android/sdk/platform-tools:$PATH"
           echo /usr/local/lib/android/sdk/platform-tools >> "$GITHUB_PATH"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/folio-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           sudo chmod 666 /dev/kvm
           df -h /
           trap 'cat /tmp/emulator.log || true' ERR
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager 'system-images;android-35;google_apis;x86_64' 'emulator'
           echo no | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/avdmanager create avd -n folio-service -k 'system-images;android-35;google_apis;x86_64' --force
           "/usr/local/lib/android/sdk/emulator/emulator" -avd folio-service -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > /tmp/emulator.log 2>&1 &
+          test -f "$ANDROID_AVD_HOME/folio-service.ini"
           timeout 180 adb wait-for-device
           for attempt in $(seq 1 120); do
             echo "Waiting for Android boot: $attempt"
