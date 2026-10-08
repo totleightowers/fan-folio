@@ -19,14 +19,17 @@ class WorkerDiagnostics {
             if (await old.exists()) await old.delete();
             await file.rename(old.path);
           }
+          final record = jsonEncode({
+            'time': DateTime.now().toUtc().toIso8601String(),
+            'session': session,
+            'event': name,
+            'data': {
+              for (final e in data.entries)
+                if (e.value is num || e.value is bool) e.key: e.value,
+            },
+          });
           await file.writeAsString(
-            '${jsonEncode({
-              'time': DateTime.now().toUtc().toIso8601String(),
-              'session': session,
-              'event': name,
-              'data': {for (final e in data.entries)
-                if (e.value is num || e.value is bool) e.key: e.value},
-            })}\n',
+            '$record\n',
             mode: FileMode.append,
             flush: true,
           );

@@ -305,11 +305,15 @@ class RemoteDownloads extends Downloads {
     required bool bookmarks,
     bool andFetch = true,
     void Function(int, int?, int)? onProgress,
-  }) async => await _call('syncPerson', {
-    'byline': byline,
-    'bookmarks': bookmarks,
-    'andFetch': andFetch,
-  }, onProgress) as int;
+  }) async {
+    final args = <String, Object?>{
+      'byline': byline,
+      'bookmarks': bookmarks,
+      'andFetch': andFetch,
+    };
+    return await _call('syncPerson', args, onProgress) as int;
+  }
+
   @override
   Future<core.ListingCost> costOfAuthor(String byline) async {
     final cost = await _call('costOfAuthor', {'byline': byline}) as Map;
