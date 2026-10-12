@@ -47,6 +47,66 @@ void main() {
     }
   });
 
+  for (final scale in [1.0, 2.0]) {
+    testWidgets(
+      'archive filters clear and submit above the keyboard at scale $scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        core.ArchiveSearch? chosen;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: themeFor(Ground.dark, Brightness.dark),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: Builder(
+                builder: (context) => TextButton(
+                  child: const Text('Open filters'),
+                  onPressed: () async {
+                    chosen = await showModalBottomSheet<core.ArchiveSearch>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => const ArchiveSearchSheet(
+                        search: core.ArchiveSearch(
+                          fields: {'complete': 'T', 'rating_ids': '13'},
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('Open filters'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Clear'));
+        await tester.pumpAndSettle();
+        final title = find.byWidgetPredicate(
+          (w) => w is TextField && w.decoration?.labelText == 'Title',
+        );
+        await tester.enterText(title, 'A title');
+        tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+        await tester.pumpAndSettle();
+        expect(
+          tester.getBottomLeft(find.text('Show results')).dy,
+          lessThan(620),
+        );
+        await tester.tap(find.text('Show results'));
+        await tester.pumpAndSettle();
+        expect(chosen?.fields['title'], 'A title');
+        expect(chosen?.fields['complete'], '');
+        expect(chosen?.fields['rating_ids'], '');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final width in [390.0, 1100.0]) {
     testWidgets(
       'archive browsing retains results, position and details across sections at $width',
@@ -188,7 +248,7 @@ void main() {
         await settle();
         expect(find.text('Story 1.0'), findsOneWidget);
         expect(requests, hasLength(1));
-        await tester.tap(find.text('Save search'));
+        await tester.tap(find.byTooltip('Save search'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Save'));
         await settle();
@@ -198,6 +258,28 @@ void main() {
             'quiet adventure',
           );
         });
+        await tester.scrollUntilVisible(
+          find.text('Next'),
+          500,
+          scrollable: scrollable,
+        );
+        await tester.tap(find.text('Next'));
+        await settle();
+        expect(requests, hasLength(2));
+        expect(requests.last.queryParameters['page'], '2');
+        expect(find.text('Story 2.0'), findsOneWidget);
+        await tester.tap(find.byTooltip('Saved searches'));
+        await settle();
+        await tester.tap(find.byTooltip('Saved search actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Check for new results'));
+        await settle();
+        expect(requests, hasLength(3));
+        expect(requests.last.queryParameters['page'], '1');
+        expect(
+          find.text('0 new results on the first page since the last check.'),
+          findsOneWidget,
+        );
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(() async {

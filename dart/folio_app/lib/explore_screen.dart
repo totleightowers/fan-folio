@@ -254,6 +254,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final ground = groundOf(context);
     final results = _results;
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -435,27 +436,27 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     ),
                   ),
               ] else ...[
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 12,
+                Row(
                   children: [
-                    Text(
-                      'Page ${results.current} of ${results.total} · ${results.works.length} works',
+                    Expanded(
+                      child: Text(
+                        'Page ${results.current} of ${results.total} · ${results.works.length} works',
+                      ),
                     ),
-                    TextButton.icon(
+                    IconButton(
+                      tooltip: 'Save search',
                       onPressed: _busy ? null : _save,
                       icon: const Icon(Icons.bookmark_add_outlined),
-                      label: const Text('Save search'),
                     ),
-                    TextButton(
+                    IconButton(
+                      tooltip: 'Saved searches',
                       onPressed: _busy
                           ? null
                           : () => setState(() {
                               _results = null;
                               _resultsSearch = null;
                             }),
-                      child: const Text('Saved searches'),
+                      icon: const Icon(Icons.saved_search),
                     ),
                   ],
                 ),
@@ -579,172 +580,176 @@ class _ArchiveSearchSheetState extends State<ArchiveSearchSheet> {
   );
   @override
   Widget build(BuildContext context) => SafeArea(
-    child: SizedBox(
-      height: MediaQuery.sizeOf(context).height * .85,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Search AO3',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    for (final c in controllers.values) {
-                      c.clear();
-                    }
-                    setState(() {
-                      language = '';
-                      complete = '';
-                      crossover = '';
-                      rating = '';
-                      sort = 'revised_at';
-                      direction = 'desc';
-                    });
-                  },
-                  child: const Text('Clear'),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                12,
-                16,
-                MediaQuery.viewInsetsOf(context).bottom + 16,
-              ),
-              children: [
-                for (final e in labels.entries)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: TextField(
-                      controller: controllers[e.key],
-                      decoration: InputDecoration(labelText: e.value),
+    child: Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height:
+            (MediaQuery.sizeOf(context).height -
+                MediaQuery.viewInsetsOf(context).bottom) *
+            .85,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Search AO3',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                choice(
-                  'Language',
-                  language,
-                  {
-                    '': 'Any',
-                    'en': 'English',
-                    'es': 'Spanish',
-                    'fr': 'French',
-                    'de': 'German',
-                    'pt-br': 'Portuguese (Brazil)',
-                    'zh': 'Chinese',
-                    if (![
-                      '',
-                      'en',
-                      'es',
-                      'fr',
-                      'de',
-                      'pt-br',
-                      'zh',
-                    ].contains(language))
-                      language: language,
-                  },
-                  (v) {
-                    language = v;
-                  },
-                ),
-                choice(
-                  'Completion',
-                  complete,
-                  {'': 'Any', 'T': 'Complete', 'F': 'In progress'},
-                  (v) {
-                    complete = v;
-                  },
-                ),
-                choice(
-                  'Crossovers',
-                  crossover,
-                  {
-                    '': 'Any',
-                    'F': 'Exclude crossovers',
-                    'T': 'Only crossovers',
-                  },
-                  (v) {
-                    crossover = v;
-                  },
-                ),
-                choice(
-                  'Rating',
-                  rating,
-                  {
-                    '': 'Any',
-                    '9': 'Not Rated',
-                    '10': 'General Audiences',
-                    '11': 'Teen And Up Audiences',
-                    '12': 'Mature',
-                    '13': 'Explicit',
-                  },
-                  (v) {
-                    rating = v;
-                  },
-                ),
-                choice(
-                  'Sort',
-                  sort,
-                  {
-                    'revised_at': 'Updated',
-                    'created_at': 'Posted',
-                    'title_to_sort_on': 'Title',
-                    'word_count': 'Word count',
-                    'kudos_count': 'Kudos',
-                    'hits': 'Hits',
-                    'bookmarks_count': 'Bookmarks',
-                  },
-                  (v) {
-                    sort = v;
-                  },
-                ),
-                choice(
-                  'Direction',
-                  direction,
-                  {'desc': 'Descending', 'asc': 'Ascending'},
-                  (v) {
-                    direction = v;
-                  },
-                ),
-                const Text(
-                  'For exclusions, use AO3 search syntax in Keywords, such as -"unwanted tag".',
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(
-                  context,
-                  core.ArchiveSearch(
-                    fields: {
-                      for (final e in controllers.entries)
-                        e.key: e.value.text.trim(),
-                      'language_id': language,
-                      'complete': complete,
-                      'crossover': crossover,
-                      'rating_ids': rating,
-                      'sort_column': sort,
-                      'sort_direction': direction,
+                  TextButton(
+                    onPressed: () {
+                      for (final c in controllers.values) {
+                        c.clear();
+                      }
+                      setState(() {
+                        language = '';
+                        complete = '';
+                        crossover = '';
+                        rating = '';
+                        sort = 'revised_at';
+                        direction = 'desc';
+                      });
                     },
+                    child: const Text('Clear'),
                   ),
-                ),
-                child: const Text('Show results'),
+                ],
               ),
             ),
-          ),
-        ],
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(16, 12, 16, 16),
+                children: [
+                  for (final e in labels.entries)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: TextField(
+                        controller: controllers[e.key],
+                        decoration: InputDecoration(labelText: e.value),
+                      ),
+                    ),
+                  choice(
+                    'Language',
+                    language,
+                    {
+                      '': 'Any',
+                      'en': 'English',
+                      'es': 'Spanish',
+                      'fr': 'French',
+                      'de': 'German',
+                      'pt-br': 'Portuguese (Brazil)',
+                      'zh': 'Chinese',
+                      if (![
+                        '',
+                        'en',
+                        'es',
+                        'fr',
+                        'de',
+                        'pt-br',
+                        'zh',
+                      ].contains(language))
+                        language: language,
+                    },
+                    (v) {
+                      language = v;
+                    },
+                  ),
+                  choice(
+                    'Completion',
+                    complete,
+                    {'': 'Any', 'T': 'Complete', 'F': 'In progress'},
+                    (v) {
+                      complete = v;
+                    },
+                  ),
+                  choice(
+                    'Crossovers',
+                    crossover,
+                    {
+                      '': 'Any',
+                      'F': 'Exclude crossovers',
+                      'T': 'Only crossovers',
+                    },
+                    (v) {
+                      crossover = v;
+                    },
+                  ),
+                  choice(
+                    'Rating',
+                    rating,
+                    {
+                      '': 'Any',
+                      '9': 'Not Rated',
+                      '10': 'General Audiences',
+                      '11': 'Teen And Up Audiences',
+                      '12': 'Mature',
+                      '13': 'Explicit',
+                    },
+                    (v) {
+                      rating = v;
+                    },
+                  ),
+                  choice(
+                    'Sort',
+                    sort,
+                    {
+                      'revised_at': 'Updated',
+                      'created_at': 'Posted',
+                      'title_to_sort_on': 'Title',
+                      'word_count': 'Word count',
+                      'kudos_count': 'Kudos',
+                      'hits': 'Hits',
+                      'bookmarks_count': 'Bookmarks',
+                    },
+                    (v) {
+                      sort = v;
+                    },
+                  ),
+                  choice(
+                    'Direction',
+                    direction,
+                    {'desc': 'Descending', 'asc': 'Ascending'},
+                    (v) {
+                      direction = v;
+                    },
+                  ),
+                  const Text(
+                    'For exclusions, use AO3 search syntax in Keywords, such as -"unwanted tag".',
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(
+                    context,
+                    core.ArchiveSearch(
+                      fields: {
+                        for (final e in controllers.entries)
+                          e.key: e.value.text.trim(),
+                        'language_id': language,
+                        'complete': complete,
+                        'crossover': crossover,
+                        'rating_ids': rating,
+                        'sort_column': sort,
+                        'sort_direction': direction,
+                      },
+                    ),
+                  ),
+                  child: const Text('Show results'),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );
