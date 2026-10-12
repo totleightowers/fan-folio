@@ -407,6 +407,7 @@ class _WorkScreenState extends State<WorkScreen> {
           ? (widget.downloads == null
                 ? null
                 : FloatingActionButton.extended(
+                    heroTag: null,
                     onPressed: _reading ? null : _readNow,
                     icon: Icon(
                       _reading ? Icons.schedule : Icons.menu_book_outlined,
@@ -414,6 +415,7 @@ class _WorkScreenState extends State<WorkScreen> {
                     label: Text(_reading ? 'Opening…' : 'Read now'),
                   ))
           : FloatingActionButton.extended(
+              heroTag: null,
               onPressed: () => _read(_resume),
               icon: Icon(_started ? Icons.play_arrow : Icons.menu_book),
               label: Text(

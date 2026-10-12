@@ -37,10 +37,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
   List<SavedSearch> _saved = [];
   List<Count> _fandoms = [];
   Set<String> _newIds = {};
+  Set<String> _held = {};
   String? _error;
   bool _busy = false;
   int _request = 0;
   String? _savedId;
+  String? _resultsSavedId;
   bool _checkedUpdates = false;
   int _retryPage = 1;
   SavedSearch? _retryCheck;
@@ -51,15 +53,32 @@ class _ExploreScreenState extends State<ExploreScreen> {
     _query.text = _search.fields['query'] ?? '';
     _loadSaved();
     _loadFandoms();
+    widget.downloads.addListener(_refreshAvailability);
     if (widget.initialSearch != null) _run();
   }
 
   @override
   void dispose() {
+    widget.downloads.removeListener(_refreshAvailability);
     _request++;
     _query.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshAvailability() async {
+    final results = _results;
+    if (results == null || results.works.isEmpty) return;
+    final ids = results.works.map((w) => w.workId).toList();
+    final marks = List.filled(ids.length, '?').join(',');
+    final rows = await widget.library.db.rawQuery(
+      "SELECT DISTINCT work_id FROM chapters WHERE work_id IN ($marks) AND length(COALESCE(html, '')) > 0",
+      ids,
+    );
+    if (!mounted || results != _results) return;
+    final held = rows.map((r) => '${r['work_id']}').toSet();
+    if (held.length == _held.length && held.containsAll(_held)) return;
+    setState(() => _held = held);
   }
 
   Future<void> _loadSaved() async {
@@ -84,9 +103,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
     final token = ++_request;
     if (searchOverride != null) {
       _search = searchOverride;
+      _savedId = _resultsSavedId;
       _query.text = _search.fields['query'] ?? '';
     }
     final search = _search;
+    final savedId = _savedId;
     _retryPage = page;
     _retryCheck = checking;
     setState(() {
@@ -121,9 +142,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
       setState(() {
         _results = results;
         _resultsSearch = search;
+        _resultsSavedId = savedId;
         _newIds = fresh;
         _checkedUpdates = checking != null;
       });
+      await _refreshAvailability();
       if (_scroll.hasClients) _scroll.jumpTo(0);
     } catch (e) {
       if (mounted && token == _request) setState(() => _error = '$e');
@@ -133,6 +156,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _submit() {
+    FocusScope.of(context).unfocus();
     _search = core.ArchiveSearch(
       fields: {
         ..._search.fields,
@@ -145,6 +169,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Future<void> _filters() async {
+    FocusScope.of(context).unfocus();
     final chosen = await showModalBottomSheet<core.ArchiveSearch>(
       context: context,
       isScrollControlled: true,
@@ -194,7 +219,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
       ),
     );
     if (value == null || !mounted) return;
-    final id = _savedId ?? DateTime.now().microsecondsSinceEpoch.toString();
+    final id =
+        _resultsSavedId ?? DateTime.now().microsecondsSinceEpoch.toString();
     await DiscoveryStore(widget.library).save(
       SavedSearch(
         id: id,
@@ -206,6 +232,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     );
     if (!mounted) return;
     _savedId = id;
+    _resultsSavedId = id;
     await _loadSaved();
     if (mounted) {
       ScaffoldMessenger.of(context)
@@ -451,7 +478,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                       style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                   WorkRowTile(
-                    work: workFromBlurb(b),
+                    work: workFromBlurb(b, hasText: _held.contains(b.workId)),
                     onTap: () => widget.onOpen(b),
                   ),
                   Divider(height: 1, color: ground.lineSoft),

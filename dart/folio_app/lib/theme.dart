@@ -116,7 +116,11 @@ class Radii {
 const String titleFace = 'Literata';
 
 ThemeData themeFor(Ground g, Brightness brightness) {
-  final base = ThemeData(brightness: brightness, useMaterial3: true);
+  final base = ThemeData(
+    brightness: brightness,
+    useMaterial3: true,
+    fontFamily: 'Atkinson Hyperlegible',
+  );
   return base.copyWith(
     scaffoldBackgroundColor: g.paper,
     colorScheme:

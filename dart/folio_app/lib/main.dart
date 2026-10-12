@@ -592,6 +592,7 @@ class _ShellState extends State<Shell> {
     floatingActionButton: tab == 3 || tab == 1
         ? null
         : FloatingActionButton(
+            heroTag: null,
             onPressed: _add,
             tooltip: 'Add a work',
             child: const Icon(Icons.add),

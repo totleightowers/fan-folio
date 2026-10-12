@@ -20,14 +20,14 @@ import 'test_database.dart';
 
 String listing(int page) =>
     '''<ol class="pagination"><li><a href="?page=1">1</a></li>
-<li><a href="?page=2">2</a></li><li class="current">$page</li></ol>
+<li><a href="?page=2">2</a></li><li><span class="current">$page</span></li></ol>
 <ol class="work index group">${List.generate(12, (i) {
       return '''
 <li class="work blurb" id="work_${page * 100 + i}">
 <h4 class="heading"><a href="/works/${page * 100 + i}">Story $page.$i</a>
 by <a rel="author">Writer</a></h4>
 <h5 class="fandoms"><a class="tag">A favourite fandom</a></h5>
-<ul class="required-tags"><li><span class="rating">Teen And Up Audiences</span></li></ul>
+<ul class="required-tags"><li><span class="rating" title="Teen And Up Audiences">Teen And Up Audiences</span></li></ul>
 <ul class="tags"><li class="relationships"><a class="tag">Alex/Robin</a></li></ul>
 <blockquote class="summary"><p>A quiet adventure, with a long way home.</p></blockquote>
 <dl class="stats"><dd class="words">12,345</dd><dd class="chapters">3/3</dd></dl>
@@ -135,7 +135,10 @@ void main() {
         expect(find.text('Story 1.0'), findsOneWidget);
         await screenshot('explore');
         final scrollable = find.descendant(
-          of: find.byType(ExploreScreen),
+          of: find.descendant(
+            of: find.byType(ExploreScreen),
+            matching: find.byType(ListView),
+          ),
           matching: find.byType(Scrollable),
         );
         await tester.drag(scrollable, const Offset(0, -450));

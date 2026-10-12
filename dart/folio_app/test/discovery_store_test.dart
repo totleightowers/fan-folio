@@ -61,9 +61,10 @@ void main() {
       expect(await saveStubs(library.db, [blurb]), 1);
       expect(await saveStubs(library.db, [blurb]), 0);
       expect((await library.searchMeta('Discovery')).single.workId, '123');
+      await library.markLater('123', later: true);
       await library.db.update(
         'works',
-        {'marked_later': 1, 'in_bookmarks': 1, 'kudos_given': 1, 'hits': 456},
+        {'in_bookmarks': 1, 'kudos_given': 1, 'hits': 456},
         where: 'work_id = ?',
         whereArgs: ['123'],
       );

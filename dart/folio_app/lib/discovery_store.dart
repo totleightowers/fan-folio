@@ -5,7 +5,8 @@ import 'package:sqflite/sqflite.dart';
 
 import 'library.dart';
 
-WorkRow workFromBlurb(core.Blurb b) => WorkRow(
+WorkRow workFromBlurb(core.Blurb b, {bool hasText = false}) => WorkRow(
+  hasText: hasText,
   workId: b.workId,
   title: b.title ?? '(untitled)',
   authors: b.authors,
