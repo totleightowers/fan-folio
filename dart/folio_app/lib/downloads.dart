@@ -399,10 +399,12 @@ class LocalDownloads extends Downloads {
           }
           final listing = core.parseListing(body);
           final blocked = (await library.blockedNames()).toSet();
-          await saveStubs(library.db, [
+          final visible = [
             for (final blurb in listing.works)
               if (!core.isHidden(jsonEncode(blurb.authors), blocked)) blurb,
-          ], refused: await library.refusedIds());
+          ];
+          final refused = await library.refusedIds();
+          await saveStubs(library.db, visible, refused: refused);
           return core.ListingPage(
             workIds: [for (final blurb in listing.works) blurb.workId],
             totalPages: listing.total,
