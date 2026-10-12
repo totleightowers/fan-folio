@@ -16,11 +16,13 @@ class WorkCard extends StatelessWidget {
     required this.work,
     required this.onTap,
     this.onLongPress,
+    this.onResume,
     super.key,
   });
 
   final WorkRow work;
   final VoidCallback onTap;
+  final VoidCallback? onResume;
 
   /// Holding a work is how you get at what you can do to it. A shelf of cards
   /// has no room for a menu button on each, and a long press is what a phone
@@ -88,6 +90,14 @@ class WorkCard extends StatelessWidget {
                           style: TextStyle(fontSize: 12, color: ground.inkMid),
                         ),
                         const Spacer(),
+                        if (onResume != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: onResume,
+                              child: const Text('Resume →'),
+                            ),
+                          ),
                         const SizedBox(height: 6),
                         Text(
                           work.atChapter == null
@@ -261,6 +271,7 @@ class Shelf extends StatelessWidget {
     required this.onOpen,
     this.onHold,
     this.onSeeAll,
+    this.onResume,
     super.key,
   });
 
@@ -270,6 +281,7 @@ class Shelf extends StatelessWidget {
   final void Function(WorkRow) onOpen;
   final void Function(WorkRow)? onHold;
   final VoidCallback? onSeeAll;
+  final void Function(WorkRow)? onResume;
 
   @override
   Widget build(BuildContext context) {
@@ -326,6 +338,7 @@ class Shelf extends StatelessWidget {
             itemBuilder: (context, i) => WorkCard(
               work: works[i],
               onTap: () => onOpen(works[i]),
+              onResume: onResume == null ? null : () => onResume!(works[i]),
               onLongPress: onHold == null ? null : () => onHold!(works[i]),
             ),
           ),

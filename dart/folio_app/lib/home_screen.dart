@@ -104,10 +104,8 @@ class HomeScreenState extends State<HomeScreen> {
               title: shelf.title,
               works: works,
               total: total,
-              /* Continue reading means carry on. A shelf that says so and
-                 then shows a description is not carrying on — so that one
-                 shelf opens the text and the rest open the work. */
-              onOpen: shelf.key == 'reading' ? widget.onResume : widget.onOpen,
+              onOpen: widget.onOpen,
+              onResume: shelf.key == 'reading' ? widget.onResume : null,
               onHold: widget.onHold,
               onSeeAll: () => widget.onSeeAll(shelf.view, shelf.title),
             );
