@@ -573,7 +573,7 @@ class _ArchiveSearchSheetState extends State<ArchiveSearchSheet> {
   late String complete = widget.search.fields['complete'] ?? '';
   late String crossover = widget.search.fields['crossover'] ?? '';
   late String rating = widget.search.fields['rating_ids'] ?? '';
-  late String sort = widget.search.fields['sort_column'] ?? 'revised_at';
+  late String sort = widget.search.fields['sort_column'] ?? '_score';
   late String direction = widget.search.fields['sort_direction'] ?? 'desc';
   @override
   void dispose() {
@@ -636,7 +636,7 @@ class _ArchiveSearchSheetState extends State<ArchiveSearchSheet> {
                         complete = '';
                         crossover = '';
                         rating = '';
-                        sort = 'revised_at';
+                        sort = '_score';
                         direction = 'desc';
                       });
                     },
@@ -722,6 +722,8 @@ class _ArchiveSearchSheetState extends State<ArchiveSearchSheet> {
                     'Sort',
                     sort,
                     {
+                      '_score': 'Best match',
+                      'authors_to_sort_on': 'Author',
                       'revised_at': 'Updated',
                       'created_at': 'Posted',
                       'title_to_sort_on': 'Title',
@@ -729,6 +731,7 @@ class _ArchiveSearchSheetState extends State<ArchiveSearchSheet> {
                       'kudos_count': 'Kudos',
                       'hits': 'Hits',
                       'bookmarks_count': 'Bookmarks',
+                      'comments_count': 'Comments',
                     },
                     (v) {
                       sort = v;

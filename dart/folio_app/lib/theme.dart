@@ -114,12 +114,13 @@ class Radii {
 /// Titles are set in the face the library is read in. A reading app saying so
 /// in its own type costs nothing, and Literata ships with the app.
 const String titleFace = 'Literata';
+const String interfaceFace = 'Atkinson Hyperlegible';
 
 ThemeData themeFor(Ground g, Brightness brightness) {
   final base = ThemeData(
     brightness: brightness,
     useMaterial3: true,
-    fontFamily: 'Atkinson Hyperlegible',
+    fontFamily: interfaceFace,
   );
   return base.copyWith(
     scaffoldBackgroundColor: g.paper,

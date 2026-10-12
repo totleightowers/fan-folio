@@ -595,6 +595,7 @@ class _Live extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.field),
       ),
       textStyle: TextStyle(
+        fontFamily: interfaceFace,
         fontSize: 14,
         fontWeight: strong ? FontWeight.w600 : FontWeight.w400,
       ),
