@@ -280,6 +280,21 @@ void main() {
           find.text('0 new results on the first page since the last check.'),
           findsOneWidget,
         );
+        // Blocking an author from a nested route hides their archive results
+        // on return, without sending another archive request.
+        await tester.tap(find.text('Story 1.0'));
+        await settle();
+        await tester.runAsync(
+          () => library.setBlocked('Writer', blocked: true),
+        );
+        await tester.tap(find.byTooltip('Back'));
+        await settle();
+        expect(
+          find.text('Authors on your block list are hidden.'),
+          findsOneWidget,
+        );
+        expect(find.text('Story 1.0'), findsNothing);
+        expect(requests, hasLength(3));
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         await tester.runAsync(() async {

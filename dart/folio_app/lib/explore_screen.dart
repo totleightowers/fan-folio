@@ -38,6 +38,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
   List<Count> _fandoms = [];
   Set<String> _newIds = {};
   Set<String> _held = {};
+  Set<String> _blocked = {};
   String? _error;
   bool _busy = false;
   int _request = 0;
@@ -58,6 +59,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Returning from an author route may have changed the block list. This
+    // refresh is local and never repeats an archive request.
+    if ((ModalRoute.of(context)?.isCurrent ?? true) &&
+        TickerMode.valuesOf(context).enabled) {
+      _refreshAvailability();
+    }
+  }
+
+  @override
   void dispose() {
     widget.downloads.removeListener(_refreshAvailability);
     _request++;
@@ -67,6 +79,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
   }
 
   Future<void> _refreshAvailability() async {
+    final blocked = (await widget.library.blockedNames()).toSet();
+    if (!mounted) return;
+    if (blocked.length != _blocked.length || !blocked.containsAll(_blocked)) {
+      setState(() => _blocked = blocked);
+    }
     final results = _results;
     if (results == null || results.works.isEmpty) return;
     final ids = results.works.map((w) => w.workId).toList();
@@ -253,6 +270,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
   Widget build(BuildContext context) {
     final ground = groundOf(context);
     final results = _results;
+    final visible =
+        results?.works
+            .where((work) => !work.authors.any(_blocked.contains))
+            .toList() ??
+        <core.Blurb>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -440,7 +462,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Page ${results.current} of ${results.total} · ${results.works.length} works',
+                        'Page ${results.current} of ${results.total} · ${visible.length} works',
                       ),
                     ),
                     IconButton(
@@ -462,17 +484,19 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 ),
                 if (_checkedUpdates)
                   Text(
-                    '${_newIds.length} new results on the first page since the last check.',
+                    '${visible.where((w) => _newIds.contains(w.workId)).length} new results on the first page since the last check.',
                     style: TextStyle(color: ground.inkMute),
                   ),
-                if (results.works.isEmpty)
+                if (visible.length < results.works.length)
+                  const Text('Authors on your block list are hidden.'),
+                if (visible.isEmpty)
                   const Padding(
                     padding: EdgeInsets.all(24),
                     child: Text(
-                      'No matching works. Try changing your search or filters.',
+                      'No works to show on this page. Try another page or change your filters.',
                     ),
                   ),
-                for (final b in results.works) ...[
+                for (final b in visible) ...[
                   if (_newIds.contains(b.workId))
                     const Text(
                       'New result',
