@@ -299,13 +299,15 @@ class Shelf extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // a sign, not a headline competing with the titles below it
-              Text(
-                title.toUpperCase(),
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.9,
-                  color: ground.inkMute,
+              Expanded(
+                child: Text(
+                  title.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.9,
+                    color: ground.inkMute,
+                  ),
                 ),
               ),
               if (more) ...[
@@ -319,7 +321,6 @@ class Shelf extends StatelessWidget {
                   ),
                 ),
               ],
-              const Spacer(),
               if (onSeeAll != null)
                 TextButton(
                   onPressed: onSeeAll,
@@ -329,7 +330,7 @@ class Shelf extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 80 + MediaQuery.textScalerOf(context).scale(150),
+          height: 80 + MediaQuery.textScalerOf(context).scale(170),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),

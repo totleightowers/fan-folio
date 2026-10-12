@@ -152,9 +152,9 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     const work = WorkRow(
       workId: '1',
-      title: 'Story',
+      title: 'A long story title across two lines',
       authors: ['Writer'],
-      rating: 'Explicit',
+      rating: 'General Audiences',
       relationship: 'Alpha/Beta',
       summary: 'Full unabridged description',
       hasText: true,
@@ -172,6 +172,7 @@ void main() {
                   works: const [work],
                   total: 1,
                   onOpen: (_) => opened = true,
+                  onResume: (_) {},
                 ),
                 WorkRowTile(work: work, onTap: () => opened = true),
               ],
@@ -181,11 +182,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Explicit'), findsOneWidget);
+    expect(find.text('General Audiences'), findsOneWidget);
     expect(find.text('Alpha/Beta'), findsOneWidget);
     expect(find.text('Full unabridged description'), findsOneWidget);
     expect(tester.takeException(), isNull);
-    await tester.tap(find.text('Story').first);
+    await tester.tap(find.text('A long story title across two lines').first);
     expect(opened, isTrue);
   });
 }
