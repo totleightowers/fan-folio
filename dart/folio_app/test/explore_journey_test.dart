@@ -21,7 +21,8 @@ import 'test_database.dart';
 String listing(int page) =>
     '''<ol class="pagination"><li><a href="?page=1">1</a></li>
 <li><a href="?page=2">2</a></li><li class="current">$page</li></ol>
-<ol class="work index group">${List.generate(12, (i) => '''
+<ol class="work index group">${List.generate(12, (i) {
+      return '''
 <li class="work blurb" id="work_${page * 100 + i}">
 <h4 class="heading"><a href="/works/${page * 100 + i}">Story $page.$i</a>
 by <a rel="author">Writer</a></h4>
@@ -30,7 +31,8 @@ by <a rel="author">Writer</a></h4>
 <ul class="tags"><li class="relationships"><a class="tag">Alex/Robin</a></li></ul>
 <blockquote class="summary"><p>A quiet adventure, with a long way home.</p></blockquote>
 <dl class="stats"><dd class="words">12,345</dd><dd class="chapters">3/3</dd></dl>
-</li>''').join()}</ol>''';
+</li>''';
+    }).join()}</ol>''';
 
 void main() {
   setUpAll(() async {

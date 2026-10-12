@@ -12,9 +12,15 @@ import 'theme.dart';
 /// learned that the hard way, with a box whose meaning depended on which
 /// screen you happened to have been on.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({required this.library, required this.onOpen, super.key});
+  const SearchScreen({
+    required this.library,
+    required this.onOpen,
+    this.onDownloads,
+    super.key,
+  });
 
   final Library library;
+  final VoidCallback? onDownloads;
   final void Function(String workId, {int chapter}) onOpen;
 
   @override
@@ -94,6 +100,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        actions: [
+          if (widget.onDownloads != null)
+            IconButton(
+              tooltip: 'Downloads',
+              onPressed: widget.onDownloads,
+              icon: const Icon(Icons.download_outlined),
+            ),
+        ],
         title: TextField(
           controller: _box,
           autofocus: true,

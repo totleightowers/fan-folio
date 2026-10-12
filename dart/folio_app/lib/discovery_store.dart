@@ -81,12 +81,17 @@ class DiscoveryStore {
     return found;
   }
 
-  Future<void> save(SavedSearch search) => library.db
-      .insert('meta', {
-        'key': '$prefix${search.id}',
-        'value': jsonEncode(search.toJson()),
-      }, conflictAlgorithm: ConflictAlgorithm.replace)
-      .then((_) {});
+  Future<void> save(SavedSearch search) async {
+    final row = {
+      'key': '$prefix${search.id}',
+      'value': jsonEncode(search.toJson()),
+    };
+    await library.db.insert(
+      'meta',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
 
   Future<void> remove(String id) => library.db
       .delete('meta', where: 'key = ?', whereArgs: ['$prefix$id'])

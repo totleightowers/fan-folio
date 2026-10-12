@@ -121,7 +121,9 @@ class LocalDownloads extends Downloads {
   @override
   Future<void> readNow(String workId) => _reading.putIfAbsent(
     workId,
-    () => _readNow(workId).whenComplete(() => _reading.remove(workId)),
+    () => _readNow(workId).whenComplete(() {
+      _reading.remove(workId);
+    }),
   );
 
   final Map<String, Future<void>> _reading = {};

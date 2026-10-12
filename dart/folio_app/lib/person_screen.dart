@@ -21,6 +21,7 @@ class PersonScreen extends StatefulWidget {
     required this.onNarrow,
     this.downloads,
     this.onExplore,
+    this.onDownloads,
     super.key,
   });
 
@@ -30,6 +31,7 @@ class PersonScreen extends StatefulWidget {
   final void Function(Map<String, Object?> view, String title) onNarrow;
   final Downloads? downloads;
   final VoidCallback? onExplore;
+  final VoidCallback? onDownloads;
 
   @override
   State<PersonScreen> createState() => _PersonScreenState();
@@ -114,6 +116,12 @@ class _PersonScreenState extends State<PersonScreen> {
             style: TextStyle(fontFamily: titleFace, color: ground.ink),
           ),
           actions: [
+            if (widget.onDownloads != null)
+              IconButton(
+                tooltip: 'Downloads',
+                onPressed: widget.onDownloads,
+                icon: const Icon(Icons.download_outlined),
+              ),
             if (widget.onExplore != null)
               IconButton(
                 tooltip: 'Explore author on AO3',

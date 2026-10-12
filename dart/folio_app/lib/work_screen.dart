@@ -31,6 +31,7 @@ class WorkScreen extends StatefulWidget {
     this.downloads,
     this.preview,
     this.onExplore,
+    this.onDownloads,
     super.key,
   });
 
@@ -45,6 +46,7 @@ class WorkScreen extends StatefulWidget {
   final void Function(Map<String, Object?> view, String title) onNarrow;
   final Downloads? downloads;
   final core.Blurb? preview;
+  final VoidCallback? onDownloads;
   final ValueChanged<core.ArchiveSearch>? onExplore;
 
   @override
@@ -161,9 +163,10 @@ class _WorkScreenState extends State<WorkScreen> {
       await widget.library.markLater(work.workId, later: !work.markedLater);
       await _load();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('$e')));
+      }
     }
   }
 
@@ -171,19 +174,22 @@ class _WorkScreenState extends State<WorkScreen> {
     if (_reading || widget.downloads == null) return;
     setState(() => _reading = true);
     try {
+      if (!_stored && widget.preview != null) {
+        await saveStubs(widget.library.db, [widget.preview!]);
+      }
       await widget.downloads!.readNow(widget.workId);
       await _load();
       if (mounted &&
           _chapters.isNotEmpty &&
-          TickerMode.of(context) &&
+          TickerMode.valuesOf(context).enabled &&
           (ModalRoute.of(context)?.isCurrent ?? false)) {
         _read(_resume);
       }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not open this work: $e')));
+      if (mounted) {
+        final snack = SnackBar(content: Text('Could not open this work: $e'));
+        ScaffoldMessenger.of(context).showSnackBar(snack);
+      }
     } finally {
       if (mounted) setState(() => _reading = false);
     }
@@ -253,6 +259,12 @@ class _WorkScreenState extends State<WorkScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          if (widget.onDownloads != null)
+            IconButton(
+              tooltip: 'Downloads',
+              onPressed: widget.onDownloads,
+              icon: const Icon(Icons.download_outlined),
+            ),
           IconButton(
             icon: Icon(
               work.markedLater ? Icons.bookmark : Icons.bookmark_border,

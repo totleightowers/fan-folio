@@ -69,8 +69,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   Future<void> _loadFandoms() async {
     final browse = await widget.library.browse();
-    if (mounted)
+    if (mounted) {
       setState(() => _fandoms = (browse['fandom'] ?? []).take(6).toList());
+    }
   }
 
   Future<void> _run({
@@ -601,56 +602,91 @@ class _ArchiveSearchSheetState extends State<ArchiveSearchSheet> {
                       decoration: InputDecoration(labelText: e.value),
                     ),
                   ),
-                choice('Language', language, {
-                  '': 'Any',
-                  'en': 'English',
-                  'es': 'Spanish',
-                  'fr': 'French',
-                  'de': 'German',
-                  'pt-br': 'Portuguese (Brazil)',
-                  'zh': 'Chinese',
-                  if (![
-                    '',
-                    'en',
-                    'es',
-                    'fr',
-                    'de',
-                    'pt-br',
-                    'zh',
-                  ].contains(language))
-                    language: language,
-                }, (v) => language = v),
-                choice('Completion', complete, {
-                  '': 'Any',
-                  'T': 'Complete',
-                  'F': 'In progress',
-                }, (v) => complete = v),
-                choice('Crossovers', crossover, {
-                  '': 'Any',
-                  'F': 'Exclude crossovers',
-                  'T': 'Only crossovers',
-                }, (v) => crossover = v),
-                choice('Rating', rating, {
-                  '': 'Any',
-                  '9': 'Not Rated',
-                  '10': 'General Audiences',
-                  '11': 'Teen And Up Audiences',
-                  '12': 'Mature',
-                  '13': 'Explicit',
-                }, (v) => rating = v),
-                choice('Sort', sort, {
-                  'revised_at': 'Updated',
-                  'created_at': 'Posted',
-                  'title_to_sort_on': 'Title',
-                  'word_count': 'Word count',
-                  'kudos_count': 'Kudos',
-                  'hits': 'Hits',
-                  'bookmarks_count': 'Bookmarks',
-                }, (v) => sort = v),
-                choice('Direction', direction, {
-                  'desc': 'Descending',
-                  'asc': 'Ascending',
-                }, (v) => direction = v),
+                choice(
+                  'Language',
+                  language,
+                  {
+                    '': 'Any',
+                    'en': 'English',
+                    'es': 'Spanish',
+                    'fr': 'French',
+                    'de': 'German',
+                    'pt-br': 'Portuguese (Brazil)',
+                    'zh': 'Chinese',
+                    if (![
+                      '',
+                      'en',
+                      'es',
+                      'fr',
+                      'de',
+                      'pt-br',
+                      'zh',
+                    ].contains(language))
+                      language: language,
+                  },
+                  (v) {
+                    language = v;
+                  },
+                ),
+                choice(
+                  'Completion',
+                  complete,
+                  {'': 'Any', 'T': 'Complete', 'F': 'In progress'},
+                  (v) {
+                    complete = v;
+                  },
+                ),
+                choice(
+                  'Crossovers',
+                  crossover,
+                  {
+                    '': 'Any',
+                    'F': 'Exclude crossovers',
+                    'T': 'Only crossovers',
+                  },
+                  (v) {
+                    crossover = v;
+                  },
+                ),
+                choice(
+                  'Rating',
+                  rating,
+                  {
+                    '': 'Any',
+                    '9': 'Not Rated',
+                    '10': 'General Audiences',
+                    '11': 'Teen And Up Audiences',
+                    '12': 'Mature',
+                    '13': 'Explicit',
+                  },
+                  (v) {
+                    rating = v;
+                  },
+                ),
+                choice(
+                  'Sort',
+                  sort,
+                  {
+                    'revised_at': 'Updated',
+                    'created_at': 'Posted',
+                    'title_to_sort_on': 'Title',
+                    'word_count': 'Word count',
+                    'kudos_count': 'Kudos',
+                    'hits': 'Hits',
+                    'bookmarks_count': 'Bookmarks',
+                  },
+                  (v) {
+                    sort = v;
+                  },
+                ),
+                choice(
+                  'Direction',
+                  direction,
+                  {'desc': 'Descending', 'asc': 'Ascending'},
+                  (v) {
+                    direction = v;
+                  },
+                ),
                 const Text(
                   'For exclusions, use AO3 search syntax in Keywords, such as -"unwanted tag".',
                 ),

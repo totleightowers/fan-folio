@@ -115,7 +115,10 @@ class _ShellState extends State<Shell> {
       _trail.add(_tab);
       if (_trail.length > 20) _trail.removeAt(0);
       _tab = to;
+      if (to == 2) _libraryEpoch++;
     });
+    if (to == 0) unawaited(_home.currentState?.reload());
+    if (to == 3) unawaited(_you.currentState?.reload());
   }
 
   /// Back: the tab before this one, or out of the app if there is none.
@@ -285,6 +288,7 @@ class _ShellState extends State<Shell> {
           workId: work.workId,
           preview: preview,
           onExplore: _explore,
+          onDownloads: _openActivity,
           downloads: _downloads,
           onRead: _read,
           onPerson: _openPerson,
@@ -382,6 +386,7 @@ class _ShellState extends State<Shell> {
       MaterialPageRoute<void>(
         builder: (_) => SearchScreen(
           library: library,
+          onDownloads: _openActivity,
           onOpen: (workId, {int chapter = 1}) =>
               _openById(workId, chapter: chapter),
         ),
@@ -398,6 +403,7 @@ class _ShellState extends State<Shell> {
         builder: (_) => PersonScreen(
           library: library,
           byline: byline,
+          onDownloads: _openActivity,
           onExplore: () => _explore(ArchiveSearch(author: byline)),
           downloads: _downloads,
           onOpen: _open,
