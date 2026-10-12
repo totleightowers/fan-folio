@@ -395,7 +395,7 @@ class _WorkScreenState extends State<WorkScreen> {
             ],
             const SizedBox(height: 16),
             if (work.visitLabel.isNotEmpty) Text(work.visitLabel),
-            if (work.source == 'epub' || work.sourceFile != null)
+            if (work.source == 'epub')
               Text(
                 'Saved from EPUB${work.sourceFile == null ? '' : ': ${work.sourceFile}'}',
               ),

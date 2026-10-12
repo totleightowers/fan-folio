@@ -26,6 +26,7 @@ class _FilterSheetState extends State<FilterSheet> {
   bool _counting = true;
   bool _excluding = false;
   int _revision = 0;
+  int _resetFields = 0;
 
   /// Which sections are open. A panel that opens with everything expanded is
   /// a wall; one that opens with everything closed is a list of words.
@@ -70,7 +71,13 @@ class _FilterSheetState extends State<FilterSheet> {
   }
 
   void _clear() {
-    setState(() => _view = {'sort': _view['sort'] ?? 'added'});
+    setState(() {
+      _view = {
+        'sort': _view['sort'] ?? 'added',
+        'density': _view['density'] ?? '',
+      };
+      _resetFields++;
+    });
     _recount();
   }
 
@@ -106,7 +113,7 @@ class _FilterSheetState extends State<FilterSheet> {
   Widget _rangeField(String label, String key, {bool date = false}) => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
     child: TextFormField(
-      key: ValueKey('$key:${_view[key] == null}'),
+      key: ValueKey('$key:$_resetFields'),
       initialValue: '${_view[key] ?? ''}',
       decoration: InputDecoration(
         labelText: label,
