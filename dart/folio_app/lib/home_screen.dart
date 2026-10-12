@@ -291,7 +291,11 @@ class _BrowseState extends State<_Browse> {
           DropdownButton<String>(
             value: _kind,
             underline: const SizedBox.shrink(),
-            style: TextStyle(fontSize: 13, color: ground.ink),
+            style: TextStyle(
+              fontFamily: interfaceFace,
+              fontSize: 13,
+              color: ground.ink,
+            ),
             items: [
               for (final (kind, title) in kinds)
                 DropdownMenuItem(value: kind, child: Text(title)),
