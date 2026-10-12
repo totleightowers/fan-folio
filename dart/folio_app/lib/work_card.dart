@@ -376,9 +376,17 @@ double _cardHeight(
       return height;
     }
 
+    final buttonHeight =
+        measure(
+          'Resume',
+          Theme.of(context).textTheme.labelLarge ??
+              const TextStyle(fontSize: 14),
+          1,
+        ) +
+        16;
     final height =
         44 +
-        (resume ? 48 : 0) +
+        (resume ? (buttonHeight < 48 ? 48 : buttonHeight) : 0) +
         measure(
           work.title,
           const TextStyle(
