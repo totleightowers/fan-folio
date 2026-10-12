@@ -12,7 +12,14 @@
 library;
 
 /// The sorts a reader can choose, and the only orderings this will emit.
+const String ffVisits =
+    '(SELECT count(*) FROM reading_visits v WHERE v.work_id = w.work_id)';
+const String totalVisits = '(COALESCE(w.visits, 0) + $ffVisits)';
+const String heldText =
+    "EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id AND length(COALESCE(c.html, '')) > 0)";
+
 const Map<String, String> sorts = {
+  'visits': '$totalVisits DESC, w.title COLLATE NOCASE ASC',
   'title': 'w.title COLLATE NOCASE ASC',
   'author': 'w.authors COLLATE NOCASE ASC',
   'updated': 'COALESCE(w.updated, w.published) DESC',
@@ -21,11 +28,11 @@ const Map<String, String> sorts = {
   /// When we got it. A fetched work sets fetched_at, and only the EPUB import
   /// ever set downloaded_at — so ordering by that alone put everything newly
   /// added at the very bottom of "recently added".
-  'added': 'COALESCE(w.downloaded_at, w.fetched_at) DESC',
+  'added': 'COALESCE(w.fetched_at, w.downloaded_at) DESC',
   'words': 'w.words DESC',
   'shortest': 'w.words ASC',
   'chapters': 'w.chapter_count DESC',
-  'recent': 'r.updated_at DESC',
+  'recent': 'COALESCE(r.opened_at, r.updated_at) DESC',
 
   /// NULLS LAST, spelled out: a work whose counts we have never seen should
   /// not outrank one with none, and in SQLite a NULL sorts first descending.
@@ -65,6 +72,7 @@ const String started = '(r.opened_at IS NOT NULL OR COALESCE(r.offset, 0) > 0 '
 
 /// Every chapter accounted for.
 const String finished = 'COALESCE(r.chapters_read, 0) >= $chapters';
+const String completed = '($finished OR COALESCE(r.completed_before, 0) = 1)';
 
 /// The same question, asked only of what a blocked author has not taken out.
 String shown(String where) => 'COALESCE(w.hidden, 0) = 0 AND ($where)';
@@ -77,15 +85,15 @@ const Map<String, String> states = {
   'all': '1=1',
   'reading': '$started AND NOT ($finished)',
   'unread': 'NOT $started',
-  'finished': finished,
+  'finished': completed,
   'later': 'r.marked_later = 1',
   'rec': 'w.rec = 1',
 
   /// Whether the text is actually here. A listing describes thousands of works
   /// never downloaded; being able to ask for only what can be read now, or
   /// only what is still to fetch, is the point of keeping them apart.
-  'held': 'w.has_text = 1',
-  'known': 'w.has_text = 0',
+  'held': heldText,
+  'known': 'NOT $heldText',
   'bookmarked': 'w.in_bookmarks = 1',
   'history': 'w.in_history = 1',
 };
@@ -182,6 +190,8 @@ WorksQuery buildWorksQuery([Map<String, Object?> filters = const {}]) {
   /// separately and one of them forgetting.
   where.add('COALESCE(w.hidden, 0) = 0');
   where.add(states[filters['state']] ?? states['all']!);
+  if (filters['availability'] == 'held') where.add(heldText);
+  if (filters['availability'] == 'known') where.add('NOT $heldText');
 
   /// Included tags are an AND: "alpha/beta/omega" *and* "slow burn" is a much
   /// more useful question than either alone, and the one AO3's filters answer.
@@ -309,8 +319,10 @@ SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
        w.downloaded_at, w.language,
        w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
        w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
-       w.kudos, w.bookmark_count, w.hits, w.has_text,
+       w.kudos, w.bookmark_count, w.hits, $heldText AS has_text,
+       w.visits, $ffVisits AS ff_visits,
        r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+       r.opened_at, r.offset, r.completed_before,
        (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
        (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
 $from ORDER BY $order LIMIT $limit OFFSET $offset''',

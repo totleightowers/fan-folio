@@ -76,3 +76,22 @@ double openingOffset({
   final y = savedOffset ?? 0;
   return y.isFinite && y > 0 ? y : 0;
 }
+
+/// Restart the current pass without losing the fact it was finished before.
+const String restartReadingSql = """
+INSERT INTO reading (work_id, chapter, offset, chapters_read, completed_before, updated_at, opened_at)
+SELECT w.work_id, 1, 0, 0,
+       CASE WHEN COALESCE(r.completed_before, 0) = 1 OR COALESCE(r.chapters_read, 0) >= $chapters
+            THEN 1 ELSE 0 END,
+       datetime('now'), datetime('now')
+FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
+WHERE w.work_id = ?
+ON CONFLICT(work_id) DO UPDATE SET
+  chapter = 1, offset = 0, chapters_read = 0,
+  completed_before = excluded.completed_before,
+  updated_at = excluded.updated_at, opened_at = excluded.opened_at
+""";
+
+const String recordVisitSql =
+    'INSERT OR IGNORE INTO reading_visits (id, work_id, started_at) '
+    "SELECT ?, work_id, datetime('now') FROM works WHERE work_id = ?";

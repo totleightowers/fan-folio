@@ -468,7 +468,20 @@ class _ShellState extends State<Shell> {
     for (final key in ['include', 'exclude', 'rating', 'author']) {
       n += (_view[key] as List?)?.length ?? 0;
     }
-    for (final key in ['complete', 'language', 'wordsMax', 'bookmarkedBy']) {
+    for (final key in [
+      'complete',
+      'language',
+      'wordsMin',
+      'wordsMax',
+      'chaptersMin',
+      'chaptersMax',
+      'updatedAfter',
+      'updatedBefore',
+      'bookmarkedBy',
+      'otp',
+      'crossover',
+      'availability',
+    ]) {
       if (_view[key] != null) n++;
     }
     if ((_view['state'] ?? 'all') != 'all') n++;
@@ -869,7 +882,9 @@ class _LibraryListState extends State<LibraryList> {
                 );
               }
               return WorkRowTile(
+                key: ValueKey(_works[i].workId),
                 work: _works[i],
+                compact: widget.view['density'] == 'compact',
                 onTap: () => widget.onOpen(_works[i]),
                 onPerson: widget.onPerson,
                 onLongPress: widget.onHold == null

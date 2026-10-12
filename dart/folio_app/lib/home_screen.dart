@@ -94,6 +94,8 @@ class HomeScreenState extends State<HomeScreen> {
        fine until something else goes on the screen — and then the ways in
        land between two shelves. */
     final sections = <Widget>[
+      if (_browse.isNotEmpty)
+        _Browse(browse: _browse, onNarrow: widget.onNarrow),
       for (var i = 0; i < _shelves.length; i++) ...[
         Builder(
           builder: (context) {
@@ -121,8 +123,6 @@ class HomeScreenState extends State<HomeScreen> {
         onNarrow: widget.onNarrow,
         onOpenById: widget.onOpenById,
       ),
-      if (_browse.isNotEmpty)
-        _Browse(browse: _browse, onNarrow: widget.onNarrow),
     ];
 
     return ListView.builder(
@@ -311,36 +311,37 @@ class _BrowseState extends State<_Browse> {
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final count in counts)
-                _BrowseChip(
-                  count: count,
-                  /* A card's spine is a hash of its fandom, so the same name
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final count in counts)
+                  _BrowseChip(
+                    count: count,
+                    /* A card's spine is a hash of its fandom, so the same name
                      is the same colour wherever it appears. Tinting the chip
                      with it makes this row a key to the shelves above. A
                      pairing or a rating has no spine of its own to agree
                      with, so it gets none. */
-                  spine: _kind == 'fandom'
-                      ? Color(0xFF000000 | core.spineRgb(count.name))
-                      : null,
-                  ground: ground,
-                  onTap: () => widget.onNarrow(
-                    _kind == 'rating'
-                        ? {
-                            'rating': [count.name],
-                            'sort': 'added',
-                          }
-                        : {
-                            'include': [count.name],
-                            'sort': 'added',
-                          },
-                    count.name,
+                    spine: _kind == 'fandom'
+                        ? Color(0xFF000000 | core.spineRgb(count.name))
+                        : null,
+                    ground: ground,
+                    onTap: () => widget.onNarrow(
+                      _kind == 'rating'
+                          ? {
+                              'rating': [count.name],
+                              'sort': 'added',
+                            }
+                          : {
+                              'include': [count.name],
+                              'sort': 'added',
+                            },
+                      count.name,
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

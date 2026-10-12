@@ -33,7 +33,7 @@ class WorkCard extends StatelessWidget {
     final spine = Color(0xFF000000 | core.spineRgb(work.fandom ?? work.title));
 
     return SizedBox(
-      width: 200,
+      width: 292,
       child: Material(
         color: ground.surface,
         borderRadius: BorderRadius.circular(Radii.card),
@@ -59,7 +59,7 @@ class WorkCard extends StatelessWidget {
                       children: [
                         Text(
                           work.title,
-                          maxLines: 3,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontFamily: titleFace,
@@ -76,25 +76,23 @@ class WorkCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 12, color: ground.inkMute),
                         ),
-                        if (work.summary?.isNotEmpty ?? false) ...[
-                          const SizedBox(height: 6),
-                          Expanded(
-                            child: Text(
-                              work.summary!,
-                              maxLines: 4,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                height: 1.4,
-                                color: ground.inkMid,
-                              ),
-                            ),
-                          ),
-                        ] else
-                          const Spacer(),
+                        const SizedBox(height: 8),
+                        Text(
+                          work.rating ?? 'Rating unknown',
+                          style: TextStyle(fontSize: 12, color: ground.inkMid),
+                        ),
+                        Text(
+                          work.relationship ?? 'No relationship listed',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 12, color: ground.inkMid),
+                        ),
+                        const Spacer(),
                         const SizedBox(height: 6),
                         Text(
-                          work.facts,
+                          work.atChapter == null
+                              ? '${work.words ?? 0} words'
+                              : '${work.completedBefore ? 'Reading again · ' : ''}Chapter ${work.atChapter} of ${work.chapterCount ?? 1}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -117,12 +115,13 @@ class WorkCard extends StatelessWidget {
 }
 
 /// A work in a list, where there is width for the summary to breathe.
-class WorkRowTile extends StatelessWidget {
+class WorkRowTile extends StatefulWidget {
   const WorkRowTile({
     required this.work,
     required this.onTap,
     this.onLongPress,
     this.onPerson,
+    this.compact = false,
     super.key,
   });
 
@@ -132,6 +131,19 @@ class WorkRowTile extends StatelessWidget {
 
   /// A byline is a way through the library, not a fact about one work.
   final void Function(String byline)? onPerson;
+
+  final bool compact;
+
+  @override
+  State<WorkRowTile> createState() => _WorkRowTileState();
+}
+
+class _WorkRowTileState extends State<WorkRowTile> {
+  bool _expanded = false;
+  WorkRow get work => widget.work;
+  VoidCallback get onTap => widget.onTap;
+  VoidCallback? get onLongPress => widget.onLongPress;
+  void Function(String)? get onPerson => widget.onPerson;
 
   @override
   Widget build(BuildContext context) {
@@ -198,8 +210,10 @@ class WorkRowTile extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(
                       work.summary!,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
+                      maxLines: widget.compact && !_expanded ? 3 : null,
+                      overflow: widget.compact && !_expanded
+                          ? TextOverflow.ellipsis
+                          : null,
                       style: TextStyle(
                         fontSize: 14,
                         height: 1.45,
@@ -207,6 +221,13 @@ class WorkRowTile extends StatelessWidget {
                       ),
                     ),
                   ],
+                  if (widget.compact && (work.summary?.isNotEmpty ?? false))
+                    TextButton(
+                      onPressed: () => setState(() => _expanded = !_expanded),
+                      child: Text(
+                        _expanded ? 'Short description' : 'Full description',
+                      ),
+                    ),
                   const SizedBox(height: 7),
                   Text(
                     work.facts,
@@ -216,6 +237,11 @@ class WorkRowTile extends StatelessWidget {
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
+                  if (work.visitLabel.isNotEmpty)
+                    Text(
+                      work.visitLabel,
+                      style: TextStyle(fontSize: 12, color: ground.inkMute),
+                    ),
                 ],
               ),
             ),
@@ -291,7 +317,7 @@ class Shelf extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 176,
+          height: 80 + MediaQuery.textScalerOf(context).scale(150),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),

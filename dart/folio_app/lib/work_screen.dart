@@ -11,6 +11,7 @@ import 'downloads.dart';
 import 'library.dart';
 import 'theme.dart';
 import 'work_actions.dart';
+import 'versions_screen.dart';
 
 /// A work's own front page.
 ///
@@ -132,7 +133,7 @@ class _WorkScreenState extends State<WorkScreen> {
     return at < 1 ? 1 : at;
   }
 
-  bool get _started => (_place?.chapter ?? 1) > 1 || (_place?.offset ?? 0) > 0;
+  bool get _started => _place?.started ?? false;
 
   /// Ask for the text of a work the library only knows about.
   ///
@@ -393,6 +394,48 @@ class _WorkScreenState extends State<WorkScreen> {
                 ),
             ],
             const SizedBox(height: 16),
+            if (work.visitLabel.isNotEmpty) Text(work.visitLabel),
+            if (work.source == 'epub' || work.sourceFile != null)
+              Text(
+                'Saved from EPUB${work.sourceFile == null ? '' : ': ${work.sourceFile}'}',
+              ),
+            if (_chapters.isNotEmpty)
+              Wrap(
+                spacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      await widget.library.restart(work.workId);
+                      await _load();
+                      if (mounted) await _read(1);
+                    },
+                    icon: const Icon(Icons.replay),
+                    label: const Text('Start again'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      await widget.library.finish(work.workId);
+                      await _load();
+                    },
+                    icon: const Icon(Icons.done_all),
+                    label: const Text('Mark finished'),
+                  ),
+                ],
+              ),
+            if (_stored)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) =>
+                          VersionsScreen(library: widget.library, work: work),
+                    ),
+                  ),
+                  icon: const Icon(Icons.history),
+                  label: const Text('Earlier versions'),
+                ),
+              ),
             ..._tagRows(ground, work),
 
             const SizedBox(height: 22),

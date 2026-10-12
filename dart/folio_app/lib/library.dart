@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:folio_core/folio_core.dart';
@@ -31,6 +32,13 @@ class WorkRow {
     this.inBookmarks = false,
     this.kudosGiven = false,
     this.markedLater = false,
+    this.visits,
+    this.ffVisits = 0,
+    this.atChapter,
+    this.chaptersRead = 0,
+    this.completedBefore = false,
+    this.source,
+    this.sourceFile,
   });
 
   factory WorkRow.fromMap(Map<String, Object?> row) => WorkRow(
@@ -41,7 +49,7 @@ class WorkRow {
     words: row['words'] as int?,
     chapterCount: row['chapter_count'] as int?,
     fandom: row['fandom'] as String?,
-    hasText: (row['has_text'] as int? ?? 0) == 1,
+    hasText: (row['resolved_has_text'] ?? row['has_text'] ?? 0) == 1,
     skinCss: row['skin_css'] as String?,
     /* Only present when the row was asked for in full. A list does not need
        them and a work's own page does, so both read the same class and the
@@ -60,6 +68,13 @@ class WorkRow {
     inBookmarks: (row['in_bookmarks'] as int? ?? 0) == 1,
     kudosGiven: (row['kudos_given'] as int? ?? 0) == 1,
     markedLater: (row['marked_later'] as int? ?? 0) == 1,
+    visits: row['visits'] as int?,
+    ffVisits: row['ff_visits'] as int? ?? 0,
+    atChapter: row['at_chapter'] as int?,
+    chaptersRead: row['chapters_read'] as int? ?? 0,
+    completedBefore: row['completed_before'] == 1,
+    source: row['source'] as String?,
+    sourceFile: row['source_file'] as String?,
   );
 
   final String workId;
@@ -88,6 +103,20 @@ class WorkRow {
   final bool inBookmarks;
   final bool kudosGiven;
   final bool markedLater;
+  final int? visits;
+  final int ffVisits;
+  final int? atChapter;
+  final int chaptersRead;
+  final bool completedBefore;
+  final String? source;
+  final String? sourceFile;
+
+  String get visitLabel {
+    if (visits == null && ffVisits == 0) return '';
+    final total = (visits ?? 0) + ffVisits;
+    return '$total ${total == 1 ? 'visit' : 'visits'} · '
+        '${visits == null ? 'AO3 not synced' : '$visits AO3'} + $ffVisits Fan Folio';
+  }
 
   String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
 
@@ -268,7 +297,9 @@ class Library {
   Future<WorkRow?> work(String workId) async {
     final rows = await db.rawQuery(
       '''
-      SELECT w.*, r.marked_later,
+      SELECT w.*, r.marked_later, r.chapter AS at_chapter, r.chapters_read, r.completed_before,
+             $heldText AS resolved_has_text, $ffVisits AS ff_visits,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship,
              (SELECT name FROM tags t
                WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1)
                AS fandom
@@ -306,7 +337,7 @@ class Library {
 
   Future<List<ChapterRow>> chapters(String workId) async {
     final rows = await db.rawQuery(
-      'SELECT number, title FROM chapters WHERE work_id = ? ORDER BY number',
+      "SELECT number, title FROM chapters WHERE work_id = ? AND length(COALESCE(html, '')) > 0 ORDER BY number",
       [workId],
     );
     return rows
@@ -347,7 +378,7 @@ class Library {
   /// Where the reader was in this work, if anywhere.
   Future<Place?> placeIn(String workId) async {
     final rows = await db.rawQuery(
-      'SELECT chapter, offset, chapters_read FROM reading WHERE work_id = ?',
+      'SELECT chapter, offset, chapters_read, opened_at, completed_before FROM reading WHERE work_id = ?',
       [workId],
     );
     if (rows.isEmpty) return null;
@@ -356,6 +387,8 @@ class Library {
       chapter: row['chapter'] as int?,
       offset: (row['offset'] as num?)?.toDouble(),
       chaptersRead: row['chapters_read'] as int? ?? 0,
+      openedAt: row['opened_at'] as String?,
+      completedBefore: row['completed_before'] == 1,
     );
   }
 
@@ -374,12 +407,23 @@ class Library {
 
   /// Opened, without saying where — a peek must not move the bookmark.
   Future<void> opened(String workId) async {
-    await db.rawInsert(
-      "INSERT INTO reading (work_id, opened_at) VALUES (?, strftime('%Y-%m-%d %H:%M:%f','now')) "
-      'ON CONFLICT(work_id) DO UPDATE SET opened_at = excluded.opened_at',
-      [workId],
-    );
+    final random = Random.secure();
+    final visitId = List.generate(
+      16,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join();
+    await db.transaction((txn) async {
+      await txn.rawInsert(recordVisitSql, [visitId, workId]);
+      await txn.rawInsert(
+        "INSERT INTO reading (work_id, opened_at) VALUES (?, strftime('%Y-%m-%d %H:%M:%f','now')) "
+        'ON CONFLICT(work_id) DO UPDATE SET opened_at = excluded.opened_at',
+        [workId],
+      );
+    });
   }
+
+  Future<void> restart(String workId) =>
+      db.rawInsert(restartReadingSql, [workId]);
 
   /// Where in the work, and how far down the page.
   Future<void> savePlace(String workId, int chapter, double offset) =>
@@ -493,8 +537,8 @@ class Library {
     if (query.trim().isEmpty) return const [];
     final rows = await db.rawQuery(
       '''
-      SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
-             w.has_text, w.skin_css,
+      SELECT w.*, $heldText AS resolved_has_text, $ffVisits AS ff_visits,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship,
              (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom
       FROM work_fts
       JOIN works w ON w.work_id = work_fts.work_id
@@ -668,7 +712,9 @@ class Library {
   Future<List<WorkRow>> bookmarkedBy(String person, {int limit = 500}) async {
     final rows = await db.rawQuery(
       '''
-      SELECT w.*, r.marked_later,
+      SELECT w.*, r.marked_later, r.chapter AS at_chapter, r.chapters_read, r.completed_before,
+             $heldText AS resolved_has_text, $ffVisits AS ff_visits,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship,
              (SELECT name FROM tags t
                WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1)
                AS fandom
@@ -856,8 +902,21 @@ class Hit {
 
 /// Where somebody had got to.
 class Place {
-  const Place({this.chapter, this.offset, this.chaptersRead = 0});
+  const Place({
+    this.chapter,
+    this.offset,
+    this.chaptersRead = 0,
+    this.openedAt,
+    this.completedBefore = false,
+  });
   final int? chapter;
   final double? offset;
   final int chaptersRead;
+  final String? openedAt;
+  final bool completedBefore;
+  bool get started =>
+      openedAt != null ||
+      (chapter ?? 1) > 1 ||
+      (offset ?? 0) > 0 ||
+      chaptersRead > 0;
 }

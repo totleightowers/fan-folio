@@ -58,6 +58,19 @@ class LibraryStore implements core.WorkStore {
          chaptering is gone either way, and the copy on this device is the
          only record of what it used to be. */
       await _archiveChapters(txn, work);
+      final oldSkin = await txn.rawQuery(
+        'SELECT skin_css FROM works WHERE work_id = ?',
+        [work.workId],
+      );
+      if (oldSkin.isNotEmpty &&
+          _settled(oldSkin.first['skin_css'] as String?) !=
+              _settled(work.skinCss)) {
+        await txn.insert('skin_versions', {
+          'work_id': work.workId,
+          'skin_css': oldSkin.first['skin_css'],
+          'archived_at': stamp,
+        });
+      }
 
       final row = {
         'work_id': work.workId,
@@ -179,17 +192,11 @@ class LibraryStore implements core.WorkStore {
         chapter.number: _settled(chapter.html),
     };
 
-    List<Map<String, Object?>> current;
-    try {
-      current = await txn.rawQuery(
-        'SELECT number, title, html, text, words '
-        'FROM chapters WHERE work_id = ?',
-        [work.workId],
-      );
-    } catch (_) {
-      // a library without the table is not worth failing a download over
-      return;
-    }
+    final current = await txn.rawQuery(
+      'SELECT number, title, html, text, words '
+      'FROM chapters WHERE work_id = ?',
+      [work.workId],
+    );
 
     final at = DateTime.now()
         .toIso8601String()
@@ -201,20 +208,16 @@ class LibraryStore implements core.WorkStore {
       if (!gone && _settled('${row['html'] ?? ''}') == incoming[number]) {
         continue; // unchanged
       }
-      try {
-        await txn.insert('chapter_versions', {
-          'work_id': work.workId,
-          'number': number,
-          'title': row['title'],
-          'html': row['html'],
-          'text': row['text'],
-          'words': row['words'],
-          'reason': gone ? 'removed' : 'content',
-          'archived_at': at,
-        });
-      } catch (_) {
-        // likewise: an archive that cannot be written is not a lost work
-      }
+      await txn.insert('chapter_versions', {
+        'work_id': work.workId,
+        'number': number,
+        'title': row['title'],
+        'html': row['html'],
+        'text': row['text'],
+        'words': row['words'],
+        'reason': gone ? 'removed' : 'content',
+        'archived_at': at,
+      });
     }
   }
 }
@@ -351,5 +354,22 @@ class LibraryPictures implements core.PictureStore {
 }
 
 /// Whitespace is not a change. Compared the way 1.x compares it.
-String _settled(String? html) =>
-    (html ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
+String _settled(String? html) {
+  var text = html ?? '';
+  while (true) {
+    final next = text.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
+    if (next == text) break;
+    text = next;
+  }
+  return text
+      .replaceAll(
+        RegExp(
+          r'name="authenticity_token"[^>]*value="[^"]*"',
+          caseSensitive: false,
+        ),
+        'name="authenticity_token"',
+      )
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'>\s+<'), '><')
+      .trim();
+}

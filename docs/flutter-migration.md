@@ -1,6 +1,6 @@
 # Flutter migration, v4–v5
 
-Baseline: signed v3.14.2 (`a53807a8085ca841d9d45130c7b6859c156052f1`).
+Feature acceptance baseline: **v3.14.3**. Preserve its user-visible capabilities and data semantics within the new v5 navigation. Retaining only the incomplete v4 preview does not meet acceptance. Keeping the old APK available is separate from feature preservation.
 
 ## Architecture
 
@@ -48,7 +48,7 @@ Host tests disconnect/reconnect the UI during a synthetic download and check tim
 | Android integration | Generated host + service plugin | Deep links, shares, notification actions, process lifecycle, accessibility/device checks |
 | Backup / migration | SQLite import/export | Validated import staging, WAL-safe replacement, current schema preservation, large-library tests |
 
-Each subsequent slice gets a signed PR and a preview release. Promote v4 only after these gates are satisfied with a copied library and device evidence. A stored chapter is never evidence of a working backup, and a running service is never evidence of progressing downloads.
+Each subsequent slice gets a signed PR and a preview release. Promote v5 only after these gates are satisfied with a copied library and device evidence. A stored chapter is never evidence of a working backup, and a running service is never evidence of progressing downloads.
 
 ## Verification boundary
 
@@ -56,7 +56,7 @@ Core tests use fake clocks and synthetic HTTP. App tests use temporary SQLite fi
 
 ## v5 discovery: retained functionality and journey map
 
-The v5 redesign is additive to v4.0.0-alpha.4, not a declaration that the migration gaps above are complete.
+The v5 redesign must preserve v3.14.3 functionality. Alpha.1 only retained the v4 preview subset and is incomplete against that requirement. The gates above remain required; an available storage table is not a usable feature.
 
 | Existing capability | v5 location / preservation |
 | --- | --- |
@@ -66,7 +66,7 @@ The v5 redesign is additive to v4.0.0-alpha.4, not a declaration that the migrat
 | Reader HTML, skins, images, fallback text, chapter navigation, search and appearance | Existing full-screen ReaderScreen; Go to also includes Explore AO3 |
 | Saved reading position and Return to story | Same storage and return logic, pill extends to nested browsing routes |
 | Add by link, series, job inspection/pause/resume/retry, open saved work | Add action and Downloads icon; reader Go to → Downloads; Settings → Activity |
-| Sign-in/out, bookmarks/history/Later sync, kudos/comments/bookmarks | Existing You, author and work actions |
+| Sign-in/out, bookmark sync, kudos/comments/bookmarks | Existing You, author and work actions; AO3 history/Later sync still require restoration |
 | Author works/bookmarks, sync, block/unblock | Existing author page, with Explore author on AO3 added |
 | Backup/import, reader defaults, diagnostics, blocked-item recovery | Existing Settings and You destinations |
 | Current chapters, archived chapters/skins, pictures, reading history and flags | Same schema and database; download updates preserve personal fields |
@@ -76,3 +76,28 @@ New: service-owned AO3 searches with explicit submit/pagination; saved searches 
 Navigation acceptance: independent tab route stacks; global destinations remain visible on work/author/settings/download routes; full-screen reading returns to its originating session; local filters/results/scroll survive tab switches; AO3 results survive opening/closing details and switching tabs without another request. Re-selecting the current destination returns to its root. Reader Go to → Library/Home explicitly returns to that section's root.
 
 Tests cover phone and tablet journeys, saved-search backup, service RPC search/read, duplicate foreground fetch coalescing, offline reopening, personal-state/version preservation and priority without bypassing rate limits. Existing core/Flutter, stable-app and Android service checks remain required. Physical-device gestures, WebView text rendering and lifecycle reliability remain device gates.
+
+
+## v3 restoration acceptance
+
+The source baseline is `v3.14.3`, particularly `app/core/query.js`, `app/core/store/reading.js`, `app/core/store/visits.js`, `app/core/versions.js`, `app/core/epub.js`, `app/core/sync/history.js` and the routes in `app/app.js`.
+
+First restoration slice:
+
+- Reachable local sort controls including Most read, with AO3 snapshot visits plus recorded local reading sessions. Scrolling and saving progress do not add visits. Unsynced AO3 counts are labelled explicitly.
+- OTP (exactly one relationship), independent saved-copy availability, includes/excludes, warnings/categories, language, completion, crossover, word/chapter/date ranges, and full/compact descriptions.
+- Actual readable chapters establish availability even when imported flags are stale. New acquisitions order by the library arrival time.
+- Restart reading atomically retains earlier completion; Home, Library and counts share that meaning.
+- Rating and relationship remain visible on shelf cards and are fetched for search/author/library rows. Fandom browsing returns to the top of Home. Full descriptions are the list default.
+- Earlier chapter versions can be read and compared without changing the current bookmark or adding a visit. Changed work skins are archived transactionally, and earlier skin records remain reachable. An archive-write failure must stop replacement instead of losing the previous copy.
+
+Still required before v3 parity can be declared:
+
+- EPUB ingestion (including packaged images, provenance, existing-copy reconciliation) and backup merge rather than replacement only.
+- AO3 history/Later sync, durable listing cursors and safe partial bookmark/author reconciliation.
+- Detailed per-work download outcomes/requeue, complete current image recovery, and physical-device background execution evidence.
+- Deep links/share intents, source-opening flows and session/account checks.
+- Reader in-work search/transient navigation and full v3 preference/font/haptic parity.
+- Whole-journey checks against v3 for every entry point, phone/tablet, large text, imported data and hidden works.
+
+These are requirements, not optional follow-ups. Each restored slice must have tests and a signed PR/release; no preview is described as preserving all v3 features until the list is complete.

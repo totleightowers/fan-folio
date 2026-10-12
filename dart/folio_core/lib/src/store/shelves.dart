@@ -37,8 +37,10 @@ class Shelf {
   /// The rows of the shelf.
   String sql({int limit = 12}) => '''
 SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count,
-       w.complete, w.rating, w.has_text, w.skin_css,
+       w.complete, w.rating, $heldText AS has_text, w.skin_css,
+       w.visits, $ffVisits AS ff_visits,
        r.chapter AS at_chapter, r.chapters_read, r.marked_later,
+       r.opened_at, r.offset, r.completed_before,
        (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
        (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
 FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
@@ -61,7 +63,7 @@ List<Shelf> shelves() => [
         where: states['reading']!,
         // most recently opened first, whichever shelf it was opened from
         order: 'COALESCE(r.opened_at, r.updated_at) DESC',
-        view: const {'state': 'reading'},
+        view: const {'state': 'reading', 'sort': 'recent'},
       ),
       Shelf(
         key: 'later',
@@ -74,8 +76,15 @@ List<Shelf> shelves() => [
         key: 'added',
         title: 'Recently added',
         where: '1=1',
-        order: 'COALESCE(w.downloaded_at, w.fetched_at) DESC',
+        order: 'COALESCE(w.fetched_at, w.downloaded_at) DESC',
         view: const {'state': 'all', 'sort': 'added'},
+      ),
+      Shelf(
+        key: 'visits',
+        title: 'Most read',
+        where: '$totalVisits > 0',
+        order: sorts['visits']!,
+        view: const {'sort': 'visits'},
       ),
       Shelf(
         key: 'long',
@@ -137,7 +146,7 @@ FROM works w WHERE COALESCE(w.hidden, 0) = 0''';
 
 /// Finished, and the words in them, asked the way the library asks it.
 String get readStatsSql => '''
-SELECT count(CASE WHEN $finished THEN 1 END) AS finished,
-       COALESCE(sum(CASE WHEN $finished THEN w.words ELSE 0 END), 0) AS wordsRead
+SELECT count(CASE WHEN $completed THEN 1 END) AS finished,
+       COALESCE(sum(CASE WHEN $completed THEN w.words ELSE 0 END), 0) AS wordsRead
 FROM works w JOIN reading r ON r.work_id = w.work_id
 WHERE COALESCE(w.hidden, 0) = 0''';
