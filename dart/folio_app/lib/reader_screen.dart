@@ -211,6 +211,12 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (mounted) widget.onNavigate?.call(destination);
   }
 
+  Future<void> _showWork() async {
+    _settling?.cancel();
+    await _flushPlace();
+    if (mounted) widget.onShowWork?.call();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) {
@@ -288,7 +294,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 ),
                 onTap: () {
                   Navigator.of(context).pop();
-                  widget.onShowWork!();
+                  _showWork();
                 },
               ),
             if (widget.downloads?.canAct ?? false)
@@ -375,7 +381,7 @@ class _ReaderScreenState extends State<ReaderScreen>
           title: InkWell(
             // the work itself, for anyone who arrived from Continue reading
             // and has never seen what they are in the middle of
-            onTap: widget.onShowWork,
+            onTap: widget.onShowWork == null ? null : _showWork,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Column(
@@ -482,7 +488,7 @@ class _ReaderScreenState extends State<ReaderScreen>
           onPrevious: _chapter > 1 ? () => _turn(_chapter - 1) : null,
           onNext: _chapter < _total ? () => _turn(_chapter + 1) : null,
           onPick: _pickChapter,
-          onWork: widget.onShowWork,
+          onWork: widget.onShowWork == null ? null : _showWork,
           onActs: (widget.downloads?.canAct ?? false)
               ? () => showArchiveActs(
                   context,

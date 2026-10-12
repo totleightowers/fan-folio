@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:folio_core/folio_core.dart' as core;
 
@@ -39,7 +41,11 @@ class WorkScreen extends StatefulWidget {
   final String workId;
 
   /// Open the reader at a chapter.
-  final void Function(WorkRow work, List<ChapterRow> chapters, int chapter)
+  final FutureOr<void> Function(
+    WorkRow work,
+    List<ChapterRow> chapters,
+    int chapter,
+  )
   onRead;
 
   final void Function(String byline) onPerson;
@@ -226,10 +232,11 @@ class _WorkScreenState extends State<WorkScreen> {
     }
   }
 
-  void _read(int chapter) {
+  Future<void> _read(int chapter) async {
     final work = _work;
     if (work == null) return;
-    widget.onRead(work, _chapters, chapter);
+    await widget.onRead(work, _chapters, chapter);
+    if (mounted) await _load();
   }
 
   @override

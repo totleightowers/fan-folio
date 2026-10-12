@@ -290,7 +290,8 @@ class _ShellState extends State<Shell> {
           onExplore: _explore,
           onDownloads: _openActivity,
           downloads: _downloads,
-          onRead: _read,
+          onRead: (work, chapters, chapter) =>
+              _read(work, chapters, chapter, fromWork: true),
           onPerson: _openPerson,
           onNarrow: _seeAll,
         ),
@@ -321,8 +322,9 @@ class _ShellState extends State<Shell> {
   Future<void> _read(
     WorkRow work,
     List<ChapterRow> chapters,
-    int chapter,
-  ) async {
+    int chapter, {
+    bool fromWork = false,
+  }) async {
     final library = _library;
     if (library == null) return;
     final place = await library.placeIn(work.workId);
@@ -337,7 +339,7 @@ class _ShellState extends State<Shell> {
           downloads: _downloads,
           onShowWork: () {
             Navigator.of(context).pop();
-            _open(work);
+            if (!fromWork) _open(work);
           },
           onNavigate: _navigateFromReader,
           startAt: at,

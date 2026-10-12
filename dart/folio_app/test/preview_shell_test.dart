@@ -131,6 +131,19 @@ void main() {
         await tester.tap(find.text('Carry on, chapter 1'));
         await settleDatabase();
         expect(find.byType(ReaderScreen), findsOneWidget);
+        // Reader → details reuses the existing work route. One system Back
+        // returns to the list, not to a second copy of the same details.
+        await tester.tap(find.byTooltip('This work'));
+        await settleDatabase();
+        expect(find.byType(WorkScreen), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await settleDatabase();
+        expect(find.byType(WorkScreen), findsNothing);
+        expect(find.byType(LibraryList), findsOneWidget);
+        await tester.tap(find.text('The next chapter').first);
+        await settleDatabase();
+        await tester.tap(find.text('Carry on, chapter 1'));
+        await settleDatabase();
         await tester.tap(find.byTooltip('Go to'));
         await tester.pumpAndSettle();
         for (final label in [
