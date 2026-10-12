@@ -72,8 +72,22 @@ void main() {
       );
 
       expect(asked, [1, 2], reason: 'page two was all familiar; stop there');
+      expect(result.pagesWalked, 2);
+      expect(result.complete, isFalse);
       expect(result.workIds, ['new1']);
       expect(result.seen, ['new1', 'old1', 'old2', 'old3']);
+    });
+
+    test('only reaching the last page establishes completeness', () async {
+      for (final limit in [1, 2]) {
+        final result = await findNewBookmarks(
+          fetchPage: (p) async => page(['w$p'], total: 2),
+          isHeld: (_) => false,
+          maxPages: limit,
+        );
+        expect(result.complete, limit == 2);
+        expect(result.pagesWalked, limit);
+      }
     });
 
     test('a work already held can still be a new bookmark', () async {
@@ -110,6 +124,7 @@ void main() {
         shouldStop: () => stop,
       );
       expect(pages, 1);
+      expect(result.complete, isFalse);
       expect(result.workIds, ['a1']);
     });
   });

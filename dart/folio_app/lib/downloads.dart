@@ -390,9 +390,19 @@ class LocalDownloads extends Downloads {
           if (!await _queue.waitUntilRunnable(job)) {
             throw StateError('Listing stopped');
           }
-          final listing = core.parseListing(
-            (await _client.get(Uri.parse(core.bookmarks(who, page)))).body,
-          );
+          final body = (await _client.get(Uri.parse(core.bookmarks(who, page))))
+              .body;
+          if (core.signedInAs(body) != who || _session.username != who) {
+            throw const core.ArchiveError(
+              'Sign in to the account that started this bookmark sync. Existing bookmarks were kept.',
+            );
+          }
+          final listing = core.parseListing(body);
+          final blocked = (await library.blockedNames()).toSet();
+          await saveStubs(library.db, [
+            for (final blurb in listing.works)
+              if (!core.isHidden(jsonEncode(blurb.authors), blocked)) blurb,
+          ], refused: await library.refusedIds());
           return core.ListingPage(
             workIds: [for (final blurb in listing.works) blurb.workId],
             totalPages: listing.total,
@@ -408,8 +418,11 @@ class LocalDownloads extends Downloads {
          being bookmarked does not appear anywhere, so removal cannot be seen
          a page at a time. Only membership changes: you unbookmarked it, you
          did not ask to lose it. */
-      final counts = await library.reconcileBookmarks(found.seen);
-      await library.noteBookmarkSync(DateTime.now());
+      final counts = await library.reconcileBookmarks(
+        found.seen,
+        complete: found.complete,
+      );
+      if (found.complete) await library.noteBookmarkSync(DateTime.now());
 
       // and what is actually missing, asked of the library rather than
       // assumed from what the listing said
@@ -423,7 +436,8 @@ class LocalDownloads extends Downloads {
         ..note(
           job,
           say:
-              '${counts.kept} bookmarked'
+              '${counts.kept} bookmarks checked'
+              '${found.complete ? '' : ' · partial scan; earlier bookmarks kept'}'
               '${counts.dropped > 0 ? ', ${counts.dropped} no longer' : ''}'
               '${missing.isEmpty ? '' : ', ${missing.length} to fetch'}',
         )

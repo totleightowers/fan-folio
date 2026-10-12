@@ -53,6 +53,26 @@ void main() {
     },
   );
 
+  test(
+    'partial bookmark scans retain unseen membership; complete scans reconcile',
+    () async {
+      await library.db.execute(
+        "UPDATE works SET in_bookmarks=1 WHERE work_id='1'",
+      );
+      await library.db.execute(
+        "INSERT INTO works(work_id,title) VALUES('2','New bookmark')",
+      );
+      final partial = await library.reconcileBookmarks(['2']);
+      expect(partial.dropped, 0);
+      expect((await library.work('1'))!.inBookmarks, isTrue);
+      expect((await library.work('2'))!.inBookmarks, isTrue);
+      final complete = await library.reconcileBookmarks(['2'], complete: true);
+      expect(complete.dropped, 1);
+      expect((await library.work('1'))!.inBookmarks, isFalse);
+      expect((await library.work('2'))!.inBookmarks, isTrue);
+    },
+  );
+
   testWidgets(
     'earlier chapter and skin copies remain reachable without moving current place',
     (tester) async {

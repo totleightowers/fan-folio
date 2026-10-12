@@ -45,6 +45,7 @@ class NewBookmarks {
     required this.workIds,
     required this.seen,
     required this.pagesWalked,
+    this.complete = false,
   });
 
   /// The ones whose text is not held. What there is to download.
@@ -55,6 +56,9 @@ class NewBookmarks {
   final List<String> seen;
 
   final int pagesWalked;
+
+  /// Only a complete walk can establish that a bookmark was removed.
+  final bool complete;
 }
 
 /// Walk the bookmark pages until they stop telling us anything new.
@@ -81,11 +85,14 @@ Future<NewBookmarks> findNewBookmarks({
   final seen = <String>[];
   final needed = <String>[];
   int? totalPages;
+  var pagesWalked = 0;
+  var complete = false;
 
   for (var page = 1; page <= maxPages; page++) {
     if (shouldStop()) break;
     final listing = await fetchPage(page);
     totalPages = listing.totalPages ?? totalPages;
+    pagesWalked = page;
 
     for (final workId in listing.workIds) {
       seen.add(workId);
@@ -101,17 +108,20 @@ Future<NewBookmarks> findNewBookmarks({
       ),
     );
 
-    // a page where every bookmark was already known means the rest was too
+    if (!shouldStop() && totalPages != null && page >= totalPages) {
+      complete = true;
+      break;
+    }
+    // Familiar entries save requests, but do not prove anything about removals
+    // on pages we have not visited.
     if (newlyBookmarked.isEmpty) break;
-    if (totalPages != null && page >= totalPages) break;
   }
 
   return NewBookmarks(
     workIds: needed,
     seen: seen,
-    pagesWalked: totalPages == null
-        ? maxPages
-        : (maxPages < totalPages ? maxPages : totalPages),
+    pagesWalked: pagesWalked,
+    complete: complete,
   );
 }
 
