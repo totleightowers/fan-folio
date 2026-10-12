@@ -285,60 +285,52 @@ class _BrowseState extends State<_Browse> {
     final counts = widget.browse[_kind] ?? const <Count>[];
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 22, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
         children: [
-          const _SectionTitle('Browse'),
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final (kind, title) in kinds)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(title),
-                      showCheckmark: false,
-                      selected: kind == _kind,
-                      onSelected: (_) => setState(() => _kind = kind),
-                    ),
-                  ),
-              ],
-            ),
+          DropdownButton<String>(
+            value: _kind,
+            underline: const SizedBox.shrink(),
+            style: TextStyle(fontSize: 13, color: ground.ink),
+            items: [
+              for (final (kind, title) in kinds)
+                DropdownMenuItem(value: kind, child: Text(title)),
+            ],
+            onChanged: (kind) {
+              if (kind != null) setState(() => _kind = kind);
+            },
           ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final count in counts)
-                  _BrowseChip(
-                    count: count,
-                    /* A card's spine is a hash of its fandom, so the same name
-                     is the same colour wherever it appears. Tinting the chip
-                     with it makes this row a key to the shelves above. A
-                     pairing or a rating has no spine of its own to agree
-                     with, so it gets none. */
-                    spine: _kind == 'fandom'
-                        ? Color(0xFF000000 | core.spineRgb(count.name))
-                        : null,
-                    ground: ground,
-                    onTap: () => widget.onNarrow(
-                      _kind == 'rating'
-                          ? {
-                              'rating': [count.name],
-                              'sort': 'added',
-                            }
-                          : {
-                              'include': [count.name],
-                              'sort': 'added',
-                            },
-                      count.name,
+          const SizedBox(width: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final count in counts)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _BrowseChip(
+                        count: count,
+                        spine: _kind == 'fandom'
+                            ? Color(0xFF000000 | core.spineRgb(count.name))
+                            : null,
+                        ground: ground,
+                        onTap: () => widget.onNarrow(
+                          _kind == 'rating'
+                              ? {
+                                  'rating': [count.name],
+                                  'sort': 'added',
+                                }
+                              : {
+                                  'include': [count.name],
+                                  'sort': 'added',
+                                },
+                          count.name,
+                        ),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ],

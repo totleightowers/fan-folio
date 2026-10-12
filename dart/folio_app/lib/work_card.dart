@@ -95,7 +95,7 @@ class WorkCard extends StatelessWidget {
                             alignment: Alignment.centerRight,
                             child: TextButton(
                               onPressed: onResume,
-                              child: const Text('Resume →'),
+                              child: const Text('Resume'),
                             ),
                           ),
                         const SizedBox(height: 6),
@@ -330,7 +330,7 @@ class Shelf extends StatelessWidget {
           ),
         ),
         SizedBox(
-          height: 80 + MediaQuery.textScalerOf(context).scale(170),
+          height: _cardHeight(context, works, resume: onResume != null),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -347,4 +347,61 @@ class Shelf extends StatelessWidget {
       ],
     );
   }
+}
+
+// Size the rail from its actual text at the chosen accessibility scale. A
+// fixed tall rail leaves short cards empty; a fixed short rail clips metadata.
+double _cardHeight(
+  BuildContext context,
+  List<WorkRow> works, {
+  required bool resume,
+}) {
+  var tallest = 150.0;
+  final scaler = MediaQuery.textScalerOf(context);
+  final direction = Directionality.of(context);
+  for (final work in works) {
+    double measure(String text, TextStyle style, int? lines) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: DefaultTextStyle.of(context).style.merge(style),
+        ),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: lines,
+        ellipsis: lines == null ? null : '…',
+      )..layout(maxWidth: 266);
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+
+    final height =
+        44 +
+        (resume ? 48 : 0) +
+        measure(
+          work.title,
+          const TextStyle(
+            fontFamily: titleFace,
+            fontSize: 14.5,
+            fontWeight: FontWeight.w600,
+            height: 1.3,
+          ),
+          2,
+        ) +
+        measure(work.byline, const TextStyle(fontSize: 12), 1) +
+        measure(
+          work.rating ?? 'Rating unknown',
+          const TextStyle(fontSize: 12),
+          null,
+        ) +
+        measure(
+          work.relationship ?? 'No relationship listed',
+          const TextStyle(fontSize: 12),
+          2,
+        ) +
+        measure('Chapter 1 of 1', const TextStyle(fontSize: 11), 1);
+    if (height > tallest) tallest = height;
+  }
+  return tallest;
 }
