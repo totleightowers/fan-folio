@@ -34,6 +34,17 @@ class _FilterSheetState extends State<FilterSheet> {
   @override
   void initState() {
     super.initState();
+    if (const [
+      'later',
+      'bookmarked',
+      'history',
+      'rec',
+    ].contains(_view['state'])) {
+      _view['collection'] = _view.remove('state');
+    }
+    if (const ['held', 'known'].contains(_view['state'])) {
+      _view['availability'] = _view.remove('state');
+    }
     _recount();
   }
 
@@ -164,6 +175,13 @@ class _FilterSheetState extends State<FilterSheet> {
                     '': 'All availability',
                     'held': 'Downloaded',
                     'known': 'Not downloaded',
+                  }),
+                  _choice('Collection', 'collection', const {
+                    '': 'Any collection',
+                    'later': 'For later',
+                    'bookmarked': 'AO3 bookmarks',
+                    'history': 'AO3 history',
+                    'rec': 'Recommended on AO3',
                   }),
                   _StateSection(
                     chosen: '${_view['state'] ?? 'all'}',
@@ -370,10 +388,6 @@ class _StateSection extends StatelessWidget {
     ('reading', 'Reading'),
     ('unread', 'Unread'),
     ('finished', 'Finished'),
-    ('later', 'For later'),
-    ('rec', 'Recommended'),
-    ('history', 'AO3 history'),
-    ('bookmarked', 'Bookmarked'),
   ];
 
   @override
@@ -432,8 +446,9 @@ class _FacetState extends State<_Facet> {
     super.didUpdateWidget(old);
     if (widget.open && _counts == null) _load();
     if ((old.chosen != widget.chosen || old.revision != widget.revision) &&
-        widget.open)
+        widget.open) {
       _load();
+    }
   }
 
   @override

@@ -280,6 +280,20 @@ class Library {
     }
   }
 
+  Future<String> listDensity() async {
+    final rows = await db.rawQuery(
+      "SELECT value FROM meta WHERE key = 'library.density'",
+    );
+    return rows.isNotEmpty && rows.single['value'] == 'compact'
+        ? 'compact'
+        : '';
+  }
+
+  Future<void> saveListDensity(String value) => db.rawInsert(
+    "INSERT INTO meta(key,value) VALUES('library.density',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    [value == 'compact' ? 'compact' : 'full'],
+  );
+
   Future<List<WorkRow>> works([Map<String, Object?> filters = const {}]) async {
     final q = buildWorksQuery(filters);
     final rows = await db.rawQuery(q.sql, q.args);

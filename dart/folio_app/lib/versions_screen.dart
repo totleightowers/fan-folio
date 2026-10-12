@@ -72,12 +72,14 @@ class _VersionsScreenState extends State<VersionsScreen> {
     body: FutureBuilder<List<List<Map<String, Object?>>>>(
       future: Future.wait([_versions, _skins]),
       builder: (context, snapshot) {
-        if (snapshot.hasError)
+        if (snapshot.hasError) {
           return Center(
             child: Text('Could not load earlier copies: ${snapshot.error}'),
           );
-        if (!snapshot.hasData)
+        }
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
         final chapters = snapshot.data![0];
         final skins = snapshot.data![1];
         return ListView(

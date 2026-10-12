@@ -192,6 +192,10 @@ WorksQuery buildWorksQuery([Map<String, Object?> filters = const {}]) {
   where.add(states[filters['state']] ?? states['all']!);
   if (filters['availability'] == 'held') where.add(heldText);
   if (filters['availability'] == 'known') where.add('NOT $heldText');
+  if (const ['later', 'bookmarked', 'history', 'rec']
+      .contains(filters['collection'])) {
+    where.add(states[filters['collection']]!);
+  }
 
   /// Included tags are an AND: "alpha/beta/omega" *and* "slow burn" is a much
   /// more useful question than either alone, and the one AO3's filters answer.

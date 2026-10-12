@@ -137,6 +137,7 @@ class _ShellState extends State<Shell> {
   Future<void> _load() async {
     try {
       final library = widget.initialLibrary ?? await Library.openExisting();
+      final density = await library?.listDensity() ?? '';
       final session = widget.initialDownloads?.session ?? await Session.load();
       final downloads =
           widget.initialDownloads ??
@@ -145,6 +146,7 @@ class _ShellState extends State<Shell> {
       if (!mounted) return;
       setState(() {
         _library = library;
+        _view = {..._view, 'density': density};
         _downloads = downloads;
         _downloads?.addListener(_downloadsChanged);
         _loading = false;
@@ -481,6 +483,7 @@ class _ShellState extends State<Shell> {
       'otp',
       'crossover',
       'availability',
+      'collection',
     ]) {
       if (_view[key] != null) n++;
     }
@@ -498,6 +501,8 @@ class _ShellState extends State<Shell> {
       builder: (_) => FilterSheet(library: library, view: _view),
     );
     if (chosen == null || !mounted) return;
+    await library.saveListDensity('${chosen['density'] ?? ''}');
+    if (!mounted) return;
     setState(() {
       _view = chosen;
       _viewTitle = 'Library';
@@ -532,7 +537,7 @@ class _ShellState extends State<Shell> {
     _goToTab(2);
     _navigators[2].currentState?.popUntil((route) => route.isFirst);
     setState(() {
-      _view = view;
+      _view = {...view, 'density': _view['density'] ?? ''};
       _viewTitle = title;
     });
   }
