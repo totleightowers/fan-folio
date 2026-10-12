@@ -32,6 +32,84 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(prepareTestDatabase);
   final fixture = File('../../test/fixtures/work-page.html').readAsStringSync();
+  test('discovery and read-now cross the service boundary without importing results', () async {
+    final scratch = await Directory.systemTemp.createTemp(
+      'folio-discovery-worker',
+    );
+    final library = await Library.create('${scratch.path}/library.db');
+    var clock = DateTime(2026);
+    final requests = <Uri>[];
+    final engine = LocalDownloads(
+      library: library,
+      pacerFactory: (checkpoint) => core.Pacer(
+        now: () => clock,
+        sleep: (d) async {
+          clock = clock.add(d);
+        },
+        checkpoint: checkpoint,
+      ),
+      clientFactory: (pacer) => core.ArchiveClient(
+        pacer: pacer,
+        http_: MockClient((request) async {
+          requests.add(request.url);
+          final body = request.url.path == '/works/search'
+              ? '<li class="work blurb" id="work_58374928"><h4 class="heading"><a href="/works/58374928">Found it</a></h4></li>'
+              : fixture;
+          return http.Response(
+            body,
+            200,
+            headers: {'content-type': 'text/html; charset=utf-8'},
+          );
+        }),
+      ),
+    );
+    final worker = DownloadWorker(
+      engine,
+      send: (data) {
+        for (final callback in FlutterForegroundTask.dataCallbacks.toList()) {
+          callback(data);
+        }
+      },
+      whenIdle: () async {},
+    );
+    final platform = FlutterForegroundTaskPlatform.instance;
+    FlutterForegroundTaskPlatform.instance = WorkerPlatform(worker);
+    final ui = RemoteDownloads(library: library, session: Session.none);
+    try {
+      await worker.start();
+      await ui.restore();
+      final results = await ui.discover(
+        const core.ArchiveSearch(fields: {'query': 'Found it'}),
+      );
+      expect(results.works.single.workId, '58374928');
+      expect(await library.work('58374928'), isNull);
+      await Future.wait([ui.readNow('58374928'), ui.readNow('58374928')]);
+      expect(await library.chapterHtml('58374928', 1), isNotEmpty);
+      expect(
+        requests,
+        hasLength(2),
+        reason: 'simultaneous opens share one fetch',
+      );
+      await ui.readNow('58374928');
+      expect(
+        requests,
+        hasLength(2),
+        reason: 'saved text opens without network',
+      );
+      expect(
+        ui.jobs,
+        isEmpty,
+        reason: 'foreground reading does not inflate download job counts',
+      );
+    } finally {
+      ui.dispose();
+      await worker.close();
+      FlutterForegroundTaskPlatform.instance = platform;
+      await library.close();
+      await scratch.delete(recursive: true);
+    }
+  });
+
   test('service completes a download after UI disposal and a new UI reconnects to the same queue', () async {
     final scratch = await Directory.systemTemp.createTemp('folio-worker');
     final library = await Library.create('${scratch.path}/library.db');

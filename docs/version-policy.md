@@ -25,3 +25,9 @@ Commits and tags must be signed with the owner's key. When integrating v3 featur
 ## Flutter v4 previews
 
 The Flutter migration starts at **v4.0.0-alpha.1**. Preview APKs use the isolated `org.fanfolio.preview` package and are GitHub prereleases; v3 stays the stable download. See [the migration audit](flutter-migration.md) for parity gates and [the preview notes](flutter-preview-release.md) for current limits. A v4 tag is handled by the Flutter release workflow, never the WebView-shell release workflow.
+
+## Discovery v5 previews
+
+**v5.0.0-alpha.1** starts a new navigation and AO3 discovery line. The frozen v4 baseline is [v4.0.0-alpha.4](https://github.com/totleightowers/fan-folio/releases/tag/v4.0.0-alpha.4), commit `ac803743e5dccfd6b0ce100d6320557d93c735d8`. Keep its signed tag and APK available unchanged. `frozen/v4` points to this baseline; `v5` follows the new major.
+
+v5 previews use the existing `org.fanfolio.preview` package and signing key, so updating v4 preserves the library/session. They remain prereleases alongside stable v3. The Flutter workflow handles v4 and v5 tags; the stable WebView workflow excludes both. A major UI boundary does not imply Flutter parity: the migration inventory continues to distinguish retained v4 features from missing v3 functionality.

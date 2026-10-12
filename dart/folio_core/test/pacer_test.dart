@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:folio_core/folio_core.dart';
 import 'package:test/test.dart';
@@ -17,6 +18,48 @@ class Clock {
 }
 
 void main() {
+  test('foreground overtakes a waiting download without bypassing cooldown',
+      () async {
+    var now = DateTime.utc(2026);
+    final sleeping = Completer<void>();
+    final release = Completer<void>();
+    var firstSleep = true;
+    final pacer = Pacer(
+        now: () => now,
+        sleep: (duration) async {
+          if (firstSleep) {
+            firstSleep = false;
+            sleeping.complete();
+            await release.future;
+          }
+          now = now.add(duration);
+        });
+    final order = <String>[];
+    await pacer.run(() async => order.add('in flight'));
+    pacer.slowDown(const Duration(minutes: 5));
+    final began = now;
+    final background = pacer.run(() async => order.add('background'));
+    await sleeping.future;
+    final foreground = pacer.run(() async {
+      expect(now.difference(began),
+          greaterThanOrEqualTo(const Duration(minutes: 5)));
+      order.add('foreground');
+    }, priority: true);
+    release.complete();
+    await Future.wait([background, foreground]);
+    expect(order, ['in flight', 'foreground', 'background']);
+  });
+
+  test('a failed priority request does not strand other callers', () async {
+    final clock = Clock();
+    final pacer = Pacer(now: clock.now, sleep: clock.sleep);
+    final failed =
+        pacer.run<void>(() async => throw StateError('failed'), priority: true);
+    final later = pacer.run(() async => 42);
+    await expectLater(failed, throwsStateError);
+    expect(await later, 42);
+  });
+
   test('requests are spaced, and the archive sees the total not the intent',
       () async {
     final clock = Clock();

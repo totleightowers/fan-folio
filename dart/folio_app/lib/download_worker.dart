@@ -117,6 +117,18 @@ class DownloadWorker {
       case 'signOut':
         await engine.signOut();
         return null;
+      case 'discover':
+        return core.listingToJson(
+          await engine.discover(
+            core.ArchiveSearch.fromJson(
+              Map<String, dynamic>.from(a['search'] as Map),
+            ),
+            page: a['page'] as int,
+          ),
+        );
+      case 'readNow':
+        await engine.readNow(a['workId'] as String);
+        return null;
       case 'addByLink':
         return engine.addByLink(a['link'] as String);
       case 'addWorks':

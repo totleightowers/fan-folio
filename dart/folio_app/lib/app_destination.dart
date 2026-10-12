@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 /// Destinations available without backing out through the reading route stack.
 enum AppDestination {
   home('Home', Icons.home_outlined),
+  explore('Explore AO3', Icons.explore_outlined),
   library('Library', Icons.menu_book_outlined),
   downloads('Downloads', Icons.download_outlined),
   you('You', Icons.person_outline),

@@ -2,7 +2,7 @@ name: Flutter preview release
 
 on:
   push:
-    tags: ['v4.*']
+    tags: ['v4.*', 'v5.*']
 
 permissions:
   contents: write

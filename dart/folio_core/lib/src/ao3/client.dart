@@ -195,7 +195,8 @@ class ArchiveClient {
   }
 
   /// Ask for a page, in its turn.
-  Future<Page> get(Uri url) => pacer.run(() => _get(url));
+  Future<Page> get(Uri url, {bool priority = false}) =>
+      pacer.run(() => _get(url), priority: priority);
 
   /// Ask for something that is not a page, in its turn.
   ///

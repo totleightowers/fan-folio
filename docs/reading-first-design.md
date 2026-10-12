@@ -54,3 +54,11 @@ The reading-desk presentation used oversized introductions and a double-height f
 Home has equal reading cards, a horizontal reading shelf on phones and a grid on tablets. A compact selector retains fandom, pairing, character, tag and rating browsing above the works. Secondary shelves offer a few stories with accurate totals and See all. Library starts with its collection tabs, count, sort and View & filters. Availability and description density move into that existing sheet, retaining their saved settings and full descriptions by default. Settings uses a single list of named destinations, and Downloads adopts the same lighter surface treatment.
 
 The bottom **Return to the story** pill is explicitly retained. Its existing action resumes the saved work, chapter and scroll position. It remains above phone navigation and at the bottom of tablet views, and stays out of the reader. It must never substitute a temporary search passage or an earlier copy for the saved place.
+
+## v5: a connected archive browser
+
+The Flutter navigation now separates Home, Explore, Library and You. AO3 discovery is a first-class destination rather than another mode of local search. Each section keeps its route stack so opening a work, visiting an author and switching sections does not discard the route back. The reader remains an immersive route above those sessions. The Return to the story pill stays present across the browsing app.
+
+Explore uses a compact search row, an explicit filter sheet and a continuous result list. It keeps query, page and scroll while details are open. Common tags offer archive discovery or local matching; authors retain their local catalogue and sync controls with an archive browsing entry. Downloads is a consistent action and retains its existing screen. No decorative hero or new enclosing panels precede the story list.
+
+This implements the connected discovery/navigation foundation. Tablet split-list previews and automated saved-search notifications are not implemented in this preview; inherited Flutter parity gaps remain in the migration inventory. The v4 release is preserved so the new major does not remove access to the previous experience.

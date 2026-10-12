@@ -20,6 +20,7 @@ class PersonScreen extends StatefulWidget {
     required this.onOpen,
     required this.onNarrow,
     this.downloads,
+    this.onExplore,
     super.key,
   });
 
@@ -28,6 +29,7 @@ class PersonScreen extends StatefulWidget {
   final void Function(WorkRow) onOpen;
   final void Function(Map<String, Object?> view, String title) onNarrow;
   final Downloads? downloads;
+  final VoidCallback? onExplore;
 
   @override
   State<PersonScreen> createState() => _PersonScreenState();
@@ -112,6 +114,12 @@ class _PersonScreenState extends State<PersonScreen> {
             style: TextStyle(fontFamily: titleFace, color: ground.ink),
           ),
           actions: [
+            if (widget.onExplore != null)
+              IconButton(
+                tooltip: 'Explore author on AO3',
+                onPressed: widget.onExplore,
+                icon: const Icon(Icons.public),
+              ),
             if (widget.downloads != null)
               TextButton(onPressed: _syncBoth, child: const Text('Sync both')),
             PopupMenuButton<String>(

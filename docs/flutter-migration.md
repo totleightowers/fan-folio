@@ -1,4 +1,4 @@
-# Flutter migration, v4
+# Flutter migration, v4–v5
 
 Baseline: signed v3.14.2 (`a53807a8085ca841d9d45130c7b6859c156052f1`).
 
@@ -53,3 +53,26 @@ Each subsequent slice gets a signed PR and a preview release. Promote v4 only af
 ## Verification boundary
 
 Core tests use fake clocks and synthetic HTTP. App tests use temporary SQLite files. No test contacts AO3 or uses the user's session. CI analyzes and tests Dart/Flutter and builds Android. Real platform WebView scrolling, notification permissions, Doze, task dismissal and process death require an Android device; they are not covered by host widget tests.
+
+## v5 discovery: retained functionality and journey map
+
+The v5 redesign is additive to v4.0.0-alpha.4, not a declaration that the migration gaps above are complete.
+
+| Existing capability | v5 location / preservation |
+| --- | --- |
+| Home shelves, fandom browsing, random work, Continue reading | Home; existing handlers retained |
+| Local work/tag/rating/state filters and full-text search | Library funnel and Search library; tab changes retain filters and loaded results |
+| Work details, chapters, swipe to read, metadata navigation | Work route within the current section; local tag lookup retained alongside Explore AO3 |
+| Reader HTML, skins, images, fallback text, chapter navigation, search and appearance | Existing full-screen ReaderScreen; Go to also includes Explore AO3 |
+| Saved reading position and Return to story | Same storage and return logic, pill extends to nested browsing routes |
+| Add by link, series, job inspection/pause/resume/retry, open saved work | Add action and Downloads icon; reader Go to → Downloads; Settings → Activity |
+| Sign-in/out, bookmarks/history/Later sync, kudos/comments/bookmarks | Existing You, author and work actions |
+| Author works/bookmarks, sync, block/unblock | Existing author page, with Explore author on AO3 added |
+| Backup/import, reader defaults, diagnostics, blocked-item recovery | Existing Settings and You destinations |
+| Current chapters, archived chapters/skins, pictures, reading history and flags | Same schema and database; download updates preserve personal fields |
+
+New: service-owned AO3 searches with explicit submit/pagination; saved searches stored in backup metadata; manual first-page update checks; ephemeral results; read-now and save-for-later from a discovered work; foreground priority within the single pacing queue. Search parameter names follow AO3's [work search form](https://github.com/otwcode/otwarchive/blob/master/app/views/works/_search_form.html.erb).
+
+Navigation acceptance: independent tab route stacks; global destinations remain visible on work/author/settings/download routes; full-screen reading returns to its originating session; local filters/results/scroll survive tab switches; AO3 results survive opening/closing details and switching tabs without another request. Re-selecting the current destination returns to its root. Reader Go to → Library/Home explicitly returns to that section's root.
+
+Tests cover phone and tablet journeys, saved-search backup, service RPC search/read, duplicate foreground fetch coalescing, offline reopening, personal-state/version preservation and priority without bypassing rate limits. Existing core/Flutter, stable-app and Android service checks remain required. Physical-device gestures, WebView text rendering and lifecycle reliability remain device gates.

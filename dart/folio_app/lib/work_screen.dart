@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:folio_core/folio_core.dart' as core;
+
+import 'discovery_store.dart';
+import 'store.dart';
 
 import 'archive_acts.dart';
 import 'downloads.dart';
@@ -25,6 +29,8 @@ class WorkScreen extends StatefulWidget {
     required this.onPerson,
     required this.onNarrow,
     this.downloads,
+    this.preview,
+    this.onExplore,
     super.key,
   });
 
@@ -38,6 +44,8 @@ class WorkScreen extends StatefulWidget {
   final void Function(String byline) onPerson;
   final void Function(Map<String, Object?> view, String title) onNarrow;
   final Downloads? downloads;
+  final core.Blurb? preview;
+  final ValueChanged<core.ArchiveSearch>? onExplore;
 
   @override
   State<WorkScreen> createState() => _WorkScreenState();
@@ -50,6 +58,9 @@ class _WorkScreenState extends State<WorkScreen> {
   Place? _place;
   bool _loading = true;
   bool _queued = false;
+  bool _reading = false;
+  bool _stored = false;
+  int _loadEpoch = 0;
 
   /// What went wrong, rather than a spinner that never stops.
   ///
@@ -73,16 +84,28 @@ class _WorkScreenState extends State<WorkScreen> {
   }
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     try {
       final work = await widget.library.work(widget.workId);
       final chapters = await widget.library.chapters(widget.workId);
       final tags = await widget.library.tagsFor(widget.workId);
       final place = await widget.library.placeIn(widget.workId);
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch) return;
+      final preview = widget.preview;
       setState(() {
-        _work = work;
+        _stored = work != null;
+        _work = work ?? (preview == null ? null : workFromBlurb(preview));
         _chapters = chapters;
-        _tags = tags;
+        _tags = work != null || preview == null
+            ? tags
+            : {
+                'fandom': preview.fandoms,
+                'relationship': preview.relationships,
+                'character': preview.characters,
+                'freeform': preview.freeform,
+                'warning': preview.warnings,
+                'category': preview.categories,
+              };
         _place = place;
         _trouble = null;
         _loading = false;
@@ -125,6 +148,44 @@ class _WorkScreenState extends State<WorkScreen> {
       if (!mounted) return;
       setState(() => _queued = false);
       messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _keepForLater() async {
+    try {
+      final work = _work!;
+      if (!_stored && widget.preview != null) {
+        await LibraryStore(widget.library.db).allow(work.workId);
+        await saveStubs(widget.library.db, [widget.preview!]);
+      }
+      await widget.library.markLater(work.workId, later: !work.markedLater);
+      await _load();
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _readNow() async {
+    if (_reading || widget.downloads == null) return;
+    setState(() => _reading = true);
+    try {
+      await widget.downloads!.readNow(widget.workId);
+      await _load();
+      if (mounted &&
+          _chapters.isNotEmpty &&
+          TickerMode.of(context) &&
+          (ModalRoute.of(context)?.isCurrent ?? false)) {
+        _read(_resume);
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not open this work: $e')));
+    } finally {
+      if (mounted) setState(() => _reading = false);
     }
   }
 
@@ -197,13 +258,7 @@ class _WorkScreenState extends State<WorkScreen> {
               work.markedLater ? Icons.bookmark : Icons.bookmark_border,
             ),
             tooltip: work.markedLater ? 'Stop keeping it' : 'Keep for later',
-            onPressed: () async {
-              await widget.library.markLater(
-                work.workId,
-                later: !work.markedLater,
-              );
-              await _load();
-            },
+            onPressed: _keepForLater,
           ),
           if (widget.downloads?.canAct ?? false)
             IconButton(
@@ -215,7 +270,7 @@ class _WorkScreenState extends State<WorkScreen> {
                 work: work,
               ),
             ),
-          if (widget.downloads != null && (_work?.hasText ?? false))
+          if (widget.downloads != null && _chapters.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.image_outlined),
               tooltip: 'Fetch the pictures',
@@ -246,7 +301,11 @@ class _WorkScreenState extends State<WorkScreen> {
           final sideways = drag.velocity.pixelsPerSecond.dx;
           final falling = drag.velocity.pixelsPerSecond.dy.abs();
           if (sideways >= -320 || falling > sideways.abs()) return;
-          if (_chapters.isNotEmpty) _read(_resume);
+          if (_chapters.isNotEmpty) {
+            _read(_resume);
+          } else {
+            _readNow();
+          }
         },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
@@ -297,6 +356,23 @@ class _WorkScreenState extends State<WorkScreen> {
             const SizedBox(height: 18),
             _Facts(work: work, chapters: _chapters.length, ground: ground),
 
+            if (_chapters.isEmpty && widget.downloads != null) ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _queued ? null : _fetch,
+                  icon: const Icon(Icons.download_outlined),
+                  label: Text(
+                    _queued ? 'Queued for download' : 'Download for later',
+                  ),
+                ),
+              ),
+              if (_reading)
+                const Text(
+                  'Fetching the story. You can keep browsing while it arrives.',
+                ),
+            ],
             const SizedBox(height: 16),
             ..._tagRows(ground, work),
 
@@ -319,9 +395,11 @@ class _WorkScreenState extends State<WorkScreen> {
           ? (widget.downloads == null
                 ? null
                 : FloatingActionButton.extended(
-                    onPressed: _queued ? null : _fetch,
-                    icon: Icon(_queued ? Icons.schedule : Icons.download),
-                    label: Text(_queued ? 'On its way' : 'Fetch it'),
+                    onPressed: _reading ? null : _readNow,
+                    icon: Icon(
+                      _reading ? Icons.schedule : Icons.menu_book_outlined,
+                    ),
+                    label: Text(_reading ? 'Opening…' : 'Read now'),
                   ))
           : FloatingActionButton.extended(
               onPressed: () => _read(_resume),
@@ -349,6 +427,56 @@ class _WorkScreenState extends State<WorkScreen> {
       'sort': 'added',
     };
     widget.onNarrow(view, value);
+  }
+
+  Future<void> _browseTag(String kind, String name) async {
+    const fields = {
+      'fandom': 'fandom_names',
+      'relationship': 'relationship_names',
+      'character': 'character_names',
+      'freeform': 'freeform_names',
+    };
+    final field = fields[kind];
+    if (widget.onExplore == null || field == null) {
+      _narrowTo('include', name, many: true);
+      return;
+    }
+    final archive = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(padding: const EdgeInsets.all(16), child: Text(name)),
+            ListTile(
+              leading: const Icon(Icons.public),
+              title: const Text('Explore on AO3'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+            ListTile(
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text('Find in my library'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || archive == null) return;
+    if (archive) {
+      widget.onExplore!(
+        core.ArchiveSearch(
+          fields: {
+            field: name,
+            'sort_column': 'revised_at',
+            'sort_direction': 'desc',
+          },
+        ),
+      );
+    } else {
+      _narrowTo('include', name, many: true);
+    }
   }
 
   /// Every tag, by kind, each one a way into the library.
@@ -404,7 +532,7 @@ class _WorkScreenState extends State<WorkScreen> {
           _Live(
             text: name,
             ground: ground,
-            onTap: () => _narrowTo('include', name, many: true),
+            onTap: () => _browseTag(kind, name),
           ),
       ]);
     }
@@ -484,7 +612,7 @@ class _Facts extends StatelessWidget {
       if (work.complete != null) work.complete! ? 'complete' : 'in progress',
       if (work.kudos != null) '${_thousands(work.kudos!)} kudos',
       if (work.hits != null) '${_thousands(work.hits!)} hits',
-      if (!work.hasText) 'not downloaded',
+      if (chapters == 0) 'not downloaded',
     ];
 
     return Text(

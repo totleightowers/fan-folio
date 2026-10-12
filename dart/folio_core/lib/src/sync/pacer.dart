@@ -69,7 +69,8 @@ class Pacer {
   final Future<void> Function(Duration) _sleep;
   final DateTime Function() _now;
 
-  Future<void> _turn = Future<void>.value();
+  final List<_Turn<dynamic>> _turns = [];
+  bool _draining = false;
   DateTime? _lastAt;
   DateTime? _coolUntil;
 
@@ -83,16 +84,25 @@ class Pacer {
   DateTime? get coolingUntil =>
       _coolUntil != null && _coolUntil!.isAfter(_now()) ? _coolUntil : null;
 
-  /// Run something, in its turn, after whatever wait is owed.
-  Future<T> run<T>(Future<T> Function() task) {
-    final mine = _turn;
-    final completer = Completer<void>();
-    _turn = completer.future;
+  /// Foreground actions get the next available turn, but still obey the same
+  /// spacing and cooldown as background downloads. Never interrupt a request.
+  Future<T> run<T>(Future<T> Function() task, {bool priority = false}) {
+    final turn = _Turn<T>(task, priority);
+    _turns.add(turn);
+    if (!_draining) {
+      _draining = true;
+      unawaited(_drain());
+    }
+    return turn.done.future;
+  }
 
-    return (() async {
-      await mine;
+  Future<void> _drain() async {
+    // Let callers attach error handlers before a synchronous checkpoint fails.
+    await Future<void>.value();
+    while (_turns.isNotEmpty) {
+      Object? waitingError;
+      StackTrace? waitingStack;
       try {
-        // Draw the gap once. Recheck a cooldown extended while asleep.
         final due = _now().add(_owed());
         for (;;) {
           final until = _coolUntil != null && _coolUntil!.isAfter(due)
@@ -102,18 +112,32 @@ class Pacer {
           if (owed <= Duration.zero) break;
           await _sleep(owed);
         }
-        _lastAt = _now();
-        await checkpoint?.call();
-        return await task();
-      } finally {
-        try {
-          // A 429 is durable before the next waiting caller is released.
-          await checkpoint?.call();
-        } finally {
-          completer.complete();
-        }
+      } catch (error, stack) {
+        waitingError = error;
+        waitingStack = stack;
       }
-    })();
+      // Choose after the wait: a newly opened work must be able to overtake
+      // a background job that was already waiting for the pacing clock.
+      final urgent = _turns.indexWhere((turn) => turn.priority);
+      final turn = _turns.removeAt(urgent < 0 ? 0 : urgent);
+      try {
+        if (waitingError != null)
+          Error.throwWithStackTrace(waitingError, waitingStack!);
+        dynamic result;
+        try {
+          _lastAt = _now();
+          await checkpoint?.call();
+          result = await turn.task();
+        } finally {
+          // Persist a cooldown before releasing the next caller.
+          await checkpoint?.call();
+        }
+        turn.done.complete(result);
+      } catch (error, stack) {
+        turn.done.completeError(error, stack);
+      }
+    }
+    _draining = false;
   }
 
   Duration _owed() {
@@ -126,4 +150,11 @@ class Pacer {
     final owed = forGap > forCool ? forGap : forCool;
     return owed > Duration.zero ? owed : Duration.zero;
   }
+}
+
+class _Turn<T> {
+  _Turn(this.task, this.priority);
+  final Future<T> Function() task;
+  final bool priority;
+  final Completer<T> done = Completer<T>();
 }

@@ -38,6 +38,8 @@ abstract class Downloads extends ChangeNotifier {
   Future<void> flush();
   Future<void> useThisDevicesAgent();
   Future<void> refreshCookies();
+  Future<core.Listing> discover(core.ArchiveSearch search, {int page = 1});
+  Future<void> readNow(String workId);
   Future<int> addByLink(String link);
   Future<int> addWorks(String label, List<String> workIds);
   Future<int> syncBookmarks();
@@ -105,6 +107,36 @@ class LocalDownloads extends Downloads {
         if (!_disposed) notifyListeners();
       },
     );
+  }
+
+  @override
+  Future<core.Listing> discover(
+    core.ArchiveSearch search, {
+    int page = 1,
+  }) async {
+    final response = await _client.get(search.page(page), priority: true);
+    return core.parseListing(response.body);
+  }
+
+  @override
+  Future<void> readNow(String workId) => _reading.putIfAbsent(
+    workId,
+    () => _readNow(workId).whenComplete(() => _reading.remove(workId)),
+  );
+
+  final Map<String, Future<void>> _reading = {};
+
+  Future<void> _readNow(String workId) async {
+    final held = await library.db.rawQuery(
+      "SELECT 1 FROM chapters WHERE work_id = ? AND length(COALESCE(html, '')) > 0 LIMIT 1",
+      [workId],
+    );
+    if (held.isNotEmpty) return;
+    await LibraryStore(library.db).allow(workId);
+    // The same client and pacing clock as downloads; text is ready before
+    // pictures, which can be requested from the existing reader controls.
+    await _downloader.run(workId, priority: true);
+    if (!_disposed) notifyListeners();
   }
 
   static const _stateKey = 'flutter.downloads.v1';

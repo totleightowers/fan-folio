@@ -99,8 +99,9 @@ class Downloader {
   final WorkStore store;
 
   /// The whole of one work: its page, its chapters, its skin.
-  Future<StoredWork> fetch(String workId) async {
-    final page = await client.get(Uri.parse(workPage(workId)));
+  Future<StoredWork> fetch(String workId, {bool priority = false}) async {
+    final page =
+        await client.get(Uri.parse(workPage(workId)), priority: priority);
     final parsed = parseWorkPage(page.body, workId: workId);
 
     if (parsed.chapters.isEmpty) {
@@ -131,7 +132,7 @@ class Downloader {
   }
 
   /// Fetch it and write it, which is what the queue asks a job to do.
-  Future<void> run(String workId) async {
+  Future<void> run(String workId, {bool priority = false}) async {
     final refused = await store.refused([workId]);
     if (refused.contains(workId)) {
       /* The reader deleted it. Fetching it again because a listing still
@@ -139,7 +140,7 @@ class Downloader {
          precisely so that does not happen. */
       return;
     }
-    await store.save(await fetch(workId));
+    await store.save(await fetch(workId, priority: priority));
   }
 
   /// Which of a batch still are not here, for a job to judge itself by.

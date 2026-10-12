@@ -77,11 +77,15 @@ class LibraryStore implements core.WorkStore {
         'downloaded_at': today,
         'has_text': 1,
       };
-      await txn.insert(
+      // Refresh archive fields without resetting personal state or deleting
+      // the row. REPLACE discarded bookmarks, kudos, history and later flags.
+      final updated = await txn.update(
         'works',
         row,
-        conflictAlgorithm: ConflictAlgorithm.replace,
+        where: 'work_id = ?',
+        whereArgs: [work.workId],
       );
+      if (updated == 0) await txn.insert('works', row);
 
       await txn.delete('tags', where: 'work_id = ?', whereArgs: [work.workId]);
       final every = <String>[];
@@ -260,13 +264,28 @@ Future<int> saveStubs(
         'source': 'listing',
         'has_text': 0,
       };
-      final at = await txn.insert(
+      await txn.insert(
         'works',
         row,
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
-      if (at == 0) continue; // already held, and left alone
+      final changed = (await txn.rawQuery('SELECT changes() AS n')).single['n'];
+      if (changed == 0) continue; // already held, and left alone
       added++;
+      await txn.insert('work_fts', {
+        'work_id': blurb.workId,
+        'title': blurb.title ?? '',
+        'authors': blurb.authors.join(', '),
+        'summary': blurb.summary ?? '',
+        'tags': [
+          ...blurb.fandoms,
+          ...blurb.relationships,
+          ...blurb.characters,
+          ...blurb.freeform,
+          ...blurb.warnings,
+          ...blurb.categories,
+        ].join(', '),
+      });
 
       for (final entry in {
         'fandom': blurb.fandoms,

@@ -6,6 +6,7 @@ library;
 
 export 'src/ao3/acts.dart';
 export 'src/ao3/client.dart';
+export 'src/ao3/discovery.dart';
 export 'src/ao3/forms.dart';
 export 'src/ao3/parse.dart';
 export 'src/ao3/text.dart';

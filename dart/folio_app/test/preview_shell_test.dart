@@ -114,7 +114,7 @@ void main() {
         await tester.tap(find.text('Library').last);
         await settleDatabase();
         expect(find.byType(ReturnToStory), findsOneWidget);
-        await tester.tap(find.text('Downloads').last);
+        await tester.tap(find.byTooltip('Downloads'));
         await settleDatabase();
         expect(find.textContaining('Nothing in the queue'), findsOneWidget);
         expect(find.byType(ReturnToStory), findsOneWidget);
@@ -135,6 +135,7 @@ void main() {
         await tester.pumpAndSettle();
         for (final label in [
           'Home',
+          'Explore AO3',
           'Library',
           'Downloads',
           'You',

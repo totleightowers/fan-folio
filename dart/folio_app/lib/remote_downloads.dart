@@ -292,6 +292,23 @@ class RemoteDownloads extends Downloads {
   }
 
   @override
+  Future<core.Listing> discover(
+    core.ArchiveSearch search, {
+    int page = 1,
+  }) async {
+    final result = await _call('discover', {
+      'search': search.toJson(),
+      'page': page,
+    }) as Map;
+    return core.listingFromJson(Map<String, dynamic>.from(result));
+  }
+
+  @override
+  Future<void> readNow(String workId) async {
+    await _call('readNow', {'workId': workId});
+  }
+
+  @override
   Future<int> addByLink(String link) async =>
       await _call('addByLink', {'link': link}) as int;
   @override

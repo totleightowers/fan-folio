@@ -9,6 +9,8 @@ import 'app_destination.dart';
 import 'add_sheet.dart';
 import 'blocked_screen.dart';
 import 'downloads.dart';
+import 'discovery_store.dart';
+import 'explore_screen.dart';
 import 'home_screen.dart';
 import 'keep_working.dart';
 import 'remote_downloads.dart';
@@ -52,11 +54,7 @@ class FolioApp extends StatelessWidget {
   );
 }
 
-/// The app, and the two places it is made of.
-///
-/// Home is what you came back for; the Library is everything. Search is an
-/// action from either rather than a third place, because "search" is something
-/// you do to a library, not somewhere you go.
+/// Independent browsing histories with a full-screen reader above them.
 class Shell extends StatefulWidget {
   const Shell({this.initialLibrary, this.initialDownloads, super.key});
 
@@ -70,6 +68,18 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   final GlobalKey<HomeScreenState> _home = GlobalKey<HomeScreenState>();
   final GlobalKey<YouScreenState> _you = GlobalKey<YouScreenState>();
+  List<GlobalKey<NavigatorState>> _navigators = List.generate(
+    4,
+    (_) => GlobalKey<NavigatorState>(),
+  );
+  NavigatorState get _navigator => _navigators[_tab].currentState!;
+
+  void _routeChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   Library? _library;
   Downloads? _downloads;
   bool _loading = true;
@@ -97,14 +107,14 @@ class _ShellState extends State<Shell> {
   final List<int> _trail = [];
 
   void _goToTab(int to) {
-    if (to == _tab) return;
+    if (to == _tab) {
+      _navigators[to].currentState?.popUntil((route) => route.isFirst);
+      return;
+    }
     setState(() {
       _trail.add(_tab);
       if (_trail.length > 20) _trail.removeAt(0);
       _tab = to;
-      if (to == 1 && _viewTitle == 'Library') {
-        _view = const {'sort': 'added'};
-      }
     });
   }
 
@@ -173,6 +183,9 @@ class _ShellState extends State<Shell> {
       return;
     }
     setState(() {
+      _navigators = List.generate(4, (_) => GlobalKey<NavigatorState>());
+      _trail.clear();
+      _tab = 0;
       _library = library;
       _downloads = downloads;
       _loading = false;
@@ -220,7 +233,7 @@ class _ShellState extends State<Shell> {
     final downloads = _downloads;
     if (downloads == null) return;
     final added = await showAddByLink(context, downloads);
-    if (added && mounted) _goToTab(2);
+    if (added && mounted) _openActivity();
   }
 
   /// The things that are about the library rather than about a work.
@@ -229,7 +242,7 @@ class _ShellState extends State<Shell> {
   /// decided where they belong — and backing up has no business being three
   /// taps behind a caret when it is the one action that protects the rest.
   Future<void> _openSettings(Library library) async {
-    await Navigator.of(context).push(
+    await _navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => SettingsScreen(
           library: library,
@@ -250,9 +263,9 @@ class _ShellState extends State<Shell> {
   void _openActivity() {
     final downloads = _downloads;
     if (downloads == null) return;
-    Navigator.of(context).push(
+    _navigator.push(
       MaterialPageRoute<void>(
-        builder: (_) => ActivityScreen(downloads: downloads),
+        builder: (_) => ActivityScreen(downloads: downloads, onOpen: _openById),
       ),
     );
   }
@@ -262,14 +275,16 @@ class _ShellState extends State<Shell> {
   /// Which is where a work should start. Dropping straight into chapter one
   /// left nowhere to read what a work is before reading it, no way to reach
   /// chapter nine, and no way out of a work except backwards.
-  Future<void> _open(WorkRow work) async {
+  Future<void> _open(WorkRow work, {Blurb? preview}) async {
     final library = _library;
     if (library == null) return;
-    await Navigator.of(context).push(
+    await _navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => WorkScreen(
           library: library,
           workId: work.workId,
+          preview: preview,
+          onExplore: _explore,
           downloads: _downloads,
           onRead: _read,
           onPerson: _openPerson,
@@ -316,7 +331,10 @@ class _ShellState extends State<Shell> {
           work: work,
           chapters: chapters,
           downloads: _downloads,
-          onShowWork: () => _open(work),
+          onShowWork: () {
+            Navigator.of(context).pop();
+            _open(work);
+          },
           onNavigate: _navigateFromReader,
           startAt: at,
           startOffset: openingOffset(
@@ -342,10 +360,14 @@ class _ShellState extends State<Shell> {
     switch (destination) {
       case AppDestination.home:
         _goToTab(0);
-      case AppDestination.library:
+        _navigators[0].currentState?.popUntil((route) => route.isFirst);
+      case AppDestination.explore:
         _goToTab(1);
-      case AppDestination.downloads:
+      case AppDestination.library:
         _goToTab(2);
+        _navigators[2].currentState?.popUntil((route) => route.isFirst);
+      case AppDestination.downloads:
+        _openActivity();
       case AppDestination.you:
         _goToTab(3);
       case AppDestination.search:
@@ -356,7 +378,7 @@ class _ShellState extends State<Shell> {
   }
 
   void _openSearch(Library library) {
-    Navigator.of(context).push(
+    _navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => SearchScreen(
           library: library,
@@ -371,11 +393,12 @@ class _ShellState extends State<Shell> {
   Future<void> _openPerson(String byline) async {
     final library = _library;
     if (library == null) return;
-    await Navigator.of(context).push(
+    await _navigator.push(
       MaterialPageRoute<void>(
         builder: (_) => PersonScreen(
           library: library,
           byline: byline,
+          onExplore: () => _explore(ArchiveSearch(author: byline)),
           downloads: _downloads,
           onOpen: _open,
           onNarrow: _seeAll,
@@ -410,7 +433,7 @@ class _ShellState extends State<Shell> {
   }
 
   Future<void> _openBlocked(Library library) async {
-    final changed = await Navigator.of(context).push<bool>(
+    final changed = await _navigator.push<bool>(
       MaterialPageRoute<bool>(builder: (_) => BlockedScreen(library: library)),
     );
     if (changed != true || !mounted) return;
@@ -460,26 +483,114 @@ class _ShellState extends State<Shell> {
     });
   }
 
-  /// A shelf's See all lands on the same question the shelf asked.
+  /// Open an archive query without discarding the results behind it.
+  void _explore(ArchiveSearch search) {
+    final library = _library;
+    final downloads = _downloads;
+    if (library == null || downloads == null) return;
+    _navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Explore AO3'),
+            actions: [_downloadButton()],
+          ),
+          body: ExploreScreen(
+            library: library,
+            downloads: downloads,
+            initialSearch: search,
+            onOpen: (b) => _open(workFromBlurb(b), preview: b),
+            onLibrarySearch: () => _openSearch(library),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _seeAll(Map<String, Object?> view, String title) {
-    if (_tab != 1) {
-      _trail.add(_tab);
-      if (_trail.length > 20) _trail.removeAt(0);
-    }
+    _goToTab(2);
+    _navigators[2].currentState?.popUntil((route) => route.isFirst);
     setState(() {
       _view = view;
       _viewTitle = title;
-      _tab = 1;
     });
   }
 
-  /// What the bar says it is showing.
-  String get _title => switch (_tab) {
-    0 => 'Home',
-    2 => 'Downloads',
-    3 => 'You',
-    _ => _viewTitle,
-  };
+  Widget _downloadButton() => IconButton(
+    tooltip: 'Downloads',
+    icon: const Icon(Icons.download_outlined),
+    onPressed: _openActivity,
+  );
+
+  Widget _rootPage(int tab, Library library) => Scaffold(
+    appBar: AppBar(
+      title: Text(['Home', 'Explore', _viewTitle, 'You'][tab]),
+      actions: [
+        if (tab == 2)
+          IconButton(
+            icon: Badge(
+              isLabelVisible: _narrowed,
+              label: Text('$_narrowCount'),
+              child: const Icon(Icons.filter_alt_outlined),
+            ),
+            tooltip: 'Filters',
+            onPressed: () => _openFilters(library),
+          ),
+        if (tab != 1)
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Search library',
+            onPressed: () => _openSearch(library),
+          ),
+        _downloadButton(),
+        IconButton(
+          icon: const Icon(Icons.settings_outlined),
+          tooltip: 'Settings',
+          onPressed: () => _openSettings(library),
+        ),
+      ],
+    ),
+    body: switch (tab) {
+      0 => HomeScreen(
+        key: _home,
+        library: library,
+        onOpen: _open,
+        onResume: _resume,
+        onHold: _actOn,
+        onSeeAll: _seeAll,
+        onNarrow: _seeAll,
+        onOpenById: _openById,
+      ),
+      1 => ExploreScreen(
+        library: library,
+        downloads: _downloads!,
+        onOpen: (b) => _open(workFromBlurb(b), preview: b),
+        onLibrarySearch: () => _openSearch(library),
+      ),
+      2 => LibraryList(
+        library: library,
+        view: _view,
+        refreshEpoch: _libraryEpoch,
+        onOpen: _open,
+        onHold: _actOn,
+        onPerson: _openPerson,
+      ),
+      _ => YouScreen(
+        key: _you,
+        library: library,
+        downloads: _downloads,
+        onNarrow: _seeAll,
+        onBlocked: () => _openBlocked(library),
+      ),
+    },
+    floatingActionButton: tab == 3 || tab == 1
+        ? null
+        : FloatingActionButton(
+            onPressed: _add,
+            tooltip: 'Add a work',
+            child: const Icon(Icons.add),
+          ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -501,9 +612,18 @@ class _ShellState extends State<Shell> {
     }
 
     return PopScope(
-      canPop: _trail.isEmpty,
+      canPop:
+          _trail.isEmpty &&
+          !(_navigators[_tab].currentState?.canPop() ?? false),
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _back();
+        if (!didPop) {
+          final navigator = _navigators[_tab].currentState;
+          if (navigator?.canPop() ?? false) {
+            navigator!.pop();
+          } else {
+            _back();
+          }
+        }
       },
       child: _shell(library, ground),
     );
@@ -514,81 +634,36 @@ class _ShellState extends State<Shell> {
     final destinations = const [
       NavigationDestination(icon: Icon(Icons.home_outlined), label: 'Home'),
       NavigationDestination(
-        icon: Icon(Icons.menu_book_outlined),
-        label: 'Library',
+        icon: Icon(Icons.explore_outlined),
+        label: 'Explore',
       ),
       NavigationDestination(
-        icon: Icon(Icons.download_outlined),
-        label: 'Downloads',
+        icon: Icon(Icons.menu_book_outlined),
+        label: 'Library',
       ),
       NavigationDestination(icon: Icon(Icons.person_outline), label: 'You'),
     ];
     final page = Scaffold(
-      appBar: AppBar(
-        title: Text(_title),
-        actions: [
-          if (_tab == 1)
-            IconButton(
-              icon: Badge(
-                isLabelVisible: _narrowed,
-                label: Text('$_narrowCount'),
-                child: const Icon(Icons.filter_alt_outlined),
+      body: IndexedStack(
+        index: _tab,
+        children: [
+          for (var i = 0; i < 4; i++)
+            TickerMode(
+              enabled: i == _tab,
+              child: Navigator(
+                key: _navigators[i],
+                observers: [_HistoryObserver(_routeChanged)],
+                pages: [
+                  MaterialPage<void>(
+                    key: ValueKey('root-$i'),
+                    child: _rootPage(i, library),
+                  ),
+                ],
+                onDidRemovePage: (_) {},
               ),
-              tooltip: 'Filters',
-              onPressed: () => _openFilters(library),
             ),
-          IconButton(
-            icon: const Icon(Icons.search),
-            tooltip: 'Search',
-            onPressed: () => _openSearch(library),
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
-            onPressed: () => _openSettings(library),
-          ),
         ],
       ),
-      body: _tab == 2 && _downloads != null
-          ? ActivityScreen(
-              downloads: _downloads!,
-              embedded: true,
-              onOpen: _openById,
-            )
-          : _tab == 3
-          ? YouScreen(
-              key: _you,
-              library: library,
-              downloads: _downloads,
-              onNarrow: _seeAll,
-              onBlocked: () => _openBlocked(library),
-            )
-          : _tab == 0
-          ? HomeScreen(
-              key: _home,
-              library: library,
-              onOpen: _open,
-              onResume: _resume,
-              onHold: _actOn,
-              onSeeAll: _seeAll,
-              onNarrow: _seeAll,
-              onOpenById: _openById,
-            )
-          : LibraryList(
-              key: ValueKey(_libraryEpoch),
-              library: library,
-              view: _view,
-              onOpen: _open,
-              onHold: _actOn,
-              onPerson: _openPerson,
-            ),
-      floatingActionButton: _tab == 3
-          ? null
-          : FloatingActionButton(
-              onPressed: _add,
-              tooltip: 'Add a work',
-              child: const Icon(Icons.add),
-            ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -628,6 +703,19 @@ class _ShellState extends State<Shell> {
   }
 }
 
+class _HistoryObserver extends NavigatorObserver {
+  _HistoryObserver(this.changed);
+  final VoidCallback changed;
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => changed();
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      changed();
+}
+
 /// Everything held, under whatever narrowing is in force.
 class LibraryList extends StatefulWidget {
   const LibraryList({
@@ -636,10 +724,12 @@ class LibraryList extends StatefulWidget {
     required this.onOpen,
     this.onHold,
     this.onPerson,
+    this.refreshEpoch = 0,
     super.key,
   });
 
   final Library library;
+  final int refreshEpoch;
   final Map<String, Object?> view;
   final void Function(WorkRow) onOpen;
   final void Function(WorkRow)? onHold;
@@ -657,6 +747,7 @@ class _LibraryListState extends State<LibraryList> {
   int _total = 0;
   bool _loading = true;
   bool _more = true;
+  int _generation = 0;
 
   @override
   void initState() {
@@ -674,33 +765,50 @@ class _LibraryListState extends State<LibraryList> {
   @override
   void didUpdateWidget(LibraryList old) {
     super.didUpdateWidget(old);
-    if (old.view != widget.view) _reload();
+    if (old.view != widget.view || old.library != widget.library) {
+      _reload();
+    } else if (old.refreshEpoch != widget.refreshEpoch) {
+      _reload(preserve: true);
+    }
   }
 
-  Future<void> _reload() async {
+  Future<void> _reload({bool preserve = false}) async {
+    final generation = ++_generation;
+    final limit = preserve && _works.length > _pageSize
+        ? _works.length
+        : _pageSize;
     setState(() {
       _loading = true;
-      _works.clear();
-      _more = true;
+      if (!preserve) _works.clear();
     });
+    if (!preserve && _scroll.hasClients) _scroll.jumpTo(0);
     final total = await widget.library.count(widget.view);
-    if (!mounted) return;
-    setState(() => _total = total);
-    await _loadMore();
+    final page = await widget.library.works({
+      ...widget.view,
+      'limit': limit,
+      'offset': 0,
+    });
+    if (!mounted || generation != _generation) return;
+    setState(() {
+      _total = total;
+      _works
+        ..clear()
+        ..addAll(page);
+      _more = _works.length < _total;
+      _loading = false;
+    });
   }
 
-  /// A library of eight thousand works is not a list you hand somebody whole.
-  ///
-  /// It used to ask for two hundred and stop, which on a real library is
-  /// "showing 200 of 8030" and no way to reach the rest.
   Future<void> _loadMore() async {
-    if (!_more) return;
+    if (!_more || _loading) return;
+    final generation = _generation;
+    setState(() => _loading = true);
     final page = await widget.library.works({
       ...widget.view,
       'limit': _pageSize,
       'offset': _works.length,
     });
-    if (!mounted) return;
+    if (!mounted || generation != _generation) return;
     setState(() {
       _works.addAll(page);
       _more = page.length == _pageSize && _works.length < _total;
