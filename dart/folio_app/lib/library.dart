@@ -351,7 +351,7 @@ class Library {
 
   Future<List<ChapterRow>> chapters(String workId) async {
     final rows = await db.rawQuery(
-      "SELECT number, title FROM chapters WHERE work_id = ? AND length(COALESCE(html, '')) > 0 ORDER BY number",
+      'SELECT number, title FROM chapters WHERE work_id = ? ORDER BY number',
       [workId],
     );
     return rows
@@ -522,7 +522,8 @@ class Library {
     if (query.trim().isEmpty) return const [];
     final rows = await db.rawQuery(
       '''
-      SELECT c.work_id, c.number, w.title, w.authors,
+      SELECT c.work_id, c.number, w.title, w.authors, w.rating,
+             (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship,
              snippet(chapter_fts, '<<', '>>', '…', -1, 24) AS snip,
              matchinfo(chapter_fts, 'pcnalx') AS matchinfo
       FROM chapter_fts
@@ -541,6 +542,8 @@ class Library {
             title: r['title'] as String? ?? '(untitled)',
             authors: _namesFrom(r['authors'] as String?),
             snippet: r['snip'] as String? ?? '',
+            rating: r['rating'] as String?,
+            relationship: r['relationship'] as String?,
           ),
         )
         .toList();
@@ -903,6 +906,8 @@ class Hit {
     required this.title,
     required this.authors,
     required this.snippet,
+    this.rating,
+    this.relationship,
   });
 
   final String workId;
@@ -910,6 +915,8 @@ class Hit {
   final String title;
   final List<String> authors;
   final String snippet;
+  final String? rating;
+  final String? relationship;
 
   String get byline => authors.isEmpty ? 'Anonymous' : authors.join(', ');
 }

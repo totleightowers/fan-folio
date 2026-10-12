@@ -28,7 +28,10 @@ class _VersionsScreenState extends State<VersionsScreen> {
     [widget.work.workId],
   );
 
-  Future<void> _open(Map<String, Object?> version) async {
+  Future<void> _open(
+    Map<String, Object?> version, {
+    bool compare = false,
+  }) async {
     final rows = await widget.library.db.rawQuery(
       'SELECT * FROM chapter_versions WHERE id = ? AND work_id = ?',
       [version['id'], widget.work.workId],
@@ -40,6 +43,7 @@ class _VersionsScreenState extends State<VersionsScreen> {
           library: widget.library,
           work: widget.work,
           version: rows.single,
+          compare: compare,
         ),
       ),
     );
@@ -101,7 +105,11 @@ class _VersionsScreenState extends State<VersionsScreen> {
                 subtitle: Text(
                   '${version['archived_at'] ?? 'Date unknown'} · ${version['reason'] ?? 'Changed'}',
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: IconButton(
+                  tooltip: 'Compare chapter ${version['number']}',
+                  icon: const Icon(Icons.compare_arrows),
+                  onPressed: () => _open(version, compare: true),
+                ),
                 onTap: () => _open(version),
               ),
             for (final version in skins)
@@ -124,18 +132,20 @@ class EarlierCopyScreen extends StatefulWidget {
     required this.library,
     required this.work,
     required this.version,
+    this.compare = false,
     super.key,
   });
   final Library library;
   final WorkRow work;
   final Map<String, Object?> version;
+  final bool compare;
 
   @override
   State<EarlierCopyScreen> createState() => _EarlierCopyScreenState();
 }
 
 class _EarlierCopyScreenState extends State<EarlierCopyScreen> {
-  bool _compare = false;
+  late bool _compare = widget.compare;
   bool _ready = false;
   String? _trouble;
   String? _current;

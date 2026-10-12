@@ -200,7 +200,12 @@ class _Passages extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${hit.byline} · chapter ${hit.chapter}',
+                  [
+                    hit.byline,
+                    'chapter ${hit.chapter}',
+                    if (hit.rating != null) hit.rating!,
+                    if (hit.relationship != null) hit.relationship!,
+                  ].join(' · '),
                   style: TextStyle(fontSize: 12.5, color: ground.inkFaint),
                 ),
                 const SizedBox(height: 6),
@@ -272,7 +277,7 @@ class _Works extends StatelessWidget {
           works[i].title,
           style: TextStyle(fontFamily: titleFace, fontWeight: FontWeight.w600),
         ),
-        subtitle: Text(works[i].byline),
+        subtitle: Text('${works[i].byline}\n${works[i].facts}'),
         onTap: () => onOpen(works[i].workId),
       ),
     );

@@ -91,10 +91,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Work skin'), findsOneWidget);
-      await tester.tap(find.textContaining('Chapter 1'));
+      await tester.tap(find.byTooltip('Compare chapter 1'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Compare with current copy'));
-      await tester.pumpAndSettle();
+
       expect(find.text('Original words'), findsOneWidget);
       expect(find.text('Revised words'), findsOneWidget);
       expect((await library.placeIn('1'))!.offset, 84);
