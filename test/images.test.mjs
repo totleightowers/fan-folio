@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createImageCollector, brokenStoredImages } from '../app/core/images.js';
+import { createImageCollector, brokenStoredImages, imageRetryStatus } from '../app/core/images.js';
 
 function setup(overrides = {}) {
   const shown = [], progress = [], requests = [];
@@ -17,7 +17,7 @@ test('image recovery saves successes, reports failures, and shares one runner', 
   const { collector, shown, progress, requests } = setup();
   const first = collector.start('1', 2), second = collector.start('1', 2);
   assert.equal(first, second);
-  assert.deepEqual(await first, { saved: 1, failed: 1, cancelled: false });
+  assert.deepEqual(await first, { saved: 1, failed: 1, cancelled: false, lastError: 'unavailable' });
   assert.deepEqual(shown, [{ url: 'a', sha256: 'saved' }]);
   assert.equal(progress.at(-1).failed, 1);
   assert.ok(requests.every(args => args[0] === '1' && args[1].chapter === 2 && args[1].proxy));
@@ -74,4 +74,12 @@ test('retry identifies broken saved images without discarding pending, healthy o
   const sha = 'a'.repeat(64);
   const img = (overrides = {}) => ({complete:true,naturalWidth:0,dataset:{stored:'1',remoteSrc:'https://example.org/art.gif'},getAttribute:()=>`/img/${sha}?recovered=1`,...overrides});
   assert.deepEqual(brokenStoredImages([img(),img(),img({complete:false}),img({naturalWidth:20}),img({dataset:{stored:'1',remoteSrc:'Images/art.gif'}}),img({dataset:{remoteSrc:'https://example.org/new.gif'}})]),[{url:'https://example.org/art.gif',sha256:sha}]);
+});
+
+test('image retry reports host failures and never calls pending images healthy', () => {
+  const empty = { saved: 0, failed: 0 };
+  assert.match(imageRetryStatus({ saved: 0, failed: 1, lastError: 'Image host answered 403' }, []), /1 still unavailable.*403/);
+  assert.match(imageRetryStatus(empty, [{ complete: false, naturalWidth: 0 }]), /still loading/);
+  assert.match(imageRetryStatus(empty, [{ complete: true, naturalWidth: 0 }]), /1 image unavailable/);
+  assert.equal(imageRetryStatus(empty, [{ complete: true, naturalWidth: 200 }]), 'No missing images in this chapter');
 });

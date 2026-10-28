@@ -11,7 +11,7 @@ import java.util.Locale;
 /** Image-only transport. Archive cookies and reading-page referrers never enter it. */
 final class ImageFetcher {
     static final int MAX_BYTES = 12 * 1024 * 1024;
-    static final String PROXY_HOST = "rimgo.nohost.network";
+    static final String PROXY_HOST = "ri.bcow.xyz";
     // Imgur's UK block and deleted-image PNGs, observed 2026-09-22.
     static final String REGION_IMAGE = "faa24ec881e6040655c187a681d6dc496eb8aa41e1bd0652a180b3a40b457187";
     static final String REMOVED_IMAGE = "9b5936f4006146e4e1e9025b474c02863c0b5614132ad40db4b925a10e8bfbb9";

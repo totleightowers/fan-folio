@@ -19,7 +19,10 @@ export function createImageCollector({ fetchNext, isCurrent, proxy, onImage, onP
           if (!out.url || seen.has(out.url)) throw new Error(out.error || 'Image recovery could not continue');
           seen.add(out.url);
           if (out.sha256) result.saved++;
-          else result.failed++;
+          else {
+            result.failed++;
+            result.lastError = out.error || 'Image unavailable';
+          }
           if (!run.cancelled && isCurrent(workId, chapter)) {
             if (out.sha256) onImage(out);
             onProgress(result);
@@ -48,4 +51,17 @@ export function brokenStoredImages(images) {
     if (sha && /^https?:\/\//i.test(url || '')) found.set(url, { url, sha256: sha });
   }
   return [...found.values()];
+}
+
+export function imageResult({ saved, failed, lastError }) {
+  return `${saved} image${saved === 1 ? '' : 's'} saved${failed ? ` · ${failed} still unavailable${lastError ? ` · ${lastError}` : ''}` : ''}`;
+}
+
+/** A pending local load cannot establish that every illustration is available. */
+export function imageRetryStatus(result, images) {
+  if (result.failed || result.saved) return imageResult(result);
+  const missing = [...images].filter(img => img.complete && img.naturalWidth === 0).length;
+  if (missing) return `${missing} image${missing === 1 ? '' : 's'} unavailable · no downloadable source found`;
+  if ([...images].some(img => !img.complete)) return 'Images are still loading · retry once they finish';
+  return 'No missing images in this chapter';
 }

@@ -93,6 +93,7 @@ try {
   releaseFirst();
   await page.locator('#reader-images-status').filter({hasText:'1 still unavailable'}).waitFor({state:'attached'});
   assert.equal(await page.locator('#workskin img[data-stored="1"]').count(),1);
+  assert.match(await page.locator('#reader-images-status').textContent(), /Image host answered 429/, 'failed recovery explains the host response');
   await page.locator('#reader-images').click();
   await page.waitForFunction(() => document.querySelectorAll('#workskin img[data-stored="1"]').length === 2);
   assert.equal(await page.locator('#workskin img').nth(1).getAttribute('alt'),'Author’s illustration');

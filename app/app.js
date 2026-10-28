@@ -9,7 +9,7 @@
 
 import { diagnosticProgress, diagnosticQueue } from './download-diagnostics.js';
 import { visitLabel } from './core/store/visits.js';
-import { createImageCollector, brokenStoredImages } from './core/images.js';
+import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
 import { walkHistory } from './core/sync/history.js';
 import { jobSource } from './core/sync/job-source.js';
@@ -3381,9 +3381,6 @@ const imageCollector = createImageCollector({
     $('#reader-images-status').textContent = imageResult(result);
   },
 });
-function imageResult({ saved, failed }) {
-  return `${saved} image${saved === 1 ? '' : 's'} saved${failed ? ` · ${failed} still unavailable` : ''}`;
-}
 async function collectImages(workId) {
   if (!isNative || viewingArchive) return { saved: 0, failed: 0 };
   return imageCollector.start(workId, current.chapter);
@@ -3401,10 +3398,7 @@ $('#reader-images').onclick = async () => {
     toast('Retrying missing images…');
     const result = await collectImages(workId);
     if (!result.cancelled) {
-      const missing = $$('#workskin img').filter(img => img.complete && img.naturalWidth === 0).length;
-      toast(result.saved || result.failed ? imageResult(result)
-        : missing ? `${missing} image${missing === 1 ? '' : 's'} unavailable · no downloadable source found`
-          : 'No missing images in this chapter');
+      toast(imageRetryStatus(result, $$('#workskin img')));
     }
   } catch (e) { toast(e.message); }
   finally { button.disabled = false; }
