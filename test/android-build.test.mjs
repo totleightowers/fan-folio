@@ -13,6 +13,7 @@ test('a compiler failure cannot publish a partial APK even when some classes wer
     mkdirSync(join(dir,'build/classes'),{recursive:true});
     const result=spawnSync('bash',['-c',`set -euo pipefail
 SDK_JAR=unused
+DEPS_CP=unused
 javac() { touch build/classes/Partial.class; return 1; }
 ${compile}
 touch published

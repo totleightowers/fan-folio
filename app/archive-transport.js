@@ -14,6 +14,7 @@ export function createArchiveTransport({ native, fetchPage, setTimer = setTimeou
         if (!Number.isInteger(result.status) || typeof result.body !== 'string') throw new Error('Invalid archive response');
         pending.delete(id);
         settle.resolve({ status: result.status, ok: result.status >= 200 && result.status < 300,
+          headers: new Headers(result.headers || {}),
           text: async () => result.body });
       } catch (error) { pending.delete(id); settle.reject(error); }
     }
@@ -32,4 +33,11 @@ export function createArchiveTransport({ native, fetchPage, setTimer = setTimeou
     });
   }
   return { request, poll, pendingCount: () => pending.size };
+}
+/** Retry-After is either seconds or an HTTP date. Never shorten a server wait. */
+export function archiveRetryAfter(headers, now = Date.now()) {
+  const value = headers?.get?.('Retry-After')?.trim();
+  if (!value) return 5 * 60_000;
+  const ms = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - now;
+  return Number.isFinite(ms) ? Math.max(5 * 60_000, ms) : 5 * 60_000;
 }

@@ -22,6 +22,7 @@ echo "stamping version $VERSION ($VERSION_CODE)"
 
 rm -rf assets/web build && mkdir -p assets/web build/compiled build/classes build/gen
 cp -r ../app/. assets/web/
+cp HTTP-LICENSES.txt assets/http-licenses.txt
 # the vendored AO3 sources are build inputs, not app assets
 rm -rf assets/web/vendor
 
@@ -67,20 +68,25 @@ aapt2 link -I "$SDK_JAR" --manifest build/AndroidManifest.xml -o build/base.apk 
   build/compiled/res.zip
 
 echo "4/7  compile java"
+DEPS_CP="$(node ../tools/android-dependencies.mjs --classpath)"
+mapfile -t DEPS_JARS < <(node ../tools/android-dependencies.mjs)
 find src build/gen -name '*.java' > build/sources.txt
 # errors must not be swallowed: a hidden compile failure once produced a
 # "successful" build that silently shipped the previous APK
 javac -nowarn -source 8 -target 8 -bootclasspath "$SDK_JAR" \
-  -classpath "$SDK_JAR" -d build/classes @build/sources.txt
+  -classpath "$SDK_JAR:$DEPS_CP" -d build/classes @build/sources.txt
 [ -n "$(find build/classes -name '*.class' -print -quit)" ] || {
   echo "javac produced no classes — build failed" >&2; exit 1; }
 
 echo "5/7  dex"
-d8 --min-api 24 --lib "$SDK_JAR" --output build $(find build/classes -name '*.class')
+d8 --min-api 24 --lib "$SDK_JAR" --output build $(find build/classes -name '*.class') "${DEPS_JARS[@]}"
 
 echo "6/7  package and align"
 cp build/base.apk build/unsigned.apk
-(cd build && zip -q -X unsigned.apk classes.dex)
+# D8 compiles classes only; OkHttp also loads its public-suffix data as a JVM
+# resource. Keep that resource and its notice in the APK class-loader path.
+(cd build && jar xf ../.deps/okhttp-4.12.0.jar okhttp3/internal/publicsuffix/publicsuffixes.gz okhttp3/internal/publicsuffix/NOTICE)
+(cd build && zip -q -X unsigned.apk classes*.dex okhttp3/internal/publicsuffix/publicsuffixes.gz okhttp3/internal/publicsuffix/NOTICE)
 # Android refuses to install an APK whose resources.arsc is not 4-byte aligned
 node zipalign.mjs build/unsigned.apk build/aligned.apk
 

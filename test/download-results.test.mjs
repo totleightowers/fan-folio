@@ -86,7 +86,8 @@ test('missing and literal-null metadata gets an identifiable label without inven
   assert.deepEqual(downloadIdentity({ title: 'A real anonymous story', authors: '[]' }, { workId: '42' }), { title: 'A real anonymous story', by: 'Anonymous' });
   assert.deepEqual(downloadIdentity(null, { workId: '42', title: 'A saved title', authors: ['A writer'] }), { title: 'A saved title', by: 'A writer' });
   assert.deepEqual(downloadIdentity(null, { workId: 'epub-1', title: 'A file.epub', state: 'failed' }), { title: 'A file.epub', by: 'Author unavailable' });
-  assert.equal(downloadFailure('The archive answered 525'), 'Archive temporarily unavailable');
+  assert.equal(downloadFailure('The archive answered 525'), 'AO3 secure connection failed (525)');
+  assert.equal(downloadFailure('Cloudflare verification is required'), 'Archive verification required');
   assert.equal(downloadFailure('That work has been deleted'), 'Unavailable on the archive');
 });
 

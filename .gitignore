@@ -9,6 +9,7 @@ data/
 
 # build output and signing material
 android/build/
+android/.deps/
 android/sdk/
 android/assets/
 *.apk

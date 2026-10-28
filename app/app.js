@@ -4253,11 +4253,6 @@ const wait = (ms) => untilDue(ms);
  * one every twenty-eight. Nothing coordinated them, and the archive sees the
  * total, not the intent.
  *
- * A single request from a work page was never throttled because it is a
- * single request. The headers are identical: both go through the same call,
- * the same proxy and the same handful of browser headers. It was only ever
- * the rate.
- *
  * So: one queue for turns, one memory of when the last request went, and a
  * cool-off that everything honours when the archive says to slow down.
  */
@@ -4273,6 +4268,10 @@ function slowDown(ms = 5 * 60_000) {
   keepPacing();
   if (showing() === 'activity') paintDownloadStatus();
 }
+
+// This also catches single-work reads outside a background job. The adapter
+// publishes the server's wait before resolving the failed request.
+window.addEventListener('archive-rate-limit', event => slowDown(event.detail));
 
 /*
  * The one wait that everything asked of the archive passes through — and the

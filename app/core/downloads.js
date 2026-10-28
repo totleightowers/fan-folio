@@ -29,6 +29,8 @@ export function downloadIdentity(work, item) {
 }
 
 export function downloadFailure(message = '') {
+  if (/525/.test(message)) return 'AO3 secure connection failed (525)';
+  if (/Cloudflare verification/i.test(message)) return 'Archive verification required';
   if (/404|does not exist|has been deleted/i.test(message)) return 'Unavailable on the archive';
   if (/restricted|sign in|login|401|403/i.test(message)) return 'May need archive sign-in';
   if (/429|rate limit|too many requests/i.test(message)) return 'Archive rate limit';

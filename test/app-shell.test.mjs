@@ -215,20 +215,11 @@ test('the sign-in window is never given the app bridge', () => {
     'a page where a password is typed must have no route into this app');
 });
 
-test('the session cookie goes only to the archive', () => {
-  const java = nativeSource();
-  const open = java.slice(java.indexOf('private HttpURLConnection open('), java.indexOf('private WebResourceResponse respond('));
-
-  /* This used to assert the shape of the check rather than what it guarantees,
-     and the pattern it accepted — endsWith("archiveofourown.org") with no
-     leading dot — is true of evilarchiveofourown.org, someone else's domain
-     entirely. The test would have passed while the cookie leaked. It now
-     asserts the property: a boundary-correct decision, made before the session
-     is attached. */
-  const decidesAt = open.indexOf('isArchiveHost(');
-  const cookieAt = open.indexOf('setRequestProperty("Cookie"');
-  assert.ok(decidesAt > 0, 'the host is decided by one shared, boundary-correct test');
-  assert.ok(decidesAt < cookieAt, 'the host must be decided before the session is sent, not after');
+test('the session cookie goes only to a checked archive destination', () => {
+  const http = readFileSync(new URL('../android/src/org/fanfolio/ArchiveHttp.java', import.meta.url), 'utf8');
+  const request = http.slice(http.indexOf('private Page request('));
+  assert.ok(request.indexOf('checked(raw)') < request.indexOf('cookies.get('));
+  assert.match(request, /url = checked\(next\.toString\(\)\)/);
 });
 
 test('a domain merely ending in the archive name is not the archive', () => {
@@ -250,7 +241,7 @@ test('a redirect cannot take a signed-in write off the archive', () => {
   /* Where a redirect points is chosen by the response, not by us. Following one
      unchecked is a request this app makes on someone else's instruction, to any
      host they name — server-side request forgery, and CodeQL called it that. */
-  const followAt = body.indexOf('open(next)');
+  const followAt = body.indexOf('archiveHttp.get(next.toString())');
   const checkAt = body.indexOf('isArchiveHost(resolved.getHost())');
   const rebuildAt = body.indexOf('archiveUrl(resolved.getFile())');
   assert.ok(checkAt > 0, 'the redirect target is checked');
@@ -270,14 +261,12 @@ test('the read bridge refuses anything that is not a single read', () => {
   assert.ok(q.includes('PRAGMA_OR_ATTACH'), 'nothing reaching outside this archive');
 });
 
-test('the shell proxy retries transient failures rather than reporting them', () => {
+test('the shell makes one native attempt and leaves retries to the paced queue', () => {
   const java = nativeSource();
   const proxy = java.slice(java.indexOf('private WebResourceResponse proxy(String raw)'),
     java.indexOf('private WebResourceResponse proxyOnce'));
-  assert.match(proxy, /for \(int attempt = 0; attempt < \d+/, 'more than one attempt');
-  assert.ok(proxy.includes('IOException'), 'a handshake failure is retried, not surfaced');
-  // a 404 is an answer; retrying it wastes the reader's time
-  assert.match(proxy, /code < 500/, 'only server-side failures are retried');
+  assert.match(proxy, /return proxyOnce\(raw\)/);
+  assert.doesNotMatch(proxy, /Thread\.sleep|for \(/);
 });
 
 test('a proxied url is not decoded twice', () => {
@@ -1723,8 +1712,7 @@ test('progress redraws, not only completion', () => {
  * start now each waited its own half minute, so four things running together
  * made a request every seven seconds while each believed it was making one
  * every twenty-eight. The archive sees the total, not the intent — which is
- * why a single fetch from a work page was never throttled and a queue always
- * was. The headers were identical the whole time.
+ * why jobs must share a clock. Transport failures are diagnosed separately.
  */
 test('everything asked of the archive shares one pace', () => {
   const fn = js.slice(js.indexOf('function paced('));
@@ -1994,41 +1982,12 @@ test('a failure worth retrying is retried rather than called unavailable', () =>
   assert.match(body, /retryWait/, 'and waits longer each time');
 });
 
-/**
- * The app must ask the way the working client asks.
- *
- * The proxy sent a Chrome user agent and nothing else — no Accept, no
- * Accept-Language, none of the Sec-Fetch headers a browser sends on every
- * navigation. Claiming to be a browser and then not behaving like one is a
- * plain bot signature, and the archive sits behind Cloudflare: the same
- * account walking the same pages from a laptop with the full set ran hundreds
- * of requests without being throttled once, while the app took 5xx almost
- * straight away.
- */
-test('the shell sends the same headers as the client that is not throttled', () => {
-  const client = readFileSync(new URL('../tools/lib/client.mjs', import.meta.url), 'utf8');
+test('archive reads and writes use the same persistent native HTTP client', () => {
   const java = nativeSource();
-
-  const fn = client.slice(client.indexOf('function browserHeaders('));
-  const wanted = [...fn.slice(0, fn.indexOf('\n}')).matchAll(/'?([A-Z][A-Za-z-]+)'?:/g)]
-    .map((m) => m[1])
-    // Java adds this itself and decompresses transparently, but only while
-    // nothing has set it by hand
-    .filter((h) => h !== 'Accept-Encoding');
-
-  const sent = java.slice(java.indexOf('private void browserHeaders('));
-  const body = sent.slice(0, sent.indexOf('\n    }'));
-  const missing = wanted.filter((h) => !body.includes(`"${h}"`));
-  assert.deepEqual(missing, [],
-    `the client sends these and the shell does not: ${missing.join(', ')}`);
-});
-
-test('a referer is carried between archive pages', () => {
-  const java = nativeSource();
-  /* Somebody on page seven got there from page six. Arriving with no referer
-     at all, page after page, is not what browsing looks like. */
-  assert.match(java, /lastArchiveUrl/, 'the last archive page is remembered');
-  assert.match(java, /setRequestProperty\("Referer", lastArchiveUrl\)/, 'and offered as the referer');
+  assert.match(java, /private final ArchiveHttp archiveHttp/);
+  assert.match(java, /archiveHttp\.get\(raw\)/);
+  assert.match(java, /archiveHttp\.post\(u\.toString\(\), body, referer\)/);
+  assert.doesNotMatch(java, /lastArchiveUrl|Sec-Fetch/);
 });
 
 /**
@@ -2412,9 +2371,7 @@ test('the session never travels to an image host', () => {
     java.indexOf('private WebResourceResponse respond('));
   /* Images may come from anywhere, which is a deliberate loosening. The rule
      that does not bend is that the archive cookie goes to the archive only. */
-  assert.match(open_, /if \(archive\) \{/, 'cookies are gated on the host being the archive');
-  assert.ok(!/setRequestProperty\("Cookie"/.test(open_.split('if (archive) {')[0]),
-    'and nothing sets one before that gate');
+  assert.doesNotMatch(open_, /Cookie|archiveCookies/, 'font and image adapters never receive archive cookies');
 });
 
 test('image requests use the native request thread and stored chapter URLs', () => {

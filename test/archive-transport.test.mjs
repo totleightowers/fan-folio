@@ -1,10 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createArchiveTransport } from '../app/archive-transport.js';
+import { createArchiveTransport, archiveRetryAfter } from '../app/archive-transport.js';
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+
+test('archive Retry-After honours seconds and HTTP dates without shortening the server wait', () => {
+  const now = Date.parse('2026-10-28T12:00:00Z');
+  assert.equal(archiveRetryAfter(new Headers({ 'Retry-After': '1800' }), now), 1_800_000);
+  assert.equal(archiveRetryAfter(new Headers({ 'Retry-After': 'Wed, 28 Oct 2026 12:30:00 GMT' }), now), 1_800_000);
+  for (const value of ['', 'nonsense', '3', 'Wed, 28 Oct 2026 11:00:00 GMT']) {
+    assert.equal(archiveRetryAfter(new Headers({ 'Retry-After': value }), now), 300_000);
+  }
+  assert.equal(archiveRetryAfter(undefined, now), 300_000);
+});
 
 test('native response polling completes downloads without browser fetch or timer delivery', async () => {
   let serial=0;
@@ -23,9 +33,11 @@ test('native response polling completes downloads without browser fetch or timer
   assert.equal(await result.text(),'A synthetic story');assert.equal(result.ok,true);
   assert.equal(transport.pendingCount(),0);
   const second=transport.request('https://archiveofourown.org/works/2');
-  responses.set(2,JSON.stringify({status:429,body:'Retry later'}));transport.poll();
+  responses.set(2,JSON.stringify({status:429,headers:{'Retry-After':'1800'},body:'Retry later'}));transport.poll();
   const limited=await second;
   assert.equal(limited.status,429);assert.equal(limited.ok,false);
+  assert.equal(limited.headers.get('retry-after'),'1800');
+  assert.equal(result.headers.get('retry-after'),null,'older shells remain compatible');
   assert.equal(started.length,2);
 });
 

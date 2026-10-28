@@ -65,6 +65,12 @@ public class FolioRuntime extends android.content.ContextWrapper {
     private volatile SQLiteDatabase db;
     private final Object imageLock = new Object();
     private String imageUserAgent;
+    private final ArchiveHttp archiveHttp = new ArchiveHttp(new ArchiveHttp.Cookies() {
+        @Override public String get(String url) { return archiveCookies(url); }
+        @Override public void save(String url, java.util.List<String> values) {
+            acceptArchiveCookies(url, values);
+        }
+    });
 
     private static FolioRuntime instance;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
@@ -547,6 +553,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
         signInView = new WebView(viewContext);
         WebSettings s = signInView.getSettings();
+        s.setUserAgentString(ArchiveHttp.USER_AGENT);
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false);
@@ -593,9 +600,20 @@ public class FolioRuntime extends android.content.ContextWrapper {
     }
 
     /** The archive's session cookies, as the browser holds them. */
-    private String archiveCookies() {
-        String cookies = android.webkit.CookieManager.getInstance().getCookie(LOGIN_URL);
+    private String archiveCookies() { return archiveCookies(LOGIN_URL); }
+
+    private String archiveCookies(String url) {
+        String cookies = android.webkit.CookieManager.getInstance().getCookie(url);
         return cookies == null ? "" : cookies;
+    }
+
+    /** Keep native requests and archive sign-in on the same cookie jar. */
+    private void acceptArchiveCookies(String url, java.util.List<String> values) {
+        try { ArchiveHttp.checked(url); } catch (IOException invalid) { return; }
+        if (values == null || values.isEmpty()) return;
+        android.webkit.CookieManager jar = android.webkit.CookieManager.getInstance();
+        for (String value : values) jar.setCookie(url, value);
+        jar.flush();
     }
 
     private boolean isSignedIn() {
@@ -677,39 +695,10 @@ public class FolioRuntime extends android.content.ContextWrapper {
      * is not AO3. Only https, only GET, and every redirect hop is re-checked so
      * an allowed host cannot bounce the request somewhere else.
      */
-    /**
-     * Fetch, with a few attempts.
-     *
-     * The tooling paces itself and retries; this had neither, so a single
-     * transient failure surfaced to the reader as "the archive answered 500".
-     * Cloudflare sits in front of the archive and produces TLS handshake
-     * failures and 52x responses that clear on their own — one attempt is not
-     * enough to tell a blip from a refusal.
-     *
-     * Kept deliberately small: three attempts over a few seconds. This runs
-     * while somebody is waiting for a dialog, not on a background walk, so
-     * long backoffs belong in the tooling rather than here.
-     */
     private WebResourceResponse proxy(String raw) throws IOException {
-        IOException last = null;
-        for (int attempt = 0; attempt < 3; attempt++) {
-            if (attempt > 0) {
-                try { Thread.sleep(700L * attempt); } catch (InterruptedException ignored) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-            try {
-                WebResourceResponse res = proxyOnce(raw);
-                int code = res.getStatusCode();
-                // 520-527 are Cloudflare's own, and always transient
-                if (code < 500 || (code > 527 && code != 502 && code != 503 && code != 504)) return res;
-                if (attempt == 2) return res;
-                if (res.getData() != null) res.getData().close();
-            } catch (IOException e) {
-                last = e;
-            }
-        }
-        throw last == null ? new IOException("could not reach the archive") : last;
+        // One request per queue attempt. Server errors, especially 429/525,
+        // must reach the paced caller rather than trigger an invisible burst.
+        return proxyOnce(raw);
     }
 
     private WebResourceResponse proxyOnce(String raw) throws IOException {
@@ -728,6 +717,14 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
     private WebResourceResponse proxyOnceUntracked(String raw) throws IOException {
         if (raw == null) throw new IOException("no url");
+        if (isArchiveHost(new URL(raw).getHost())) {
+            ArchiveHttp.Page page = archiveHttp.get(raw);
+            Map<String, String> h = headers();
+            h.putAll(page.headers);
+            DownloadDiagnostics.event("archive_http_okhttp", "status", page.status);
+            return new WebResourceResponse(page.type, "utf-8", page.status,
+                page.status >= 400 ? "Error" : "OK", h, new ByteArrayInputStream(page.body));
+        }
         /* getQueryParameter has already decoded this. Decoding a second time
            turns a literal + into a space and eats any %xx the URL legitimately
            contains, which is how a perfectly good link becomes an unreachable
@@ -1082,23 +1079,10 @@ public class FolioRuntime extends android.content.ContextWrapper {
      * back for the page to judge.
      */
     private String postOnce(URL u, String body, String referer) throws IOException {
-        HttpURLConnection c = open(u);
-        c.setRequestMethod("POST");
-        c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
-        c.setRequestProperty("Accept", "text/html, application/xhtml+xml");
-        // Rails checks this on non-GET requests; without it the token is rejected
-        if (referer != null && !referer.isEmpty()) c.setRequestProperty("Referer", referer);
-        c.setRequestProperty("Origin", "https://archiveofourown.org");
-
-        byte[] out = body.getBytes("UTF-8");
-        c.setFixedLengthStreamingMode(out.length);
-        try (OutputStream os = c.getOutputStream()) { os.write(out); }
-
-        int status = c.getResponseCode();
-        String location = c.getHeaderField("Location");
-        String text = readBody(c);
-        c.disconnect();
+        ArchiveHttp.Page page = archiveHttp.post(u.toString(), body, referer);
+        int status = page.status;
+        String location = page.location;
+        String text = page.text();
 
         /* A redirect is the usual answer to a form that worked, and where it
            points is often the only confirmation there is. It is followed once,
@@ -1113,10 +1097,9 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 if (!isArchiveHost(resolved.getHost())) throw new IOException("redirected off the archive");
                 URL next = archiveUrl(resolved.getFile());
                 if (next == null) throw new IOException("redirected somewhere unusable");
-                HttpURLConnection follow = open(next);
-                status = follow.getResponseCode();
-                text = readBody(follow);
-                follow.disconnect();
+                ArchiveHttp.Page follow = archiveHttp.get(next.toString());
+                status = follow.status;
+                text = follow.text();
             } catch (Exception ignored) {
                 // the write may well have succeeded; the page judges on location
             }
@@ -1133,64 +1116,13 @@ public class FolioRuntime extends android.content.ContextWrapper {
         return res.toString();
     }
 
-    private static String readBody(HttpURLConnection c) throws IOException {
-        int code = c.getResponseCode();
-        InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
-        if (in == null) return "";
-        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
-        byte[] chunk = new byte[1 << 14];
-        int read;
-        while ((read = in.read(chunk)) > 0) buf.write(chunk, 0, read);
-        return buf.toString("UTF-8");
-    }
-
-    /* The last archive page asked for, used as the referer for the next.
-       Somebody on page seven got there from page six; arriving with no referer
-       at all, page after page, is not what browsing looks like. */
-    private String lastArchiveUrl = null;
-
-    /**
-     * Ask the way a browser asks.
-     *
-     * This sent a Chrome user agent and nothing else — no Accept, no
-     * Accept-Language, none of the Sec-Fetch headers every browser sends on a
-     * navigation. Claiming to be a browser and then not behaving like one is a
-     * plain bot signature, and the archive sits behind Cloudflare. The same
-     * account walking the same pages from a laptop, sending the full set, ran
-     * hundreds of requests without being throttled once; the app was getting
-     * 5xx almost immediately.
-     *
-     * Accept-Encoding is deliberately absent. Java adds gzip itself and
-     * decompresses transparently — but only while nothing has set the header
-     * by hand, and setting it means getting raw compressed bytes back.
-     */
-    private void browserHeaders(HttpURLConnection c, boolean sameOrigin) {
-        c.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(this));
-        c.setRequestProperty("Accept",
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8");
-        c.setRequestProperty("Accept-Language", "en-GB,en;q=0.9");
-        c.setRequestProperty("Upgrade-Insecure-Requests", "1");
-        c.setRequestProperty("Sec-Fetch-Dest", "document");
-        c.setRequestProperty("Sec-Fetch-Mode", "navigate");
-        c.setRequestProperty("Sec-Fetch-Site", sameOrigin ? "same-origin" : "none");
-        c.setRequestProperty("Sec-Fetch-User", "?1");
-    }
-
+    /** Non-archive resources (fonts) retain the platform HTTP adapter. */
     private HttpURLConnection open(URL u) throws IOException {
         HttpURLConnection c = (HttpURLConnection) u.openConnection();
         c.setInstanceFollowRedirects(false);
         c.setConnectTimeout(20000);
         c.setReadTimeout(30000);
-        boolean archive = isArchiveHost(u.getHost());
-        browserHeaders(c, archive && lastArchiveUrl != null);
-        if (archive && lastArchiveUrl != null) c.setRequestProperty("Referer", lastArchiveUrl);
-        // the session travels only to the archive, never to the font host —
-        // and never to a domain that merely ends with the archive's name
-        if (archive) {
-            String cookies = archiveCookies();
-            if (!cookies.isEmpty()) c.setRequestProperty("Cookie", cookies);
-            lastArchiveUrl = u.toString();
-        }
+        c.setRequestProperty("User-Agent", imageUserAgent);
         return c;
     }
 
@@ -1200,8 +1132,15 @@ public class FolioRuntime extends android.content.ContextWrapper {
         if (in == null) in = new ByteArrayInputStream(new byte[0]);
         String type = c.getContentType();
         if (type == null) type = "application/octet-stream";
+        Map<String, String> responseHeaders = headers();
+        // Only response metadata needed by the request policy crosses the bridge.
+        // In particular, never expose Set-Cookie to the application page.
+        for (String name : new String[]{"Retry-After", "CF-Mitigated"}) {
+            String value = c.getHeaderField(name);
+            if (value != null) responseHeaders.put(name, value);
+        }
         return new WebResourceResponse(type.split(";")[0].trim(), "utf-8", code,
-                code >= 400 ? "Error" : "OK", headers(), in);
+                code >= 400 ? "Error" : "OK", responseHeaders, in);
     }
 
     private Map<String, String> headers() {
@@ -1261,6 +1200,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
                         }
                         DownloadDiagnostics.event("native_archive_response_ready", "status", response.getStatusCode(), "bytes", bytes.size());
                         return new org.json.JSONObject().put("status", response.getStatusCode())
+                            .put("headers", new org.json.JSONObject(response.getResponseHeaders()))
                             .put("body", bytes.toString("UTF-8")).toString();
                     } catch (Exception error) {
                         DownloadDiagnostics.failure("native_archive_failed", error);

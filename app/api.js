@@ -7,7 +7,7 @@
  * be developed in a browser and shipped without changing a line of it.
  */
 
-import { createArchiveTransport } from './archive-transport.js';
+import { createArchiveTransport, archiveRetryAfter } from './archive-transport.js';
 import { FF_VISITS } from './core/store/visits.js';
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
@@ -25,7 +25,13 @@ const archiveTransport = createArchiveTransport({
   native: isNative && nativeStatus().nativeArchiveRequests === true ? native : null,
   fetchPage: url => fetch(`/__net/?url=${encodeURIComponent(url)}`),
 });
-export const archiveRequest = (url) => archiveTransport.request(url);
+export const archiveRequest = async (url) => {
+  const response = await archiveTransport.request(url);
+  if (response.status === 429 && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('archive-rate-limit', { detail: archiveRetryAfter(response.headers) }));
+  }
+  return response;
+};
 export const pollArchiveRequests = () => archiveTransport.poll();
 if (typeof window !== 'undefined') window.__pollArchiveRequests = pollArchiveRequests;
 
@@ -470,6 +476,10 @@ async function fetchAndSave(workId) {
        "UnknownHostException: Unable to resolve host" read as a work that could
        not be had rather than a phone that was briefly out of signal. */
     const detail = body.trim().slice(0, 200);
+    if (res.status === 525) throw new Error('The archive answered 525 — Cloudflare could not establish a secure connection to AO3');
+    if (res.status === 403 && res.headers?.get?.('CF-Mitigated') === 'challenge') {
+      throw new Error('Cloudflare verification is required — open archive sign-in to complete it');
+    }
     if (res.status === 502) {
       throw new Error(`The app could not reach the archive${detail ? `: ${detail}` : ''}`);
     }
