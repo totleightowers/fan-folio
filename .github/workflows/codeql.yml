@@ -33,6 +33,10 @@ jobs:
           distribution: temurin
           java-version: '17'
       - if: matrix.language == 'java-kotlin'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+      - if: matrix.language == 'java-kotlin'
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
         with:
           packages: 'platforms;android-34 build-tools;34.0.0'
@@ -48,6 +52,7 @@ jobs:
           set -e
           export PATH="$ANDROID_HOME/build-tools/34.0.0:$PATH"
           cd android
+          DEPS_CP="$(node ../tools/android-dependencies.mjs --classpath)"
           mkdir -p build/gen build/classes
           aapt2 compile --dir res -o build/res.zip
           aapt2 link -I "$ANDROID_HOME/platforms/android-34/android.jar" \
@@ -56,7 +61,7 @@ jobs:
           find src build/gen -name '*.java' > build/sources.txt
           javac -nowarn -source 8 -target 8 \
             -bootclasspath "$ANDROID_HOME/platforms/android-34/android.jar" \
-            -classpath "$ANDROID_HOME/platforms/android-34/android.jar" \
+            -classpath "$ANDROID_HOME/platforms/android-34/android.jar:$DEPS_CP" \
             -d build/classes @build/sources.txt
 
       - uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
