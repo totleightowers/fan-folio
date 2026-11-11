@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS works (
   skin_css       TEXT,
   skin_hash      TEXT,
   end_notes_html TEXT,   -- author's closing notes, shown after the last chapter
-  source         TEXT,          -- 'epub' or 'ao3'
+  source         TEXT,          -- 'epub', 'ao3', 'mirror' or 'wayback'
   source_file    TEXT,
   fetched_at     TEXT,
   in_bookmarks   INTEGER DEFAULT 0,

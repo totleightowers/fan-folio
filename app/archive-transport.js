@@ -21,18 +21,21 @@ export function createArchiveTransport({ native, fetchPage, setTimer = setTimeou
     if (!pending.size && timer !== null) { clearTimer(timer); timer = null; }
     schedule();
   }
-  function request(url) {
-    if (!native) return fetchPage(url);
+  function request(url, publicRead = false) {
+    if (!native) {
+      if (publicRead) throw new Error('Recovery needs the updated Android app');
+      return fetchPage(url);
+    }
     return new Promise((resolve, reject) => {
       try {
-        const id = Number(native.startArchiveRequest(String(url)));
+        const id = Number(publicRead ? native.startRecoveryRequest(String(url)) : native.startArchiveRequest(String(url)));
         if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Could not start archive request');
         pending.set(id, { resolve, reject });
         poll();
       } catch (error) { reject(error); }
     });
   }
-  return { request, poll, pendingCount: () => pending.size };
+  return { request, requestPublic: url => request(url, true), poll, pendingCount: () => pending.size };
 }
 /** Retry-After is either seconds or an HTTP date. Never shorten a server wait. */
 export function archiveRetryAfter(headers, now = Date.now()) {
@@ -40,4 +43,18 @@ export function archiveRetryAfter(headers, now = Date.now()) {
   if (!value) return 5 * 60_000;
   const ms = /^\d+$/.test(value) ? Number(value) * 1000 : Date.parse(value) - now;
   return Number.isFinite(ms) ? Math.max(5 * 60_000, ms) : 5 * 60_000;
+}
+
+/** A throttled recovery provider is not retried for every work in the queue. */
+export function createPublicRecoveryRequests(request, now = Date.now) {
+  const cooling = new Map();
+  return async url => {
+    const host = new URL(url).hostname;
+    const provider = ['archive.org', 'web.archive.org'].includes(host) ? 'wayback' : host;
+    const until = cooling.get(provider) || 0;
+    if (until > now()) return {status:429,ok:false,headers:new Headers(),text:async()=>''};
+    const response = await request(url);
+    if (response.status === 429) cooling.set(provider, now() + archiveRetryAfter(response.headers, now()));
+    return response;
+  };
 }

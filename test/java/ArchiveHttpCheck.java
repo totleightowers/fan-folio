@@ -113,6 +113,37 @@ public class ArchiveHttpCheck {
         ArchiveHttp network = transport(c -> { calls[0]++; throw new IOException("synthetic offline"); }, new Jar());
         try { network.get(URL); throw new AssertionError("missing network error"); } catch (IOException expected) {}
         check(calls[0] == 1, "network errors return to paced caller");
+        Jar publicJar = new Jar(); publicJar.values.put(URL, "private=never");
+        ArchiveHttp publicHttp = transport(c -> {
+            check(c.request().header("Cookie") == null && c.request().header("Referer") == null
+                && c.request().header("Authorization") == null, "public recovery has no private headers");
+            return response(c.request(), 200, null, HTML.getBytes("UTF-8")).newBuilder().header("Set-Cookie", "foreign=ignored").build();
+        }, publicJar);
+        for (String url : new String[]{
+            "https://archiveofourown.gay/works/123?view_full_work=true&view_adult=true",
+            "https://archive.transformativeworks.org/works/123",
+            "https://archive.org/wayback/available?url=https%3A%2F%2Farchiveofourown.org%2Fworks%2F123",
+            "https://web.archive.org/web/20261001020304id_/http://archiveofourown.org/works/123?view_full_work=true"}) {
+            check(publicHttp.getRecovery(url).status == 200, "public work recovery accepted");
+        }
+        check(publicJar.updates == 0, "recovery response cookies never enter the archive jar");
+        for (String url : new String[]{
+            "https://archiveofourown.gay/users/private/readings", "https://evil.example/works/123",
+            "https://archiveofourown.gay/works/123?token=secret", "http://archiveofourown.gay/works/123",
+            "https://user:pass@archiveofourown.gay/works/123",
+            "https://archive.org/wayback/available?url=https%3A%2F%2Flocalhost%2Fworks%2F123",
+            "https://web.archive.org/web/20261001020304id_/https://evil.example/works/123"}) {
+            try { publicHttp.getRecovery(url); throw new AssertionError("accepted unsafe recovery URL"); }
+            catch (IOException expected) {}
+        }
+        int[] publicCalls = {0};
+        ArchiveHttp publicRedirect = transport(c -> {
+            publicCalls[0]++;
+            return response(c.request(), 302, null, new byte[0]).newBuilder().header("Location", URL).build();
+        }, publicJar);
+        try { publicRedirect.getRecovery("https://archiveofourown.gay/works/123"); throw new AssertionError("escaped recovery host"); }
+        catch (IOException expected) {}
+        check(publicCalls[0] == 1, "foreign redirect refused before a request");
         System.out.println("Archive HTTP checks passed");
     }
 }

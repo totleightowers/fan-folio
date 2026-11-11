@@ -1173,6 +1173,26 @@ public class FolioRuntime extends android.content.ContextWrapper {
             return command == null ? "" : command;
         }
 
+        /** Public recovery has no access to the archive cookie adapter. */
+        @JavascriptInterface
+        public int startRecoveryRequest(final String raw) {
+            mustBeOurPage();
+            try { ArchiveHttp.checkedRecovery(raw); }
+            catch (IOException error) { throw new IllegalArgumentException("Not a recovery URL"); }
+            return archiveRequests.start(new java.util.concurrent.Callable<String>() {
+                @Override public String call() {
+                    try {
+                        ArchiveHttp.Page page = archiveHttp.getRecovery(raw);
+                        return new org.json.JSONObject().put("status", page.status)
+                            .put("headers", new org.json.JSONObject(page.headers)).put("body", page.text()).toString();
+                    } catch (Exception error) {
+                        DownloadDiagnostics.failure("recovery_request_failed", error);
+                        return "{\"status\":502,\"body\":\"Recovery site could not be reached\"}";
+                    }
+                }
+            });
+        }
+
         /** Enqueue a read on Android, without waiting for WebView to dispatch fetch(). */
         @JavascriptInterface
         public int startArchiveRequest(final String raw) {
@@ -1865,6 +1885,11 @@ public class FolioRuntime extends android.content.ContextWrapper {
                 if (wasDeleted(id)) return errorJson("that work was deleted");
                 db.beginTransaction();
                 try {
+                    if (!"ao3".equals(w.optString("source", "ao3"))) {
+                        try (Cursor c = db.rawQuery("SELECT 1 FROM chapters WHERE work_id = ? LIMIT 1", new String[]{ id })) {
+                            if (c.moveToFirst()) return errorJson("AO3 is unavailable. Existing saved text was kept instead of replacing it with a recovered copy.");
+                        }
+                    }
                     writeWork(w, id);
                     db.setTransactionSuccessful();
                 } finally {
@@ -2489,7 +2514,11 @@ public class FolioRuntime extends android.content.ContextWrapper {
             if (w.isNull(pair[0])) work.putNull(pair[1]);
             else work.put(pair[1], w.optInt(pair[0]));
         }
-        work.put("source", "ao3");
+        String source = w.optString("source", "ao3");
+        if (!(source.equals("ao3") || source.equals("mirror") || source.equals("wayback"))) throw new org.json.JSONException("Invalid work source");
+        work.put("source", source);
+        if (source.equals("ao3")) work.putNull("source_file");
+        else work.put("source_file", w.optString("sourceUrl"));
         work.put("fetched_at", nowIso());
         /* When this copy was taken. Without it the sync planner has no idea
            how current our copy is, and "recently added" cannot see the work

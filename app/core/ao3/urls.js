@@ -145,6 +145,9 @@ export function workUrl(workId) {
  * EPUB or HTML link arrives on it.
  */
 export const AO3_HOSTS = new Set([
+  'archiveofourown.gay',
+  'archive.transformativeworks.org',
+  'archiveofourown.net',
   'archiveofourown.org',
   'www.archiveofourown.org',
   'ao3.org',

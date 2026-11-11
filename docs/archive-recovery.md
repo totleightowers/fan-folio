@@ -1,0 +1,13 @@
+# Download recovery
+
+Stable v3 checks AO3 first when adding a work or downloading it from a queue. If the work is unavailable, it tries `archiveofourown.gay`, then `archive.transformativeworks.org`, then the Internet Archive Wayback Machine. Chapter-only links use the same recovery order to identify their owning work.
+
+The alternate domains are AO3's official alternate addresses, not independent backups. They may fail together during an outage. Five third-party candidates were probed on 2026-11-11: ao3mirror.com and ao3mirror.org returned HTTP 418; aoya.moe, ao3-cn.com and ao3-mirror.cc returned HTTP 403. None served a verifiable work, so they are not configured as trusted recovery sources. A healthy third-party endpoint can be added to the explicit native and JavaScript allowlists after validation.
+
+Public recovery runs on the existing native request worker, with bounded bodies, timeouts and redirects. It sends no AO3 cookies, credentials, form submissions, reading-page referrer or browsing history. Responses cannot set AO3 cookies. Only work/chapter paths and Wayback lookup/capture paths are allowed. Cross-host redirects are rejected. An AO3 rate limit is respected: live alternate sites are skipped, and only existing Wayback snapshots are checked. Lookup throttling stops that chain.
+
+Wayback availability is queried for the full-work URL before the plain work URL. Captures must name the requested work, have a title and real chapter bodies, and contain every chapter reported as posted by that capture. A snapshot can predate later chapters: its capture date is shown on the work page. Error, login, different-work and truncated multi-chapter pages are not saved. There is no promise of recovering every work or every historical version.
+
+Recovered copies use the normal storage and sanitisation pipeline. The source and snapshot URL are retained in `works.source` and `works.source_file`, existing fields included in library exports and merges. The native save transaction refuses to replace any existing chapters with a fallback copy. A future successful AO3 fetch can update a recovered work using the existing version-history path.
+
+Validation uses synthetic work pages and native HTTP exchanges for outages, failed providers, redirects, cookie isolation, rate limits, source persistence, chapter-only links and incomplete captures. Live fallback success during the current outage has not been verified from the development environment.

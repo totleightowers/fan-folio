@@ -5714,7 +5714,7 @@ async function openWork(workId, options = {}) {
   if (w.has_text) {
     const copy = document.createElement('p'); copy.className = 'saved-copy';
     const count = w.chapters.length;
-    copy.textContent = `${count} chapter${count === 1 ? '' : 's'} saved on this device${w.source === 'epub' ? ' · Imported EPUB' : ''}`;
+    copy.textContent = `${count} chapter${count === 1 ? '' : 's'} saved on this device${w.source === 'epub' ? ' · Imported EPUB' : w.source === 'mirror' ? ' · Recovered from an AO3 alternate site' : w.source === 'wayback' ? ' · Wayback snapshot ' + (w.source_file?.match(/\/web\/(\d{4})(\d{2})(\d{2})/)?.slice(1).join('-') || '') : ''}`;
     head.append(copy);
   }
   head.append(status);
@@ -6782,8 +6782,10 @@ window.__openLink = async (link) => {
      The work opens on a skeleton immediately, so the wait happens somewhere
      that already looks like the destination rather than behind a modal. */
   toast('Fetching from the archive…');
+  const progress = event => toast(event.detail.message);
+  window.addEventListener('archive-recovery-progress', progress);
   try {
-    const out = await addWork(link);
+    const out = await addWork(link).finally(() => window.removeEventListener('archive-recovery-progress', progress));
     await refresh({ works: true, force: true });
     tick('commit');
 

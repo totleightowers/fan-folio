@@ -219,7 +219,7 @@ test('the session cookie goes only to a checked archive destination', () => {
   const http = readFileSync(new URL('../android/src/org/fanfolio/ArchiveHttp.java', import.meta.url), 'utf8');
   const request = http.slice(http.indexOf('private Page request('));
   assert.ok(request.indexOf('checked(raw)') < request.indexOf('cookies.get('));
-  assert.match(request, /url = checked\(next\.toString\(\)\)/);
+  assert.match(request, /checked\(next\.toString\(\)\)/);
 });
 
 test('a domain merely ending in the archive name is not the archive', () => {
@@ -2134,13 +2134,11 @@ test('failing to reach the archive is not the archive refusing', () => {
   assert.match(around, /"text\/plain", "utf-8", 502/,
     'the shell says 502 when it could not get there at all');
 
-  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
-  assert.match(api, /if \(res\.status === 502\) \{/,
-    'and the page reads that status, not the one the archive uses');
-  assert.match(api, /The app could not reach the archive\$\{detail/,
-    'the wording decides whether the work is tried again, so it leads with the cause');
-  assert.ok(!/res\.status === 500\) throw/.test(api),
-    'nothing still treats an archive 500 as the app failing');
+  // The behavioral recovery tests exercise 502 through the fallback chain.
+  const recovery = readFileSync(new URL('../app/core/ao3/recovery.js', import.meta.url), 'utf8');
+  assert.match(recovery, /primary\?\.status === 502/);
+  assert.match(recovery, /The app could not reach the archive/);
+
 });
 
 test('pressing the dimmed part of the screen puts a sheet away', () => {

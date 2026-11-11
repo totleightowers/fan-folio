@@ -65,11 +65,51 @@ final class ArchiveHttp {
         return parsed;
     }
 
-    Page get(String url) throws IOException { return request(url, null, null); }
-    Page post(String url, String form, String referer) throws IOException { return request(url, form, referer); }
+    Page get(String url) throws IOException { return request(url, null, null, false); }
+    Page post(String url, String form, String referer) throws IOException { return request(url, form, referer, false); }
 
-    private Page request(String raw, String form, String referer) throws IOException {
-        HttpUrl url = checked(raw);
+    static HttpUrl checkedRecovery(String raw) throws IOException {
+        HttpUrl url = HttpUrl.parse(raw);
+        if (url == null || !url.isHttps() || url.port() != 443 || !url.username().isEmpty() || !url.password().isEmpty())
+            throw new IOException("Invalid recovery URL");
+        String host = url.host(), path = url.encodedPath();
+        if ((host.equals("archiveofourown.gay") || host.equals("archive.transformativeworks.org"))
+                && path.matches("/(works|chapters)/[0-9]+")) {
+            checkedWorkQuery(url); return url;
+        }
+        if (host.equals("archive.org") && path.equals("/wayback/available") && url.querySize() == 1
+                && url.queryParameter("url") != null) {
+            checkedOriginalWork(url.queryParameter("url")); return url;
+        }
+        if (host.equals("web.archive.org")) {
+            java.util.regex.Matcher capture = java.util.regex.Pattern.compile("^/web/[0-9]{14}id_/(https?://.*)$").matcher(path);
+            if (capture.matches()) {
+                checkedOriginalWork(capture.group(1) + (url.encodedQuery() == null ? "" : "?" + url.encodedQuery()));
+                return url;
+            }
+        }
+        throw new IOException("Not a public work recovery URL");
+    }
+
+    private static void checkedOriginalWork(String raw) throws IOException {
+        HttpUrl url = HttpUrl.parse(raw);
+        if (url == null || !url.host().equals("archiveofourown.org") || !url.username().isEmpty() || !url.password().isEmpty()
+                || url.port() != (url.isHttps() ? 443 : 80) || !url.encodedPath().matches("/(works|chapters)/[0-9]+"))
+            throw new IOException("Not an original work URL");
+        checkedWorkQuery(url);
+    }
+
+    private static void checkedWorkQuery(HttpUrl url) throws IOException {
+        for (String key : url.queryParameterNames())
+            if (!(key.equals("view_full_work") || key.equals("view_adult")) || !"true".equals(url.queryParameter(key)))
+                throw new IOException("Unsupported work query");
+    }
+
+    Page getRecovery(String raw) throws IOException { return request(raw, null, null, true); }
+
+    private Page request(String raw, String form, String referer, boolean publicRead) throws IOException {
+        HttpUrl url = publicRead ? checkedRecovery(raw) : checked(raw);
+        String publicHost = url.host();
         for (int hop = 0; hop <= 5; hop++) {
             Request.Builder request = new Request.Builder().url(url)
                 .header("User-Agent", USER_AGENT).header("Accept", ACCEPT)
@@ -78,7 +118,7 @@ final class ArchiveHttp {
                 .header("Upgrade-Insecure-Requests", "1");
             // Host/:authority comes from the actual URL, including redirects.
             // No invented Sec-Fetch fields or unrelated previous-page Referer.
-            String cookie = cookies.get(url.toString());
+            String cookie = publicRead ? null : cookies.get(url.toString());
             if (cookie != null && !cookie.isEmpty()) request.header("Cookie", cookie);
             if (form != null) {
                 request.post(RequestBody.create(form, MediaType.get("application/x-www-form-urlencoded; charset=UTF-8")));
@@ -89,13 +129,14 @@ final class ArchiveHttp {
             // archive may already have accepted the form.
             OkHttpClient sender = form == null ? client : client.newBuilder().retryOnConnectionFailure(false).build();
             try (Response response = sender.newCall(request.build()).execute()) {
-                cookies.save(url.toString(), response.headers("Set-Cookie"));
+                if (!publicRead) cookies.save(url.toString(), response.headers("Set-Cookie"));
                 int status = response.code();
                 if (form == null && (status == 301 || status == 302 || status == 303 || status == 307 || status == 308)) {
                     String location = response.header("Location");
                     HttpUrl next = location == null ? null : url.resolve(location);
                     if (next == null) throw new IOException("Redirect without a valid location");
-                    url = checked(next.toString());
+                    url = publicRead ? checkedRecovery(next.toString()) : checked(next.toString());
+                    if (publicRead && !url.host().equals(publicHost)) throw new IOException("Recovery redirected outside its host");
                     continue;
                 }
                 return new Page(response, read(response));

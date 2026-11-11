@@ -100,6 +100,9 @@
                 <data android:scheme="https" />
                 <data android:scheme="http" />
                 <data android:host="archiveofourown.org" />
+                <data android:host="archiveofourown.gay" />
+                <data android:host="archive.transformativeworks.org" />
+                <data android:host="archiveofourown.net" />
                 <data android:host="www.archiveofourown.org" />
                 <data android:host="ao3.org" />
                 <data android:host="www.ao3.org" />

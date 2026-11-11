@@ -7,7 +7,8 @@
  * be developed in a browser and shipped without changing a line of it.
  */
 
-import { createArchiveTransport, archiveRetryAfter } from './archive-transport.js';
+import { fetchRecoverableWork, resolveRecoverableChapter } from './core/ao3/recovery.js';
+import { createArchiveTransport, archiveRetryAfter, createPublicRecoveryRequests } from './archive-transport.js';
 import { FF_VISITS } from './core/store/visits.js';
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
@@ -25,6 +26,7 @@ const archiveTransport = createArchiveTransport({
   native: isNative && nativeStatus().nativeArchiveRequests === true ? native : null,
   fetchPage: url => fetch(`/__net/?url=${encodeURIComponent(url)}`),
 });
+const publicRecoveryRequest = createPublicRecoveryRequests(url => archiveTransport.requestPublic(url));
 export const archiveRequest = async (url) => {
   const response = await archiveTransport.request(url);
   if (response.status === 429 && typeof window !== 'undefined') {
@@ -424,12 +426,10 @@ export async function addWork(input) {
  * the one the archive redirected to.
  */
 async function workIdForChapter(chapterId) {
-  const res = await archiveRequest(chapterUrl(chapterId));
-  const body = await res.text();
-  if (!res.ok) throw new Error(`The archive answered ${res.status} for that chapter`);
-  const found = body.match(/\/works\/(\d+)/);
-  if (!found) throw new Error('That chapter does not say which work it belongs to');
-  return found[1];
+  return resolveRecoverableChapter(chapterId, {
+    request: archiveRequest,
+    requestPublic: publicRecoveryRequest,
+  });
 }
 
 /**
@@ -464,41 +464,16 @@ async function addSeries(seriesId) {
 
 /** One work: fetch the whole thing, parse it, hand it to the shell to store. */
 async function fetchAndSave(workId) {
-  const res = await archiveRequest(workPage(workId));
-  const body = await res.text();
-  if (!res.ok) {
-    /* 502 is the shell's proxy failing, not the archive refusing — the two are
-       worth telling apart, and the reason is in the body. Saying only
-       "answered 500" sends you looking at the wrong end of the problem.
-
-       The wording matters as much as the status: what is thrown here is what
-       decides whether the work is tried again, and a message that opened
-       "UnknownHostException: Unable to resolve host" read as a work that could
-       not be had rather than a phone that was briefly out of signal. */
-    const detail = body.trim().slice(0, 200);
-    if (res.status === 525) throw new Error('The archive answered 525 — Cloudflare could not establish a secure connection to AO3');
-    if (res.status === 403 && res.headers?.get?.('CF-Mitigated') === 'challenge') {
-      throw new Error('Cloudflare verification is required — open archive sign-in to complete it');
-    }
-    if (res.status === 502) {
-      throw new Error(`The app could not reach the archive${detail ? `: ${detail}` : ''}`);
-    }
-    if (res.status === 404) throw new Error('That work does not exist, or has been deleted');
-    if (res.status === 403 || res.status === 401) {
-      throw new Error('That work is restricted — sign in to the archive first');
-    }
-    throw new Error(`The archive answered ${res.status}${detail ? `: ${detail}` : ''}`);
-  }
-
-  const w = parseWorkPage(body, { workId });
-  if (!w.chapters.length) {
-    // locked to registered users, deleted, or a draft — all look the same here
-    throw new Error('No chapters found. The work may be restricted, deleted, or need a login.');
-  }
-
-  const out = JSON.parse(native.saveWork(JSON.stringify(payloadFor(workId, w))));
+  const recovered = await fetchRecoverableWork(workId, {
+    request: archiveRequest,
+    requestPublic: publicRecoveryRequest,
+    onProgress: message => window.dispatchEvent(new CustomEvent('archive-recovery-progress', { detail: { workId, message } })),
+  });
+  const w = recovered.work;
+  const payload = { ...payloadFor(workId, w), source: recovered.source, sourceUrl: recovered.sourceUrl };
+  const out = JSON.parse(native.saveWork(JSON.stringify(payload)));
   if (out.error) throw new Error(out.error);
-  return { workId, title: w.title, authors: w.authors, chapters: w.chapters.length, words: w.meta?.words ?? 0 };
+  return { workId, source: recovered.source, title: w.title, authors: w.authors, chapters: w.chapters.length, words: w.meta?.words ?? 0 };
 }
 
 /** What the shell can tell us about the archive it opened. */
