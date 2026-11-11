@@ -8,7 +8,10 @@ import { SCHEMA } from '../../app/core/store/schema.js';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const db = new DatabaseSync(':memory:'); db.exec(SCHEMA);
 const root = fileURLToPath(new URL('../../app/', import.meta.url));
-const fixture = await readFile(new URL('../fixtures/work-page.html', import.meta.url), 'utf8');
+// The shared parser fixture is shortened to two chapters. Downloads must serve
+// a complete response whose posted chapter count agrees with those bodies.
+const fixture = (await readFile(new URL('../fixtures/work-page.html', import.meta.url), 'utf8'))
+  .replace('<dd class="chapters">18/?</dd>', '<dd class="chapters">2/?</dd>');
 const requests = [], errors = [], external = [], ready = [], diagnostics = [];
 let exportRequests = 0, nativeSerial = 0;
 const nativeResponses = new Map();
