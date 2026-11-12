@@ -258,8 +258,15 @@ function paintTabs(name = showing()) {
   paintNowReading(name);
 }
 
+/* The work whose own page is on screen. That page already says where you are
+   in it and has the button to carry on; a pill offering the same over the top
+   of it is in the way. */
+let detailWorkId = null;
 function paintNowReading(name = showing()) {
-  $('#now-reading').hidden = !nowReading || name === 'home' || !KEEPS_TABS.has(name);
+  const pill = $('#now-reading');
+  const onItsOwnPage = name === 'detail' && nowReading && detailWorkId === nowReading.workId;
+  pill.hidden = !nowReading || name === 'home' || !KEEPS_TABS.has(name) || Boolean(onItsOwnPage);
+  untuckNowReading();
   if (!nowReading) return;
   $('#now-reading-title').textContent = nowReading.title;
   $('#now-reading-place').textContent = `Return to the story · Chapter ${nowReading.chapter}`;
@@ -269,6 +276,24 @@ $('#now-reading').onclick = () => {
     visitId: showing().startsWith('settings') && String(current.workId) === nowReading.workId ? current.visitId : null,
   });
 };
+/* The pill floats over the page, so it steps aside while the page is being
+   read downwards and comes back the moment the reader turns round. */
+let pillScrollY = 0;
+function untuckNowReading() {
+  const pill = $('#now-reading');
+  pill.classList.remove('tucked');
+  pill.inert = false;
+  pillScrollY = window.scrollY;
+}
+window.addEventListener('scroll', () => {
+  const pill = $('#now-reading');
+  const y = window.scrollY;
+  if (!pill.hidden) {
+    const tuck = y > 96 && y > pillScrollY + 6 ? true : (y < pillScrollY - 6 || y <= 96 ? false : null);
+    if (tuck !== null) { pill.classList.toggle('tucked', tuck); pill.inert = tuck; }
+  }
+  if (Math.abs(y - pillScrollY) > 6) pillScrollY = y;
+}, { passive: true });
 $('#desk-downloads').onclick = () => goToTab('activity');
 
 /** The view currently on screen. */
@@ -983,7 +1008,17 @@ const activeCount = () =>
   + (view.chaptersMin || view.chaptersMax ? 1 : 0)
   + (view.updatedAfter || view.updatedBefore ? 1 : 0)
   + (view.crossover ? 1 : 0) + (view.otp ? 1 : 0)
-  + (view.state !== 'all' ? 1 : 0) + (view.availability ? 1 : 0) + (view.collection ? 1 : 0);
+  + (view.state !== 'all' && !saidByTab('state') ? 1 : 0) + (view.availability ? 1 : 0)
+  + (view.collection && !saidByTab('collection') ? 1 : 0);
+
+/* The tabs above the list already say which collection this is. Saying it
+   again as a removable pill, and counting it on the filter button, made the
+   plain Reading tab look like a filtered view with one filter on. */
+const COLLECTION_TABS = new Set(['reading', 'finished', 'later', 'bookmarked']);
+function saidByTab(kind) {
+  const tab = view.collection || view.state;
+  return COLLECTION_TABS.has(tab) && view[kind] === tab;
+}
 
 /** Tri-state: off → include → exclude → off. */
 function cycleTag(name) {
@@ -1487,11 +1522,11 @@ function paintActiveFilters() {
   /* The label the panel uses, not the key it is stored under: the pill said
      "known" while the section that set it said "Not downloaded", so the two
      screens named the same filter differently. */
-  if (view.state !== 'all') {
+  if (view.state !== 'all' && !saidByTab('state')) {
     pill(STATE_LABELS[view.state] ?? view.state, 'state', () => { view.state = 'all'; });
   }
   if (view.availability) pill(AVAILABILITY_LABELS[view.availability], 'state', () => { view.availability = ''; });
-  if (view.collection) pill(COLLECTION_LABELS[view.collection], 'state', () => { view.collection = ''; });
+  if (view.collection && !saidByTab('collection')) pill(COLLECTION_LABELS[view.collection], 'state', () => { view.collection = ''; });
   for (const t of view.include) pill(t, 'in', () => { view.include = view.include.filter((x) => x !== t); });
   for (const t of view.exclude) pill(`not ${t}`, 'out', () => { view.exclude = view.exclude.filter((x) => x !== t); });
   for (const r of view.rating) pill(r, 'in', () => { view.rating = view.rating.filter((x) => x !== r); });
@@ -2639,7 +2674,19 @@ function paintCollections() {
 for (const button of $$('#library-collections [data-collection]')) {
   button.onclick = () => {
     const key = button.dataset.collection;
-    openLibraryAs(['later', 'bookmarked'].includes(key) ? { collection: key } : { state: key });
+    const patch = ['later', 'bookmarked'].includes(key) ? { collection: key } : { state: key };
+    /* What you are reading is asked for by when you last read it, not by
+       title. The order chosen for everything else is kept, and comes back on
+       the way out. */
+    const wasReading = view.state === 'reading';
+    if (key === 'reading' && !wasReading) {
+      patch.sortElsewhere = view.sort;
+      patch.sort = 'recent';
+    } else if (key !== 'reading' && wasReading && view.sortElsewhere) {
+      patch.sort = view.sortElsewhere;
+      patch.sortElsewhere = '';
+    }
+    openLibraryAs(patch);
   };
 }
 
@@ -5669,9 +5716,11 @@ async function openWork(workId, options = {}) {
   // Capture the current work before clearing its data. An in-place refresh is
   // the same destination, including its collection, and must not add a Back step.
   const destination = { workId: String(workId) };
+  detailWorkId = String(workId);
   if (collection) destination.collection = collection;
   if (!options.replacePreview) go('detail', destination);
   else window.scrollTo(0, 0);
+  paintNowReading('detail');
   currentWork = null;
   previewCollection = collection;
   paintPreviewCollection(workId);

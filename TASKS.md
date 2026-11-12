@@ -22,8 +22,8 @@ go-ahead. Release a version per every 2 fixes." Worked in this order.
    diagnostics carry no text that could hold a title.
 4. ~~Custom colours reach every surface; long titles wrap.~~ — v3.16.5
    (v3.16.4 put Google Fonts back after the policy in v3.16.3 shut them out).
-5. The return pill stops covering content; the Reading collection sorts by
-   recency and loses its duplicate chip.
+5. ~~The return pill stops covering content; the Reading collection sorts by
+   recency and loses its duplicate chip.~~ — v3.16.6.
 6. Work page actions given an order; reading position kept as a place in the
    text rather than a pixel offset.
 7. Search results tidied; Home cards say one thing about visits.
