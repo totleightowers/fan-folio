@@ -15,8 +15,9 @@ export function refusal(res, fallback) {
   let text = said;
   let previous;
   do { previous = text; text = text.replace(/<[^>]*>/g, ' '); } while (text !== previous);
-  text = text.replace(/[<>]/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;|&rsquo;/g, '’')
-    .replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  // The ampersand last, so "&amp;quot;" stays the text it was and is not decoded twice.
+  text = text.replace(/[<>]/g, ' ').replace(/&nbsp;/g, ' ').replace(/&#39;|&rsquo;/g, '’')
+    .replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
   if (text.length > 160) text = text.slice(0, 157).trimEnd() + '…';
   if (text) return `${fallback}: ${text}`;
   const status = Number(res?.status);
