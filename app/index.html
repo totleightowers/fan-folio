@@ -198,9 +198,6 @@
   </section>
 
   <section id="activity" class="view" hidden>
-    <h2 class="settings-title">Downloads</h2>
-    <p class="setting-note">Your downloads and archive checks, in one place.</p>
-
     <div class="download-overview">
       <h3 id="download-state" aria-live="polite">Nothing downloading</h3>
       <p id="download-detail" class="setting-note"></p>
@@ -214,22 +211,17 @@
     <div id="job-list"></div>
     <details class="download-help">
       <summary>How downloading works</summary>
-      <p class="setting-note">Requests share a paced queue. Opening a work gives that work priority;
-        it still respects any cooldown requested by the archive. Prioritise changes the order
-        jobs are served without increasing the request rate.</p>
-      <p class="setting-note">Pause keeps your queue. Stop ends the job and keeps what arrived.
-        Completed jobs stay here so you can check the result or retry missing works.</p>
-      <p class="setting-note">Downloads use a background service while you read elsewhere or close the app.
-        Android battery restrictions or Force stop can still interrupt them. Your queue and
-        downloaded works are saved; reopen Fan Folio to continue if needed.</p>
+      <p class="setting-note">Downloads are paced so the archive is not hammered. Opening a work
+        moves it to the front.</p>
+      <p class="setting-note">Pause keeps the queue. Stop ends a job and keeps what arrived.</p>
+      <p class="setting-note">Downloads carry on while you read or close the app. If Android stops
+        them, reopen Fan Folio; nothing downloaded is lost.</p>
     </details>
 
     <details id="download-diagnostics" class="download-help" hidden>
       <summary>Download diagnostics</summary>
-      <p class="setting-note">If downloads stop, reopen Fan Folio and export this report. It keeps recent
-        activity, request timings, queue counts and Android process exits across restarts.
-        Reports include device and app versions, but no story text, titles, account details or cookies.
-        Up to 4 MB stays on this device; nothing is uploaded automatically.</p>
+      <p class="setting-note">If downloads stop, export this report. It holds timings and counts,
+        never story text, titles or account details, and nothing is uploaded.</p>
       <button id="downloads-diagnostics-export" class="ghost">Export download diagnostics</button>
       <p id="downloads-diagnostics-status" class="setting-note" role="status"></p>
     </details>
@@ -248,14 +240,13 @@
 
     <div id="history-sync" class="setting-group">
       <h3 class="group">Your reading history</h3>
-      <p class="setting-note">Most read adds your AO3 history visits to visits in Fan Folio. Sync reads your history pages without downloading the works. Large histories take time; you can pause the job below.</p>
+      <p class="setting-note">Counts your AO3 visits for Most read. Nothing is downloaded.</p>
       <button id="sync-history" class="ghost">Sync AO3 history</button>
       <p id="history-sync-status" class="setting-note" aria-live="polite"></p>
     </div>
     <div id="bookmark-sync" class="setting-group">
       <h3 class="group">Your bookmarks on the archive</h3>
-      <p class="setting-note">Checks for bookmarks you have made since the last time, and
-        downloads those works.</p>
+      <p class="setting-note">Downloads works you have bookmarked since the last check.</p>
       <button id="sync-now" class="primary">Check for new bookmarks</button>
       <button id="sync-stop" class="linkish" hidden>Stop</button>
       <p id="sync-status" class="setting-note" hidden></p>
@@ -266,10 +257,8 @@
           seen a page at a time — so putting that right means reading the whole
           list, which is slow enough to be its own deliberate act.
       -->
-      <p class="setting-note">Removing a bookmark on the archive cannot be noticed by checking
-        for new ones. Reading the whole list puts that right — it takes as long as your
-        bookmarks are long, and it only changes which works are marked, never what is
-        downloaded.</p>
+      <p class="setting-note">Reading the whole list also notices bookmarks you have removed.
+        It is slower, and never deletes a download.</p>
       <button id="sync-all" class="ghost">Read the whole bookmark list</button>
     </div>
   </section>
@@ -409,6 +398,9 @@
         <div id="count" class="count" aria-live="polite"></div>
         <button id="open-filters" class="filter-btn">
           <svg class="ic" aria-hidden="true"><use href="#i-filters"/></svg><span>View &amp; filters</span><span id="filter-count" class="badge" hidden></span>
+        </button>
+        <button id="density-toggle" class="filter-btn" aria-pressed="false" aria-label="Compact list" title="Compact list">
+          <svg class="ic" aria-hidden="true"><use href="#i-chapters"/></svg>
         </button>
         <label class="sort">
           <span>Sort</span>

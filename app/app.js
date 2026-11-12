@@ -964,13 +964,20 @@ new IntersectionObserver((entries) => {
   if (entries[0].isIntersecting && offset < total && !loading) loadMore();
 }).observe($('#more'));
 
-$('#library-density').value = libraryDisplay.density;
-$('#library-density').onchange = () => {
-  libraryDisplay.density = $('#library-density').value;
+/* How much each row says. The choice lived only inside View & filters, so a
+   Library showing one work per screen looked like the only Library there was.
+   It is one tap on the toolbar now, and the same setting in both places. */
+function setLibraryDensity(density) {
+  libraryDisplay.density = density === 'compact' ? 'compact' : 'expanded';
   save('archive.library-display', libraryDisplay);
+  $('#library-density').value = libraryDisplay.density;
+  $('#density-toggle').setAttribute('aria-pressed', String(libraryDisplay.density === 'compact'));
   for (const row of $$('.work-card')) row.dataset.density = libraryDisplay.density;
   for (const description of $$('.work-description')) description.open = libraryDisplay.density !== 'compact';
-};
+}
+setLibraryDensity(libraryDisplay.density);
+$('#library-density').onchange = () => setLibraryDensity($('#library-density').value);
+$('#density-toggle').onclick = () => setLibraryDensity(libraryDisplay.density === 'compact' ? 'expanded' : 'compact');
 $('#availability').value = view.availability || '';
 $('#availability').onchange = () => {
   view.availability = $('#availability').value; save(VIEW_KEY, view); paintActiveFilters(); loadMore(true);

@@ -2855,3 +2855,18 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
 /* Without the side list there is one way back to the collection, and the bar
    already has it. */
 @media (max-width: 53.99rem) { #preview-return { display: none; } }
+
+/* Compact is for finding something in a long list: a title, who wrote it,
+   what it is about in tags, and how long. The description is one tap away,
+   and the buttons on the row go because tapping the row does what they do. */
+#density-toggle { padding-inline: .7rem; }
+#density-toggle[aria-pressed=true] { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+:is(#library, #results) .work-card[data-density=compact] { padding-block: .65rem; }
+:is(#library, #results) .work-card[data-density=compact] h3 { font-size: 1.08rem; }
+:is(#library, #results) .work-card[data-density=compact] .by { margin-bottom: .1rem; }
+:is(#library, #results) .work-card[data-density=compact] .rowactions,
+:is(#library, #results) .work-card[data-density=compact] .visit-count,
+:is(#library, #results) .work-card[data-density=compact] .work-when { display: none; }
+:is(#library, #results) .work-card[data-density=compact] .work-description { margin: 0; }
+:is(#library, #results) .work-card[data-density=compact] .work-description > summary { min-height: 2.2rem; padding-block: .35rem; font-size: .78rem; }
+:is(#library, #results) .work-card[data-density=compact] .tagpill { min-height: 1.7rem; padding-block: .15rem; }

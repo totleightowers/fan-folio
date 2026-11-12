@@ -21,6 +21,31 @@ try {
   await page.waitForSelector('#works .work-card');
   assert.deepEqual(await titles(), ['Apple orchard', 'Middle distance', 'Zebra crossing'], 'everything, by title');
 
+  // Compact is one tap on the toolbar: shorter rows, the same setting as in View & filters.
+  const rowHeight = () => page.locator('#works .work-card').first().evaluate(el => el.getBoundingClientRect().height);
+  const full = await rowHeight();
+  await page.click('#density-toggle');
+  assert.equal(await page.locator('#density-toggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('#library-density').inputValue(), 'compact');
+  assert.equal(await page.locator('#works .work-card .rowactions').first().isVisible(), false);
+  assert.ok(await rowHeight() < full * 0.75, 'a compact row is clearly shorter');
+  assert.ok(await page.locator('#toolbar .toolrow').evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'the toolbar still fits');
+  await page.reload();
+  await page.waitForSelector('#shelves > *');
+  await page.click('#tabs [data-tab=library]');
+  await page.waitForSelector('#works .work-card');
+  assert.equal(await page.locator('#density-toggle').getAttribute('aria-pressed'), 'true', 'and it is remembered');
+  await page.click('#density-toggle');
+  assert.equal(await page.locator('#works .work-card .rowactions').first().isVisible(), true);
+
+  // Downloads does not repeat its own name under the bar.
+  await page.click('#tabs [data-tab=activity]');
+  await page.locator('#activity').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#activity .settings-title').count(), 0);
+  assert.equal(await page.locator('#bar-title').innerText(), 'Downloads');
+  await page.click('#tabs [data-tab=library]');
+  await page.waitForSelector('#works .work-card');
+
   // A work found by searching the Library is the same flat row, and nobody is told how long it took.
   await page.click('#context-search');
   await page.fill('#q', 'Zebra');
