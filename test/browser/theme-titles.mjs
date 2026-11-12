@@ -46,11 +46,14 @@ try {
   await page.locator('#filters').waitFor({ state: 'hidden' });
 
   // A title with nowhere to break still fits the screen, on the work page and in the reader.
-  const fits = (selector) => page.locator(selector).first().evaluate((el) => {
+  // Waited for rather than read once: the page slides in, and mid-slide nothing is inside the screen.
+  const fits = (selector) => page.waitForFunction((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return false;
     const box = el.getBoundingClientRect();
     return box.left >= 0 && box.right <= innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1
       && document.documentElement.scrollWidth <= innerWidth + 1;
-  });
+  }, selector, { timeout: 5000 }).then(() => true, () => false);
   await page.locator('#works .work-title-link').filter({ hasText: 'Pneumono' }).click();
   await page.locator('#preview-story .work-title').waitFor();
   await readable('#preview-story .work-title');
