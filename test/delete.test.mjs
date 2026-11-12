@@ -2,7 +2,7 @@ import { nativeSource } from './native-source.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { readFileSync } from 'node:fs';
+
 import { SCHEMA } from '../app/core/store/schema.js';
 import { INDEX_FIRST, WORK_OWNS, deleteStatements, TOMBSTONE } from '../app/core/store/delete.js';
 

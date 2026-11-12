@@ -448,7 +448,18 @@
     <button id="preview-return" class="linkish" hidden><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg> Back to your collection</button>
     <div class="preview-layout">
       <aside id="preview-library" aria-label="Works in this collection" hidden>
-        <p class="eyebrow">In this collection</p>
+        <div class="preview-controls">
+          <select id="preview-collection" aria-label="Collection">
+            <option value="all">All works</option>
+            <option value="reading">Reading</option>
+            <option value="later">For later</option>
+            <option value="finished">Finished</option>
+            <option value="bookmarked">AO3 bookmarks</option>
+            <option value="" hidden>This selection</option>
+          </select>
+          <select id="preview-sort" aria-label="Sort"></select>
+          <button id="preview-filters" class="filter-btn"><svg class="ic" aria-hidden="true"><use href="#i-filters"/></svg><span>Filters</span><span id="preview-filter-count" class="badge" hidden></span></button>
+        </div>
         <p id="preview-count" class="setting-note"></p>
         <div id="preview-list"><div id="preview-choices"></div><p id="preview-more" class="setting-note" hidden>Loading more…</p></div>
       </aside>

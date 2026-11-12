@@ -13,9 +13,10 @@ import { FF_VISITS } from './core/store/visits.js';
 import { renderChapter, sanitiseHtml } from './core/render.js';
 import { search } from './core/discover.js';
 import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, COMPLETED, shown } from './core/query.js';
-import { parseWorkPage, parseListing } from './core/ao3/parse.js';
-import { workPage, linkTarget, chapterUrl, seriesPage, ORIGIN } from './core/ao3/urls.js';
-import { parseForm, csrfToken, encodeForm } from './core/ao3/forms.js';
+import { parseListing } from './core/ao3/parse.js';
+import { workPage, linkTarget, seriesPage, ORIGIN } from './core/ao3/urls.js';
+import { parseForm, encodeForm } from './core/ao3/forms.js';
+import { refusal } from './core/ao3/refusal.js';
 import { htmlToText, countWords } from './core/epub.js';
 
 const native = typeof window !== 'undefined' ? window.ArchiveNative : undefined;

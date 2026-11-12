@@ -28,7 +28,7 @@ import { readings as historyUrl, bookmarks as bookmarksUrl, authorWorks as autho
   isOrphan, linkTarget, ORIGIN as AO3 } from './core/ao3/urls.js';
 import { DURATION } from './core/motion.js';
 import { createSwipe } from './core/swipe.js';
-import { axisOf, travel, commits, inSystemEdge, ownsHorizontal, dismisses } from './core/gesture.js';
+import { ownsHorizontal, dismisses } from './core/gesture.js';
 import { exportDatabase, databaseSize, haptic, leaveKudos, bookmarkWork, commentOnWork, openOnArchive, saveStubs, fetchNextImage, retryImages, deleteWork, deleteWorks, allowAgain, blockAuthor, unblockAuthor, noteBookmarkedBy } from './api.js';
 import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, signIn, signOut, signedIn, saveProgress, markOpened, recordVisit, saveHistory, markFinished, restartReading, markBookmarked, reconcileBookmarks, saveMeta, readMeta,
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady, archiveRequest, pollArchiveRequests, downloadDiagnostic, exportDownloadDiagnostics,
@@ -1579,6 +1579,7 @@ $('#apply-filters').onclick = () => {
   closeSheet($('#filters'));
   paintActiveFilters();
   loadMore(true);
+  refillPreviewCollection();      // when the filters were opened from beside a story
 };
 $('#clear-filters').onclick = async () => {
   /* Every filter the panel can set. Miss one and Clear leaves it on, with the
@@ -5649,7 +5650,8 @@ function previewChoice(work, workId, origin) {
 }
 
 function paintPreviewCount(origin) {
-  $('#preview-count').textContent = origin.works.length < origin.total
+  $('#preview-count').textContent = !origin.total ? 'Nothing here'
+    : origin.works.length < origin.total
     ? `${fmt(origin.works.length)} of ${fmt(origin.total)}`
     : `${fmt(origin.total)} ${origin.total === 1 ? 'work' : 'works'}`;
 }
@@ -5681,6 +5683,70 @@ async function loadMorePreview(origin, workId) {
   }
 }
 
+/*
+ * The list beside a story is the Library, not a souvenir of it.
+ *
+ * It could show what the Library had been showing and nothing else: to see
+ * what you are reading instead, or the same shelf in another order, meant
+ * going back, changing it there and opening a work again. The collection, the
+ * order and the filters are set here now. They are the Library's own, so the
+ * Library is found the same way on the way back.
+ */
+function paintPreviewControls() {
+  const tab = view.collection || view.state;
+  $('#preview-collection').value = [...COLLECTION_TABS, 'all'].includes(tab) ? tab : '';
+  $('#preview-sort').value = view.sort;
+  const n = activeCount();
+  $('#preview-filter-count').hidden = !n;
+  $('#preview-filter-count').textContent = n;
+}
+
+async function refillPreviewCollection() {
+  const origin = previewCollection;
+  if (!origin || showing() !== 'detail') return;
+  // The same object the Back trail holds, so every way back agrees with it.
+  origin.filters = JSON.parse(JSON.stringify(view));
+  origin.works.length = 0;
+  origin.loaded = 50;
+  origin.scrollY = 0;
+  origin.total = 1;                  // unknown until the first answer
+  origin.loadingMore = false;
+  const library = stack.peek();
+  if (library?.route === 'library') {
+    library.params = { filters: origin.filters, loaded: origin.loaded };
+    library.scrollY = 0;
+  }
+  $('#preview-choices').replaceChildren();
+  $('#preview-list').scrollTop = 0;
+  $('#preview-count').textContent = 'Loading…';
+  paintPreviewControls();
+  await loadMorePreview(origin, currentWork?.work_id);
+  if (previewCollection !== origin) return;
+  paintPreviewCollection(currentWork?.work_id ?? detailWorkId);
+}
+
+$('#preview-sort').append(...[...$('#sort').options].map((option) => option.cloneNode(true)));
+$('#preview-sort').onchange = () => {
+  view.sort = $('#preview-sort').value;
+  $('#sort').value = view.sort;
+  save(VIEW_KEY, view);
+  refillPreviewCollection();
+};
+$('#preview-collection').onchange = () => {
+  const key = $('#preview-collection').value;
+  if (!key) return;
+  const wasReading = view.state === 'reading';
+  Object.assign(view, { state: 'all', collection: '' },
+    ['later', 'bookmarked'].includes(key) ? { collection: key } : { state: key });
+  if (key === 'reading' && !wasReading) { view.sortElsewhere = view.sort; view.sort = 'recent'; }
+  else if (key !== 'reading' && wasReading && view.sortElsewhere) { view.sort = view.sortElsewhere; view.sortElsewhere = ''; }
+  $('#sort').value = view.sort;
+  save(VIEW_KEY, view);
+  paintActiveFilters();
+  refillPreviewCollection();
+};
+$('#preview-filters').onclick = () => $('#open-filters').click();
+
 function paintPreviewCollection(workId) {
   const origin = previewCollection;
   $('#preview-return').hidden = !origin;
@@ -5694,6 +5760,7 @@ function paintPreviewCollection(workId) {
   more.hidden = true;
   $('#preview-choices').replaceChildren();
   if (!origin) return;
+  paintPreviewControls();
   paintPreviewCount(origin);
   $('#preview-choices').append(...origin.works.map(work => previewChoice(work, workId, origin)));
   more.hidden = origin.works.length >= origin.total;

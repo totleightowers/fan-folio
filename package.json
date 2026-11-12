@@ -8,6 +8,7 @@
   "scripts": {
     "test": "node --test test/*.test.mjs",
     "check": "for f in $(find app tools test -name '*.js' -o -name '*.mjs'); do node --check \"$f\" || exit 1; done && echo 'all javascript parses'",
+    "lint": "${ESLINT:-eslint} --config eslint.config.mjs app tools test",
     "scan": "node tools/scan-library.mjs"
   },
   "engines": { "node": ">=20" }

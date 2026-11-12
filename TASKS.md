@@ -28,7 +28,11 @@ go-ahead. Release a version per every 2 fixes." Worked in this order.
    text rather than a pixel offset.~~ — v3.17.0.
 7. ~~Search results tidied; Home cards say one thing about visits.~~ — v3.17.1.
 8. ~~Library density; Downloads cut down.~~ — v3.18.0.
-9. Library is list-plus-story on a tablet; a real linter in `npm run check`.
+9. ~~The list beside a story is the Library on a tablet; a real linter.~~ —
+   v3.19.0. The list keeps its place upright and has the collection, order
+   and filters on it. Still to argue: whether the Library tab itself should
+   open straight into that view. `npm run lint` also lists dead code, as
+   warnings, that has not been cleared out.
 10. One set of routes for the dev server and the app; browser journeys in
     place of tests that read source as text.
 11. `app.js` split; library queries off the UI thread.
