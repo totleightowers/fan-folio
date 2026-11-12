@@ -107,3 +107,53 @@ test('sanitising is idempotent', () => {
   const once = sanitiseFragment('<p class="a">Tom &amp; Jerry <em>x</em></p>');
   assert.equal(sanitiseFragment(once), once, 'rendering twice must not change anything');
 });
+
+test('a scheme spelled in entities is still the scheme', () => {
+  for (const href of ['&#106;avascript:alert(1)', '&#x6a;avascript:alert(1)', '&#106avascript:alert(1)',
+    'javascript&colon;alert(1)', 'java&#9;script:alert(1)', 'java&Tab;script:alert(1)',
+    '&amp;#106;avascript:alert(1)', '&#100;ata:text/html,x']) {
+    assert.equal(sanitiseFragment(`<a href="${href}">x</a>`), '<a>x</a>', href);
+  }
+});
+
+test('an ordinary link with an escaped ampersand is unchanged', () => {
+  const html = '<a href="https://example.com/?a=1&amp;b=2">x</a>';
+  assert.equal(sanitiseFragment(html), html);
+  assert.equal(sanitiseFragment('<img src="img1.jpg">'), '<img src="img1.jpg">');
+});
+
+test('removing one unsafe piece of css cannot assemble another', () => {
+  assert.equal(sanitiseFragment('<p style="posit@importion:fixed">x</p>'), '<p>x</p>');
+  assert.ok(!/position/.test(sanitiseCss('.a { posit@importion: fixed }')));
+});
+
+test('css is judged by what its escapes and entities mean', () => {
+  assert.equal(sanitiseFragment('<p style="position:\\66ixed">x</p>'), '<p>x</p>');
+  assert.equal(sanitiseFragment('<p style="position:&#102;ixed;color:red">x</p>'), '<p style="color:red">x</p>');
+  const css = sanitiseCss('.a { pos\\69tion: fixed; top: 0 } @\\69mport url(x); .b { color: red }');
+  assert.ok(!/69tion|69mport/.test(css));
+  assert.ok(css.includes('top: 0') && css.includes('.b { color: red }'));
+});
+
+test('position is an allowlist, so a variable cannot carry fixed in', () => {
+  assert.equal(sanitiseFragment('<p style="--p:fixed;position:var(--p)">x</p>'), '<p style="--p:fixed;">x</p>');
+  assert.equal(sanitiseFragment('<p style="position: relative; z-index: 2">x</p>'),
+    '<p style="position: relative; z-index: 2">x</p>');
+  assert.equal(sanitiseFragment('<p style="z-index:99999">x</p>'), '<p>x</p>');
+});
+
+test('css cannot fetch from another server', () => {
+  assert.equal(sanitiseFragment('<p style="background:url(https://example.com/x.png);color:red">x</p>'),
+    '<p style="color:red">x</p>');
+  assert.ok(!/url/.test(sanitiseCss('.a { background: URL("https://example.com/x.png") } .b { color: red }')));
+});
+
+test('a brace or semicolon inside a css string does not end the declaration', () => {
+  const css = '.e { content: "a;b}c"; color: green }';
+  assert.equal(sanitiseCss(css), css);
+});
+
+test('a sanitised style survives being sanitised again', () => {
+  const once = sanitiseFragment('<p style="font-family: &quot;A &amp; B&quot;; color: red">x</p>');
+  assert.equal(sanitiseFragment(once), once);
+});

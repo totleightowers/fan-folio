@@ -14,7 +14,7 @@ twice.
 go-ahead. Release a version per every 2 fixes." Worked in this order.
 
 1. ~~Library rows list every relationship~~ and ~~the tablet side list loads
-   the whole collection~~ — v3.16.0.
+   the whole collection~~ — v3.16.1 (v3.16.0 is a stray tag on the old commit, with no release).
 2. Search snippets cannot carry markup; the sanitiser's three bypasses closed.
 3. A content security policy on the page; script errors logged with their
    message and stack.

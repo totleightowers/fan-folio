@@ -9,6 +9,7 @@
 
 import { diagnosticProgress, diagnosticQueue } from './download-diagnostics.js';
 import { visitLabel } from './core/store/visits.js';
+import { snippetParts } from './core/snippet.js';
 import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
 import { walkHistory } from './core/sync/history.js';
@@ -5456,9 +5457,13 @@ function passage(h) {
   node.innerHTML = '<div class="where"></div><div class="snip"></div>';
   node.querySelector('.where').textContent =
     `${h.title} \u2014 ${authorsOf(h.authors)[0] ?? 'Anonymous'} \u00b7 chapter ${h.number}`;
-  // the snippet is the one place server HTML is trusted: SQLite built it from
-  // <mark> delimiters we chose, over text we stored
-  node.querySelector('.snip').innerHTML = h.snippet;
+  // Only the <mark> delimiters we chose are markup; the passage is text.
+  node.querySelector('.snip').append(...snippetParts(h.snippet).map((part) => {
+    if (!part.mark) return part.text;
+    const mark = document.createElement('mark');
+    mark.textContent = part.text;
+    return mark;
+  }));
   node.onclick = () => openChapter(h.work_id, h.number, { transient: true });
   return node;
 }

@@ -61,11 +61,126 @@ const SAFE_SCHEMES = new Set(['http', 'https', 'mailto']);
 const INVISIBLE = /[\u0000-\u0020\u00a0\u2000-\u200f\u2028-\u202f\ufeff]/g;
 
 /**
+ * What a browser makes of an attribute value before it acts on it.
+ *
+ * `href="&#106;avascript:…"` holds no scheme this file would refuse until the
+ * entity is decoded, and the browser decodes it. Only the entities that can
+ * spell a scheme or hide one are needed: numeric ones, the colon, and the
+ * whitespace a URL parser throws away.
+ */
+const NAMED = { colon: ':', tab: '\t', newline: '\n', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+function decodeEntities(value) {
+  return String(value).replace(/&(?:#x([0-9a-f]{1,6})|#(\d{1,7})|([a-z]{2,7}));?/gi, (whole, hex, dec, name) => {
+    if (name) return NAMED[name.toLowerCase()] ?? whole;
+    const code = hex ? parseInt(hex, 16) : parseInt(dec, 10);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+  });
+}
+
+/**
+ * Whether a URL is one we would follow, read the way a browser reads it.
+ *
+ * Checked at every stage of decoding rather than once: the value is written
+ * back out as it came, so whatever number of decodings stands between it and
+ * the browser, none of them may arrive at a scheme we do not trust.
+ */
+function safeUrl(url) {
+  let seen = url;
+  for (let pass = 0; pass < 8; pass++) {
+    const scheme = LEADING_SCHEME.exec(seen);
+    if (scheme && !SAFE_SCHEMES.has(scheme[1].toLowerCase())) return false;
+    const next = decodeEntities(seen).replace(INVISIBLE, '');
+    if (next === seen) return true;
+    seen = next;
+  }
+  return false;   // still unwinding after eight layers is not a link
+}
+
+/**
  * Declarations that let content leave its box or cover the app's own UI.
  * position:fixed across the screen is how a work skin stops being a work skin
- * and starts being a phishing overlay.
+ * and starts being a phishing overlay. A url() is a request to somebody
+ * else's server every time the page is read, which is the tracking pixel the
+ * reader already refuses in an <img>.
  */
-const UNSAFE_CSS = /(position\s*:\s*(fixed|sticky))|(z-index\s*:\s*\d{3,})|(@import)|(expression\s*\()|(behaviou?r\s*:)|(-moz-binding)|(url\s*\(\s*['"]?\s*(javascript|data):)/gi;
+const UNSAFE_CSS = /@import|@font-face|@namespace|expression\s*\(|behaviou?r\s*:|-moz-binding|url\s*\(|image-set\s*\(|\bsrc\s*\(/;
+const SAFE_POSITION = new Set(['static', 'relative', 'absolute', 'inherit', 'initial', 'unset', 'revert']);
+
+/** A piece of CSS as the browser understands it: no comments, no escapes. */
+function cssMeaning(text) {
+  return String(text)
+    .replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '')
+    .replace(/\\(?:([0-9a-f]{1,6})[ \t\n\r\f]?|(\r\n|[\n\r\f])|([\s\S]))/gi, (whole, hex, newline, ch) => {
+      if (newline) return '';
+      if (ch) return ch;
+      const code = parseInt(hex, 16);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '\ufffd';
+    })
+    .toLowerCase();
+}
+
+/**
+ * One selector, at-rule prelude or declaration: may it stay?
+ *
+ * Judged by meaning, and whole. Removing the offending substring is what let
+ * `posit@importion:fixed` through — taking out the middle is what joined the
+ * two ends — and `\66ixed` never contained the word that was being looked for.
+ */
+function cssPieceIsSafe(piece) {
+  const meaning = cssMeaning(piece);
+  if (UNSAFE_CSS.test(meaning)) return false;
+  const declaration = /^\s*([-\w]+)\s*:([\s\S]*)$/.exec(meaning);
+  if (!declaration) return true;
+  const value = declaration[2].replace(/!\s*important/g, '').trim();
+  /* An allowlist, because `position: var(--p)` is fixed too if --p says so. */
+  if (declaration[1] === 'position') return SAFE_POSITION.has(value);
+  if (declaration[1] === 'z-index') return value === 'auto' || /^[-+]?\d{1,2}$/.test(value);
+  return true;
+}
+
+/**
+ * CSS with every unsafe piece taken out whole.
+ *
+ * Split where a browser splits — at braces and semicolons that are not inside
+ * a string or a bracket — so the pieces judged here are the pieces it sees.
+ * An unsafe declaration goes; an unsafe prelude takes its whole block with it.
+ */
+function cleanCss(css) {
+  const input = String(css ?? '').replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '');
+  let out = '';
+  let piece = '';
+  let quote = '';
+  let depth = 0;
+  let skipping = 0;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '\\') { piece += ch + (input[i + 1] ?? ''); i++; continue; }
+    if (quote) { piece += ch; if (ch === quote) quote = ''; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; piece += ch; continue; }
+    if (ch === '(' || ch === '[') { depth++; piece += ch; continue; }
+    if ((ch === ')' || ch === ']') && depth) { depth--; piece += ch; continue; }
+    if (depth || !(ch === '{' || ch === '}' || ch === ';')) { piece += ch; continue; }
+
+    if (skipping) {
+      if (ch === '{') skipping++;
+      if (ch === '}') skipping--;
+      piece = '';
+      continue;
+    }
+    const safe = cssPieceIsSafe(piece);
+    if (ch === '{') {
+      if (safe) out += piece + '{'; else skipping = 1;
+    } else if (ch === ';') {
+      if (safe) out += piece + ';';
+    } else {
+      out += (safe ? piece : '') + '}';
+    }
+    piece = '';
+  }
+  // Whatever is left never closed. It is kept only if it is harmless as it stands.
+  if (!skipping && !quote && !depth && cssPieceIsSafe(piece)) out += piece;
+  return out;
+}
 
 const ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
 
@@ -120,13 +235,15 @@ function keepAttribute(tag, name, value) {
        still runs it — the check has to see what the browser will see. */
     const url = value.trim().replace(INVISIBLE, '');
     if (name === 'src' && !url) return '';
-    const scheme = LEADING_SCHEME.exec(url);
-    if (scheme && !SAFE_SCHEMES.has(scheme[1].toLowerCase())) return null;
+    if (!safeUrl(url)) return null;
     return url;
   }
   if (name === 'style') {
-    const cleaned = value.replace(UNSAFE_CSS, '');
-    return cleaned.trim() ? cleaned : null;
+    /* The browser decodes the attribute before it parses the CSS, so the CSS
+       is judged decoded — and written back with every ampersand escaped, so
+       what the browser decodes is exactly what was judged. */
+    const cleaned = cleanCss(decodeEntities(value)).trim();
+    return cleaned ? { verbatim: cleaned } : null;
   }
   if (name === 'target') return '_blank';
   return value;
@@ -192,7 +309,10 @@ export function sanitiseFragment(html) {
     const kept = [];
     for (const [name, value] of readAttributes(raw.slice(nameMatch[0].length))) {
       const safe = keepAttribute(tag, name, value);
-      if (safe !== null) kept.push(name + '="' + escapeAttr(safe) + '"');
+      if (safe === null) continue;
+      kept.push(name + '="' + (typeof safe === 'object'
+        ? safe.verbatim.replace(/[&<>"]/g, (c) => ESCAPE[c])
+        : escapeAttr(safe)) + '"');
     }
     // a link opening elsewhere must not hand the opener over with it
     if (tag === 'a' && kept.some((a) => a.startsWith('target='))) {
@@ -209,7 +329,5 @@ export function sanitiseFragment(html) {
 
 /** Author-written CSS, stripped of what can escape the work. */
 export function sanitiseCss(css) {
-  return String(css ?? '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(UNSAFE_CSS, '');
+  return cleanCss(css);
 }
