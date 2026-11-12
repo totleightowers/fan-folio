@@ -10,6 +10,7 @@
 import { diagnosticProgress, diagnosticQueue, diagnosticError } from './download-diagnostics.js';
 import { visitLabel } from './core/store/visits.js';
 import { snippetParts } from './core/snippet.js';
+import { customTheme, isDark, CUSTOM_THEME_TOKENS } from './core/theme.js';
 import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
 import { walkHistory } from './core/sync/history.js';
@@ -135,15 +136,6 @@ function loadGoogleFont(family, weight = 400) {
   document.head.append(link);
 }
 
-/** Perceived lightness of a hex colour, by the usual luminance weights. */
-function isDark(hex) {
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex ?? ''));
-  if (!m) return false;
-  const n = parseInt(m[1], 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 128;
-}
-
 const faceStack = (family) => SYSTEM_FACES[family] ?? `'${String(family).replace(/'/g, '')}', Georgia, serif`;
 
 /**
@@ -171,19 +163,13 @@ function applyPrefs() {
   else r.setAttribute('data-theme', prefs.theme);
   r.toggleAttribute('data-dark', themeIsDark());
 
-  if (prefs.theme === 'custom') {
-    r.style.setProperty('--bg', prefs.bg);
-    r.style.setProperty('--fg', prefs.fg);
-    r.style.setProperty('--pane', prefs.bg);
-    // a custom theme sets no data-theme, so the browser would otherwise paint
-    // sliders and selects to the system's taste — which is how a black theme
-    // ended up with a white dropdown in it
-    const dark = isDark(prefs.bg);
-    r.style.setProperty('color-scheme', dark ? 'dark' : 'light');
-    // links must stay legible against whatever background was chosen
-    r.style.setProperty('--link', dark ? '#7fb2ef' : '#1f5fa9');
-  } else {
-    for (const v of ['--bg', '--fg', '--pane', 'color-scheme', '--link']) r.style.removeProperty(v);
+  /* A custom theme sets no data-theme, so every token is stated here: the
+     grounds and inks from the two chosen colours, and color-scheme so the
+     browser paints sliders and selects to match rather than to the system. */
+  const custom = prefs.theme === 'custom' ? customTheme(prefs.bg, prefs.fg) : null;
+  for (const token of CUSTOM_THEME_TOKENS) {
+    if (custom) r.style.setProperty(token, custom[token]);
+    else r.style.removeProperty(token);
   }
 
   loadGoogleFont(prefs.face, prefs.weight);

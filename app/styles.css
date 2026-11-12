@@ -2827,3 +2827,11 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
 
 .job-attempt { color: var(--muted); font-size: .8rem; margin: .4rem 0; }
 .job-retry { margin: .4rem 0; }
+
+/* A title can be one unbroken run — a tag used as a name, a URL, a language
+   written without spaces — and it ran off the side of the work page and the
+   reader header, taking the page's width with it. It breaks wherever it has
+   to, as the library row's title always has. */
+.work-head, #reader-head { min-width: 0; }
+.work-title, .work-by, #rh-title, #rh-by, .card .card-title, .card .card-by,
+.hit .t, .hit .where { overflow-wrap: anywhere; }
