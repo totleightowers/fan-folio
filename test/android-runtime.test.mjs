@@ -93,6 +93,9 @@ test('the page and the shell declare one content security policy, and it allows 
   assert.deepEqual(policy['script-src'], ["'self'"]);
   assert.deepEqual(policy['connect-src'], ["'self'"]);
   assert.deepEqual(policy['object-src'], ["'none'"]);
+  // A reading face that is not bundled comes from Google Fonts: its stylesheet, then its files.
+  assert.deepEqual(policy['style-src'], ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com']);
+  assert.deepEqual(policy['font-src'], ["'self'", 'https://fonts.gstatic.com']);
   assert.deepEqual(policy['base-uri'], ["'none'"]);
   assert.match(java, /name\.endsWith\("\.html"\)\) h\.put\("Content-Security-Policy", CONTENT_SECURITY_POLICY\)/);
   // The policy must come before anything it governs.

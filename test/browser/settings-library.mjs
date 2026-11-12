@@ -847,6 +847,18 @@ try {
   await page.locator('#versions-list').filter({ hasText: 'Nothing has changed' }).waitFor();
   await page.locator('[data-close="versions-dialog"]').click();
   assert.deepEqual(errors, [], 'no browser exceptions');
+  // A reading face that is not bundled is fetched from Google Fonts; the policy must let it.
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ contentType: 'text/css',
+    body: "@font-face { font-family: 'Roboto'; src: url(https://fonts.gstatic.com/s/roboto/test.woff2) format('woff2'); }" }));
+  await page.route('https://fonts.gstatic.com/**', route => route.fulfill({ contentType: 'font/woff2', body: '' }));
+  assert.equal(await page.evaluate(() => new Promise((resolve) => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600&display=swap';
+    link.onload = () => resolve('loaded'); link.onerror = () => resolve('refused');
+    document.head.append(link);
+  })), 'loaded', 'the Google Fonts stylesheet loads');
+  await page.evaluate(() => document.fonts.load("16px 'Roboto'").catch(() => {}));
   assert.deepEqual(blocked, [], 'the content security policy blocked nothing the app needs');
   assert.equal(await page.evaluate(() => {
     const script = document.createElement('script');

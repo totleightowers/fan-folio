@@ -40,7 +40,7 @@ public class FolioRuntime extends android.content.ContextWrapper {
     private static final String ORIGIN = "https://" + HOST;
     /* The page holds the bridge to the library, so nothing but its own files
        may run in it. The same policy is declared in index.html. */
-    private static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'";
+    private static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'";
     private static final int PICK_DATABASE = 1;
     private static final int SAVE_DATABASE = 2;
     private static final int PICK_EPUBS = 3;
