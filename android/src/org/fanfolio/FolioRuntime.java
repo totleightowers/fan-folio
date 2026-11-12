@@ -38,6 +38,9 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
     private static final String HOST = "appassets.androidplatform.net";
     private static final String ORIGIN = "https://" + HOST;
+    /* The page holds the bridge to the library, so nothing but its own files
+       may run in it. The same policy is declared in index.html. */
+    private static final String CONTENT_SECURITY_POLICY = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'";
     private static final int PICK_DATABASE = 1;
     private static final int SAVE_DATABASE = 2;
     private static final int PICK_EPUBS = 3;
@@ -664,7 +667,9 @@ public class FolioRuntime extends android.content.ContextWrapper {
         InputStream in;
         try { in = getAssets().open("web/" + name); }
         catch (IOException miss) { in = getAssets().open("web/index.html"); name = "index.html"; }
-        return new WebResourceResponse(mimeOf(name), "utf-8", 200, "OK", headers(), in);
+        Map<String, String> h = headers();
+        if (name.endsWith(".html")) h.put("Content-Security-Policy", CONTENT_SECURITY_POLICY);
+        return new WebResourceResponse(mimeOf(name), "utf-8", 200, "OK", h, in);
     }
 
     /** Images live in the archive as blobs, addressed by content hash. */

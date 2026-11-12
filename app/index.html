@@ -1,5 +1,10 @@
 <!doctype html>
 <meta charset="utf-8">
+<!-- Scripts run only from the app's own files. A saved chapter that got
+     markup past the sanitiser still cannot run it, and it shares this page
+     with the bridge to the library. Kept identical to the header the Android
+     shell sends; a test holds the two together. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Fan Folio</title>
 <link rel="stylesheet" href="/ao3-work.css">

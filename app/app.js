@@ -7,7 +7,7 @@
  * difference between an app you keep and one you abandon.
  */
 
-import { diagnosticProgress, diagnosticQueue } from './download-diagnostics.js';
+import { diagnosticProgress, diagnosticQueue, diagnosticError } from './download-diagnostics.js';
 import { visitLabel } from './core/store/visits.js';
 import { snippetParts } from './core/snippet.js';
 import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult } from './core/images.js';
@@ -4293,8 +4293,8 @@ function sampleDownloads() {
       coolUntil, lastDownloadProgress, document.hidden));
   } catch { /* Diagnostic sampling must not interrupt the native tick. */ }
 }
-window.addEventListener('error', () => downloadDiagnostic('js_error'));
-window.addEventListener('unhandledrejection', () => downloadDiagnostic('js_rejection'));
+window.addEventListener('error', (event) => downloadDiagnostic('js_error', diagnosticError(event)));
+window.addEventListener('unhandledrejection', (event) => downloadDiagnostic('js_rejection', diagnosticError(event)));
 document.addEventListener('visibilitychange', () => {
   downloadDiagnostic('visibility', { hidden: document.hidden });
   sampleDownloads();

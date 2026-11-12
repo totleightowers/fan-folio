@@ -84,6 +84,9 @@ try {
   };
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  // The page's own policy must not get in the way of anything the app does.
+  const blocked = [];
+  page.on('console', message => { if (/Content Security Policy/i.test(message.text())) blocked.push(message.text()); });
   await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
   await page.route('**/api/prefs', route => route.fulfill({ json: { prefs: null } }));
   await page.goto('http://127.0.0.1:18766');
@@ -844,6 +847,13 @@ try {
   await page.locator('#versions-list').filter({ hasText: 'Nothing has changed' }).waitFor();
   await page.locator('[data-close="versions-dialog"]').click();
   assert.deepEqual(errors, [], 'no browser exceptions');
+  assert.deepEqual(blocked, [], 'the content security policy blocked nothing the app needs');
+  assert.equal(await page.evaluate(() => {
+    const script = document.createElement('script');
+    script.textContent = 'window.__inlineRan = true';
+    document.head.append(script);
+    return window.__inlineRan === true;
+  }), false, 'an inline script does not run');
   console.log('Settings, persistence, reading preview and library browser checks passed');
 } finally {
   await browser.close();

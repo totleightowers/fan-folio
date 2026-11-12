@@ -79,3 +79,24 @@ public class FolioRuntime {
     assert.equal(run.status,0,run.stderr);
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });
+
+test('the page and the shell declare one content security policy, and it allows no foreign script', async () => {
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
+  const java = readFileSync(new URL('../android/src/org/fanfolio/FolioRuntime.java', import.meta.url), 'utf8');
+  const inPage = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/.exec(html)?.[1];
+  const inShell = /CONTENT_SECURITY_POLICY = "([^"]+)";/.exec(java)?.[1];
+  assert.ok(inPage, 'index.html declares a policy');
+  assert.equal(inShell, inPage);
+  const policy = Object.fromEntries(inPage.split(';').map(d => d.trim().split(/\s+/)).map(([name, ...v]) => [name, v]));
+  assert.deepEqual(policy['default-src'], ["'none'"]);
+  assert.deepEqual(policy['script-src'], ["'self'"]);
+  assert.deepEqual(policy['connect-src'], ["'self'"]);
+  assert.deepEqual(policy['object-src'], ["'none'"]);
+  assert.deepEqual(policy['base-uri'], ["'none'"]);
+  assert.match(java, /name\.endsWith\("\.html"\)\) h\.put\("Content-Security-Policy", CONTENT_SECURITY_POLICY\)/);
+  // The policy must come before anything it governs.
+  assert.ok(html.indexOf('Content-Security-Policy') < html.indexOf('<link'));
+  assert.equal(/<script(?![^>]*\bsrc=)/.test(html), false, 'no inline script');
+  assert.equal(/\son[a-z]+="/.test(html), false, 'no inline handlers');
+});

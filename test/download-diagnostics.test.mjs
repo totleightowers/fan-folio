@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { diagnosticQueue, diagnosticProgress } from '../app/download-diagnostics.js';
+import { diagnosticQueue, diagnosticProgress, diagnosticError } from '../app/download-diagnostics.js';
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -45,6 +45,14 @@ public class Check {
   Map<String,Object> safe=DiagnosticFields.clean("queue",fields);
   check(safe.size()==2 && safe.get("running").equals(3) && safe.get("hidden").equals(true));
   check(DiagnosticFields.clean("PRIVATE",fields)==null);
+  Map<String,Object> error=new HashMap<>();
+  error.put("kind","TypeError"); error.put("where","openWork@app.js:12:5|-@core/nav.js:3:1"); error.put("message","PRIVATE");
+  Map<String,Object> located=DiagnosticFields.clean("js_error",error);
+  check(located.size()==2 && located.get("kind").equals("TypeError") && located.get("where").equals("openWork@app.js:12:5|-@core/nav.js:3:1"));
+  error.put("kind","A PRIVATE title"); error.put("where","PRIVATE title@app.js:1:1");
+  check(DiagnosticFields.clean("js_rejection",error).isEmpty());
+  error.put("kind","TypeError"); error.put("where","openWork@app.js:12:5");
+  check(DiagnosticFields.clean("queue",error).isEmpty());
  }
 }`);
     const built=spawnSync('javac',['-d',dir,...['DiagnosticJournal','DiagnosticFields','Check'].map(n=>join(dir,n+'.java'))],{encoding:'utf8'});
@@ -94,4 +102,18 @@ public class Check {
     const run=spawnSync('java',['-cp',dir,'Check'],{encoding:'utf8'});
     assert.equal(run.status,0,run.stderr);
   } finally {rmSync(dir,{recursive:true,force:true});}
+});
+
+test('a script error is recorded as its kind and where it happened, never its message', () => {
+  const error = new TypeError('PRIVATE title is not a function');
+  error.stack = `TypeError: PRIVATE title is not a function
+    at openWork (https://app.fanfolio.invalid/app.js:5650:12)
+    at async https://app.fanfolio.invalid/core/nav.js:40:3
+    at HTMLButtonElement.onclick (https://app.fanfolio.invalid/app.js:890:7)`;
+  const values = diagnosticError({ error });
+  assert.deepEqual(values, { kind: 'TypeError', where: 'openWork@app.js:5650:12|-@core/nav.js:40:3|HTMLButtonElement.onclick@app.js:890:7' });
+  assert.equal(JSON.stringify(values).includes('PRIVATE'), false);
+  assert.deepEqual(diagnosticError({ reason: 'PRIVATE string rejection' }), { kind: 'Unknown' });
+  assert.deepEqual(diagnosticError({ error: null, filename: 'https://app.fanfolio.invalid/app.js?v=1', lineno: 7, colno: 2 }),
+    { kind: 'Unknown', where: '-@app.js:7:2' });
 });

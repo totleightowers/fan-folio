@@ -15,9 +15,11 @@ go-ahead. Release a version per every 2 fixes." Worked in this order.
 
 1. ~~Library rows list every relationship~~ and ~~the tablet side list loads
    the whole collection~~ — v3.16.1 (v3.16.0 is a stray tag on the old commit, with no release).
-2. Search snippets cannot carry markup; the sanitiser's three bypasses closed.
-3. A content security policy on the page; script errors logged with their
-   message and stack.
+2. ~~Search snippets cannot carry markup; the sanitiser's three bypasses
+   closed.~~ — v3.16.2.
+3. ~~A content security policy on the page; script errors logged with their
+   kind and where they happened~~ — v3.16.3. The message stays out: the
+   diagnostics carry no text that could hold a title.
 4. Custom colours reach every surface; long titles wrap.
 5. The return pill stops covering content; the Reading collection sorts by
    recency and loses its duplicate chip.
