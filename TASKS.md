@@ -26,7 +26,7 @@ go-ahead. Release a version per every 2 fixes." Worked in this order.
    recency and loses its duplicate chip.~~ — v3.16.6.
 6. ~~Work page actions given an order; reading position kept as a place in the
    text rather than a pixel offset.~~ — v3.17.0.
-7. Search results tidied; Home cards say one thing about visits.
+7. ~~Search results tidied; Home cards say one thing about visits.~~ — v3.17.1.
 8. Library density; Downloads cut down.
 9. Library is list-plus-story on a tablet; a real linter in `npm run check`.
 10. One set of routes for the dev server and the app; browser journeys in

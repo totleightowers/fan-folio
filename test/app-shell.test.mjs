@@ -2700,8 +2700,9 @@ test('a shelf says how much of it is not on it', () => {
   const fn = js.slice(js.indexOf('async function buildHome()'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /const total = Number\(shelf\.total \?\? shelf\.works\.length\)/);
-  assert.match(body, /`See all \$\{total\}`/,
+  assert.match(body, /querySelector\('\.shelf-n'\)\.textContent = total/,
     'twelve works shown out of twenty, with nothing saying so, reads as eight lost');
+  assert.doesNotMatch(body, /`See all \$\{total\}`/, 'and says it once, beside the name');
 
   /* And the button has to land on the same question the shelf asked. */
   const map = js.slice(js.indexOf('const SHELF_VIEW = {'));

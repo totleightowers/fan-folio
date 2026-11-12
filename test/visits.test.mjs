@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { SCHEMA } from '../app/core/store/schema.js';
-import { RECORD_VISIT, HISTORY_UPDATE, visitLabel } from '../app/core/store/visits.js';
+import { RECORD_VISIT, HISTORY_UPDATE, visitLabel, visitBreakdown } from '../app/core/store/visits.js';
 import { buildWorksQuery } from '../app/core/query.js';
 import { walkHistory } from '../app/core/sync/history.js';
 import { parseBlurb } from '../app/core/ao3/parse.js';
@@ -25,9 +25,12 @@ test('Most read adds AO3 snapshots and deduplicated FF visits, not public hits',
     const works = db.prepare(q.sql).all(...q.args);
     assert.deepEqual(works.map(w=>w.work_id), ['1','2','3']);
     assert.equal(works[0].ff_visits, 2);
-    assert.equal(visitLabel(works[0]), '5 visits · 3 AO3 + 2 Fan Folio');
+    assert.equal(visitLabel(works[0]), '5 visits');
+    assert.equal(visitBreakdown(works[0]), '3 on AO3 · 2 in Fan Folio');
     assert.equal(visitLabel(works[2]), '');
-    assert.equal(visitLabel({ff_visits:1}), '1 visit · AO3 not synced + 1 Fan Folio');
+    assert.equal(visitLabel({ff_visits:1}), '1 visit');
+    assert.equal(visitBreakdown({ff_visits:1}), 'AO3 not synced · 1 in Fan Folio');
+    assert.equal(visitBreakdown(works[2]), '');
     assert.equal(db.prepare('SELECT count(*) n FROM reading_visits').get().n,2);
     // A sync is a replacement snapshot; repeated syncs cannot grow the total.
     for (let i=0;i<2;i++) db.prepare(HISTORY_UPDATE).run(7,'24 Sep 2026','2026-09-24T00:00:00Z','1');

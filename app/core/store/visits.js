@@ -13,10 +13,25 @@ export const FF_VISITS = '(SELECT count(*) FROM reading_visits v WHERE v.work_id
 export const TOTAL_VISITS = `(COALESCE(w.visits, 0) + ${FF_VISITS})`;
 export const HISTORY_UPDATE = `UPDATE works SET in_history = 1, visits = ?, last_visited = ?, visits_synced_at = ? WHERE work_id = ?`;
 
+/** How often a work has been opened, as one number. */
 export function visitLabel(w) {
   const local = Number(w.ff_visits) || 0;
   const archive = w.visits == null ? null : Number(w.visits) || 0;
   if (archive == null && !local) return '';
   const total = local + (archive || 0);
-  return `${total} visit${total === 1 ? '' : 's'} · ${archive == null ? 'AO3 not synced' : archive + ' AO3'} + ${local} Fan Folio`;
+  return `${total} visit${total === 1 ? '' : 's'}`;
+}
+
+/**
+ * Where that number came from, for the one place that has room to say.
+ *
+ * Every card and row used to carry the sum and both of its parts —
+ * "231 visits · 230 AO3 + 1 Fan Folio" — which is arithmetic nobody asked a
+ * shelf to show. The parts are on the work's own page.
+ */
+export function visitBreakdown(w) {
+  const local = Number(w.ff_visits) || 0;
+  const archive = w.visits == null ? null : Number(w.visits) || 0;
+  if (archive == null && !local) return '';
+  return `${archive == null ? 'AO3 not synced' : archive + ' on AO3'} · ${local} in Fan Folio`;
 }

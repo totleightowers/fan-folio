@@ -8,7 +8,7 @@
  */
 
 import { diagnosticProgress, diagnosticQueue, diagnosticError } from './download-diagnostics.js';
-import { visitLabel } from './core/store/visits.js';
+import { visitLabel, visitBreakdown } from './core/store/visits.js';
 import { snippetParts } from './core/snippet.js';
 import { customTheme, isDark, CUSTOM_THEME_TOKENS } from './core/theme.js';
 import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult } from './core/images.js';
@@ -850,7 +850,7 @@ function workRow(w) {
   heading.prepend(...marks(w));
   node.querySelector('.statline').textContent = stats;
   const visits = visitLabel(w);
-  if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; node.querySelector('.statline').after(line); }
+  if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; line.title = visitBreakdown(w); node.querySelector('.statline').after(line); }
   /* Known, but not here. Saying so on the row matters more than it looks:
      otherwise a work opens into an empty reader and the reader assumes the app
      has lost it. */
@@ -5030,7 +5030,7 @@ function cardMetadata(w) {
     box.append(line);
   }
   const visits = visitLabel(w);
-  if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; box.append(line); }
+  if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; line.title = visitBreakdown(w); box.append(line); }
   return box;
 }
 
@@ -5167,9 +5167,9 @@ async function buildHome() {
      */
     const total = Number(shelf.total ?? shelf.works.length);
     const shown = shelf.works.slice(0, shelf.key === 'reading' ? 6 : 3);
-    const more = total > shown.length;
     section.querySelector('.shelf-n').textContent = total;
-    section.querySelector('.shelf-head button').textContent = more ? `See all ${total}` : 'See all';
+    // The count is beside the shelf's name; saying it again on the button was the same number twice.
+    section.querySelector('.shelf-head button').textContent = 'See all';
 
     section.querySelector('.shelf-head button').onclick = () => {
       /* The same question the shelf asked, or See all shows a different set of
@@ -5882,6 +5882,7 @@ async function openWork(workId, options = {}) {
   detail('Kudos', w.kudos == null ? null : fmt(w.kudos));
   detail('Bookmarks', w.bookmark_count == null ? null : fmt(w.bookmark_count));
   detail('Hits', w.hits == null ? null : fmt(w.hits));
+  detail('Your visits', visitLabel(w) ? `${visitLabel(w).replace(/ visits?$/, '')} (${visitBreakdown(w)})` : null);
   detail('Published', w.published);
   detail('Updated', w.updated && w.updated !== w.published ? w.updated : null);
   if (details.children.length) {

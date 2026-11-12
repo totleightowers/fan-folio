@@ -15,9 +15,21 @@ const titles = () => page.locator('#works .work-card h3').allInnerTexts();
 try {
   await page.goto(base + '/');
   await page.waitForSelector('#shelves > *');
+  // Home says each shelf's size once, and a card's visits as one number.
+  assert.deepEqual([...new Set(await page.locator('.shelf-head button').allInnerTexts())], ['See all']);
   await page.click('#tabs [data-tab=library]');
   await page.waitForSelector('#works .work-card');
   assert.deepEqual(await titles(), ['Apple orchard', 'Middle distance', 'Zebra crossing'], 'everything, by title');
+
+  // A work found by searching the Library is the same flat row, and nobody is told how long it took.
+  await page.click('#context-search');
+  await page.fill('#q', 'Zebra');
+  await page.locator('#results .work-card').first().waitFor();
+  assert.equal(await page.locator('#results .work-card').first().evaluate(el => parseFloat(getComputedStyle(el).borderTopWidth)), 0);
+  assert.doesNotMatch(await page.locator('#results .count').innerText(), /\dms/);
+  assert.ok(await page.locator('#search-scope').evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'the scope label fits');
+  await page.locator('#back').click();
+  await page.locator('#library').waitFor({ state: 'visible' });
 
   // Reading: most recently read first, and no pill or badge repeating the tab.
   await page.click('#library-collections [data-collection=reading]');
