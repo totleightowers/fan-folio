@@ -5416,7 +5416,7 @@ async function runSearch(q) {
   const count = document.createElement('div');
   count.className = 'count';
   count.textContent = found
-    ? `${SCOPE_SUMMARY[scope](works.length, tags.length, hits.length)} · ${data.ms}ms`
+    ? SCOPE_SUMMARY[scope](works.length, tags.length, hits.length)
     : `Nothing found for \u201c${q}\u201d`;
   box.append(count);
 

@@ -2757,26 +2757,27 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
 .work-card .work-description .sum { margin: 0; }
 @media (max-width: 44rem) { #toolbar .sort > span { display: none; } #toolbar .toolrow { gap: .3rem; } }
 #library #works { gap: 0; max-width: none; }
-#library .work-card { display: grid; grid-template-columns: minmax(0, 1fr); padding: 1.2rem 0; background: none; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; box-shadow: none; }
-#library .work-card .by { margin-bottom: .4rem; }
-#library .work-card .rowactions { margin: .5rem 0 0; }
-#library .work-card .rowactions button { background: none; border: 0; border-radius: .4rem; padding-inline: .25rem; }
-#library .work-card .rowactions [data-act=open] { font-weight: 600; }
-#library .work-card .tagrow { margin: 0; column-gap: 1rem; row-gap: 0; }
-#library .work-card .tagpill { font-size: .73rem; min-height: 2.2rem; padding: .35rem .1rem; border: 0; background: none; }
-#library .work-card .fandom-dot { content: ''; display: inline-block; width: .4rem; height: .4rem; border-radius: 50%; background: var(--spine); margin-right: .4rem; }
-#library .work-card .statline, #library .work-card .work-when, #library .work-card .progress-note { font-size: .75rem; }
-#library .work-card .bar { max-width: 13rem; }
+/* A work found by searching is the same row it is in the Library. */
+:is(#library, #results) .work-card { display: grid; grid-template-columns: minmax(0, 1fr); padding: 1.2rem 0; background: none; border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; box-shadow: none; }
+:is(#library, #results) .work-card .by { margin-bottom: .4rem; }
+:is(#library, #results) .work-card .rowactions { margin: .5rem 0 0; }
+:is(#library, #results) .work-card .rowactions button { background: none; border: 0; border-radius: .4rem; padding-inline: .25rem; }
+:is(#library, #results) .work-card .rowactions [data-act=open] { font-weight: 600; }
+:is(#library, #results) .work-card .tagrow { margin: 0; column-gap: 1rem; row-gap: 0; }
+:is(#library, #results) .work-card .tagpill { font-size: .73rem; min-height: 2.2rem; padding: .35rem .1rem; border: 0; background: none; }
+:is(#library, #results) .work-card .fandom-dot { content: ''; display: inline-block; width: .4rem; height: .4rem; border-radius: 50%; background: var(--spine); margin-right: .4rem; }
+:is(#library, #results) .work-card .statline, :is(#library, #results) .work-card .work-when, :is(#library, #results) .work-card .progress-note { font-size: .75rem; }
+:is(#library, #results) .work-card .bar { max-width: 13rem; }
 @media (min-width: 54rem) {
-  #library .work-card { grid-template-columns: minmax(0, 1fr) auto; gap: 0 1rem; }
-  #library .work-card > * { grid-column: 1 / -1; }
-  #library .work-card > h3, #library .work-card > .by { grid-column: 1; }
-  #library .work-card .rowactions { grid-column: 2; grid-row: 1 / 3; align-self: start; margin: 0; }
+  :is(#library, #results) .work-card { grid-template-columns: minmax(0, 1fr) auto; gap: 0 1rem; }
+  :is(#library, #results) .work-card > * { grid-column: 1 / -1; }
+  :is(#library, #results) .work-card > h3, :is(#library, #results) .work-card > .by { grid-column: 1; }
+  :is(#library, #results) .work-card .rowactions { grid-column: 2; grid-row: 1 / 3; align-self: start; margin: 0; }
 }
-#library .work-card::before { display: none; }
-#library .work-card h3 { font-size: 1.3rem; font-weight: 500; }
-#library .work-card .sum { line-height: 1.65; max-width: 75ch; }
-#library .work-card:active { transform: none; }
+:is(#library, #results) .work-card::before { display: none; }
+:is(#library, #results) .work-card h3 { font-size: 1.3rem; font-weight: 500; }
+:is(#library, #results) .work-card .sum { line-height: 1.65; max-width: 75ch; }
+:is(#library, #results) .work-card:active { transform: none; }
 #preview-return { margin: .7rem 0 1rem; }
 .preview-layout, #preview-story { min-width: 0; }
 #preview-story { max-width: 48rem; margin-inline: auto; padding-top: 1rem; }
