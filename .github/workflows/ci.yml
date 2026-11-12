@@ -29,7 +29,9 @@ jobs:
 
   browser:
     name: Settings and library in a browser
-    runs-on: ubuntu-latest
+    # Playwright 1.55 has no browser build for the 26.04 image that
+    # ubuntu-latest moved to on 12 November.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -95,7 +97,11 @@ jobs:
           java-version: '17'
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
+          # The Flutter app is put down. It is held at the release it last
+          # passed on, so a new stable's deprecations do not fail work that
+          # has nothing to do with it.
           channel: stable
+          flutter-version: 3.47.9
           cache: true
 
       # Flutter publishes no Linux arm64 SDK, so this is the only place the
