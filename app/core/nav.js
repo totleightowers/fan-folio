@@ -121,3 +121,24 @@ export function openingOffset(positions, workId, chapter, { transient = false } 
   const y = Number(saved.y);
   return Number.isFinite(y) && y > 0 ? Math.round(y) : 0;
 }
+
+/**
+ * The place in the text a chapter was left at, where one was kept.
+ *
+ * A pixel offset is only right while the page is laid out exactly as it was:
+ * change the text size, turn the phone, or come back after a font has loaded,
+ * and the same number of pixels is a different sentence. The block that was at
+ * the top of the screen, and how far through it, means the same thing however
+ * the chapter is set. Older saved places have only the offset, and still open
+ * by it.
+ */
+export function openingAnchor(positions, workId, chapter, { transient = false } = {}) {
+  if (transient) return null;
+  const saved = positions?.[workId];
+  if (!saved || saved.chapter !== chapter || !saved.block) return null;
+  const index = Number(saved.block.index);
+  const within = Number(saved.block.within);
+  // within < 0 is a spot above the block, which only the offset can describe
+  if (!Number.isInteger(index) || index < 0 || !Number.isFinite(within) || within < 0) return null;
+  return { index, within: Math.min(1, within) };
+}

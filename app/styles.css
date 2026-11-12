@@ -2838,3 +2838,19 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
 .work-head, #reader-head { min-width: 0; }
 .work-title, .work-by, #rh-title, #rh-by, .card .card-title, .card .card-by,
 .hit .t, .hit .where { overflow-wrap: anywhere; }
+
+/* The work page asks one thing — read it — and offers the rest quietly. Four
+   bordered pills of equal weight stacked three rows deep under the title, and
+   the one that mattered was only a different colour. */
+#detail .actions { flex-wrap: wrap; gap: .1rem 1.4rem; }
+#detail .work-head .actions .primary { flex: 1 0 100%; min-height: 3rem; margin-bottom: .3rem; }
+#detail .actions button:not(.primary) {
+  background: none; border: 0; border-radius: var(--r-field); padding: .55rem 0;
+  min-height: 2.75rem; color: var(--accent); font-size: .92rem;
+}
+@media (min-width: 44.01rem) {
+  #detail .work-head .actions .primary { flex: 0 0 auto; min-width: 12rem; margin-bottom: 0; }
+}
+/* Without the side list there is one way back to the collection, and the bar
+   already has it. */
+@media (max-width: 53.99rem) { #preview-return { display: none; } }

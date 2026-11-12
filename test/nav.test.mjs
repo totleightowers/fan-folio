@@ -184,3 +184,20 @@ test('a nonsensical remembered offset opens at the beginning', () => {
     assert.equal(openingOffset({ '7': { chapter: 3, y } }, '7', 3), 0, `y=${y}`);
   }
 });
+
+const { openingAnchor } = await import('../app/core/nav.js');
+
+test('a chapter opens at the place in its text, when one was kept', () => {
+  const at = { 7: { chapter: 3, y: 4200, block: { index: 12, within: 0.4 } } };
+  assert.deepEqual(openingAnchor(at, '7', 3), { index: 12, within: 0.4 });
+  assert.equal(openingAnchor(at, '7', 4), null, 'a place belongs to its chapter');
+  assert.equal(openingAnchor(at, '7', 3, { transient: true }), null);
+  assert.equal(openingAnchor({ 7: { chapter: 3, y: 4200 } }, '7', 3), null, 'an older saved place has only its offset');
+});
+
+test('a place that is not a place is ignored rather than followed', () => {
+  for (const block of [{ index: -1, within: 0 }, { index: 1.5, within: 0 }, { index: 'x', within: 0 }, { index: 2, within: NaN }, { index: 0, within: -2.5 }, {}]) {
+    assert.equal(openingAnchor({ 7: { chapter: 1, y: 10, block } }, '7', 1), null);
+  }
+  assert.deepEqual(openingAnchor({ 7: { chapter: 1, y: 10, block: { index: 2, within: 7 } } }, '7', 1), { index: 2, within: 1 });
+});

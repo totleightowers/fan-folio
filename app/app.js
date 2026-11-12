@@ -15,7 +15,7 @@ import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
 import { walkHistory } from './core/sync/history.js';
 import { jobSource } from './core/sync/job-source.js';
-import { History, openingOffset } from './core/nav.js';
+import { History, openingOffset, openingAnchor } from './core/nav.js';
 import { parseEpub } from './core/epub.js';
 import { reachedTheEnd, chromeHidden, readingStatus } from './core/reading.js';
 import { isHidden, worksByPattern } from './core/store/blocked.js';
@@ -2211,7 +2211,9 @@ function archiveActions(w) {
 
   const upkeep = document.createElement('div');
   upkeep.className = 'actions archive-upkeep';
-  upkeep.append(onArchive, refetch, remove);
+  /* Earlier versions are about the copy that is kept, like fetching it again
+     and deleting it, so they sit with those rather than beside Read. */
+  upkeep.append(onArchive, refetch, earlierVersionsButton(w), remove);
 
 
   const both = document.createDocumentFragment();
@@ -2221,7 +2223,7 @@ function archiveActions(w) {
 
 function earlierVersionsButton(w) {
   const button = document.createElement('button');
-  button.className = 'linkish';
+  button.className = 'archive-act';
   button.append(icon('chapters', 'ic ic-inline'), document.createTextNode(`Earlier versions (${Number(w.versions) || 0})`));
   button.onclick = () => showVersions(w.work_id);
   return button;
@@ -5743,7 +5745,7 @@ async function openWork(workId, options = {}) {
   // the database is authoritative; the local cache only remembers the exact
   // scroll offset, which is not worth a column of its own
   if (w.at_chapter && (!positions[workId] || positions[workId].chapter !== w.at_chapter)) {
-    positions[workId] = { ...(positions[workId] ?? {}), chapter: w.at_chapter, y: 0 };
+    positions[workId] = { ...(positions[workId] ?? {}), chapter: w.at_chapter, y: 0, block: null };
   }
   box.textContent = '';
 
@@ -5843,7 +5845,6 @@ async function openWork(workId, options = {}) {
     };
     actions.append(finish);
   }
-  actions.append(earlierVersionsButton(w));
   head.append(actions);
 
   const participation = document.createElement('section'); participation.className = 'work-participation';
@@ -6148,13 +6149,27 @@ async function openChapter(workId, number, { transient = false, visitId = null }
      the reader, and the position is set again on the next frame, once the new
      chapter has actually been laid out. */
   const offset = openingOffset(positions, workId, number, { transient });
+  const place = openingAnchor(positions, workId, number, { transient });
   readerOpenedAt = offset;
   showChrome();
   window.scrollTo(0, offset);
-  requestAnimationFrame(() => {
-    if (current.workId === workId && current.chapter === number) window.scrollTo(0, offset);
+  /* The offset gets close at once; the place in the text is what is exact.
+     It is found again once the chapter is laid out, and once more when its
+     fonts have arrived, since a late font moves every line below it. */
+  const settle = () => {
+    if (current.workId !== workId || current.chapter !== number || $('#reader').hidden) return;
+    if (place) returnToAnchor(place); else window.scrollTo(0, offset);
+    readerOpenedAt = Math.round(window.scrollY);
     updateProgress();
     readerAnchor = blockAtTop();
+  };
+  requestAnimationFrame(() => {
+    settle();
+    const settledAt = Math.round(window.scrollY);
+    document.fonts?.ready.then(() => {
+      // only if the reader has not moved in the meantime
+      if (place && Math.abs(window.scrollY - settledAt) < 2) settle();
+    });
   });
   updateProgress();
 
@@ -6414,13 +6429,16 @@ addEventListener('scroll', () => {
     }
     if (readingIsTransient) return;
     nowReading = { workId: String(current.workId), title: currentWork?.title || '(untitled)', chapter: current.chapter };
+    readerAnchor = blockAtTop();     // also in case the screen changes shape next
     positions[current.workId] = {
       chapter: current.chapter, y: Math.round(window.scrollY), at: Date.now(),
+      /* Above the first paragraph — still in the title and notes — there is
+         no place in the text yet, and the offset is the honest record. */
+      block: readerAnchor && readerAnchor.within >= 0 ? readerAnchor : null,
     };
     save(POS_KEY, positions);
     saveProgress(current.workId, current.chapter, window.scrollY);
     noteReachedTheEnd();
-    readerAnchor = blockAtTop();     // in case the screen changes shape next
   }, 400);
 }, { passive: true });
 

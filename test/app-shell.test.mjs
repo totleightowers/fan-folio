@@ -979,11 +979,11 @@ test('the settings icon is a cog, not a sun', () => {
  * feature. These copies are not on the archive any more; this is the only
  * place they exist.
  */
-test('earlier versions is offered beside reading controls, including an empty history', () => {
+test('earlier versions is offered with the other things done to the saved copy, including an empty history', () => {
   const fn = js.slice(js.indexOf('function earlierVersionsButton('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /showVersions\(/);
-  assert.match(js, /actions\.append\(earlierVersionsButton\(w\)\)/);
+  assert.match(js, /upkeep\.append\(onArchive, refetch, earlierVersionsButton\(w\), remove\)/);
 });
 
 test('reading an archived copy does not move your place', () => {
@@ -2732,7 +2732,7 @@ test('upkeep is not a peer of leaving kudos', () => {
   const body = fn.slice(0, fn.indexOf('\n}\n'));
   assert.match(body, /row\.append\(kudos, bookmark, comment\)/,
     'things done because of the work');
-  assert.match(body, /upkeep\.append\(onArchive, refetch, remove\)/,
+  assert.match(body, /upkeep\.append\(onArchive, refetch, earlierVersionsButton\(w\), remove\)/,
     'and things done because of the app');
   assert.match(css, /\.archive-upkeep \{/, 'drawn a step back');
 

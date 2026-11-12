@@ -596,9 +596,10 @@ try {
   assert.equal(await page.locator('#preview-library').isVisible(), true, 'the reader returns to the same preview and collection');
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.locator('#preview-library').isVisible(), false);
-  assert.equal(await page.locator('#preview-return').isVisible(), true);
+  // On a phone the bar's Back is the one way back to the collection.
+  assert.equal(await page.locator('#preview-return').isVisible(), false);
   await screenshot('v3-library-preview-phone', { fullPage: false });
-  await page.locator('#preview-return').click();
+  await page.locator('#back').click();
   await page.waitForFunction(() => !document.querySelector('#library').hidden && document.querySelectorAll('#works .work-card').length === 2);
   assert.equal(await page.locator('#availability').inputValue(), 'held');
   assert.equal(await page.locator('#library-density').inputValue(), 'compact');
