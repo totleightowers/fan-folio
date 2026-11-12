@@ -559,7 +559,9 @@ try {
   await page.locator('[data-collection="reading"]').click();
   await chooseLibraryOption('availability', 'held');
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
-  assert.equal(await page.locator('#active').innerText().then(s => /Reading/.test(s) && /Downloaded/.test(s)), true);
+  // The tab says Reading; only the filter added on top of it is a pill.
+  assert.equal(await page.locator('[data-collection="reading"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('#active').innerText().then(s => !/Reading/.test(s) && /Downloaded/.test(s)), true);
   await chooseLibraryOption('library-density', 'compact');
   const story = page.locator('#works .work-card').filter({ hasText: 'The long way home' });
   assert.equal(await story.locator('.sum').isVisible(), false);
