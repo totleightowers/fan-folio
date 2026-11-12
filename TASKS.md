@@ -8,6 +8,28 @@ below is dropped because the conversation went somewhere else; it waits until
 what is above it is done, and then it is picked up again without being asked
 twice.
 
+## Asked on 12 November: every fix proposed in the review, two to a release
+
+"Implement all fixes you suggested in this session, don't ask for my input or
+go-ahead. Release a version per every 2 fixes." Worked in this order.
+
+1. ~~Library rows list every relationship~~ and ~~the tablet side list loads
+   the whole collection~~ — v3.16.0.
+2. Search snippets cannot carry markup; the sanitiser's three bypasses closed.
+3. A content security policy on the page; script errors logged with their
+   message and stack.
+4. Custom colours reach every surface; long titles wrap.
+5. The return pill stops covering content; the Reading collection sorts by
+   recency and loses its duplicate chip.
+6. Work page actions given an order; reading position kept as a place in the
+   text rather than a pixel offset.
+7. Search results tidied; Home cards say one thing about visits.
+8. Library density; Downloads cut down.
+9. Library is list-plus-story on a tablet; a real linter in `npm run check`.
+10. One set of routes for the dev server and the app; browser journeys in
+    place of tests that read source as text.
+11. `app.js` split; library queries off the UI thread.
+
 ## Stop 2.x. Port these into 1.x, and that is v2.
 
 Said on 13 September. The Flutter app is put down; the shell-and-page app

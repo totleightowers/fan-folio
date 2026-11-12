@@ -420,6 +420,22 @@ test('the archive filters this library did not have', () => {
   assert.match(chapters.countSql, /w\.chapter_count <= \?/);
 });
 
+test('a library row carries every relationship, one per line', () => {
+  const db = library();
+  const tag = db.prepare('INSERT INTO tags (work_id,kind,name) VALUES (?,?,?)');
+  tag.run('1', 'relationship', 'A/B');
+  tag.run('2', 'relationship', 'C & D');
+  tag.run('2', 'relationship', 'A/B');
+  tag.run('2', 'character', 'A');
+  const q = buildWorksQuery({});
+  const rows = Object.fromEntries(db.prepare(q.sql).all(...q.args).map(r => [r.work_id, r]));
+  assert.equal(rows['1'].relationships, 'A/B');
+  assert.deepEqual(rows['2'].relationships.split('\n'), ['A/B', 'C & D']);
+  assert.equal(rows['2'].relationship, 'A/B', 'the single column stays for older callers');
+  const none = Object.values(rows).find(r => !['1', '2'].includes(r.work_id));
+  if (none) assert.equal(none.relationships, null);
+});
+
 test('OTP selects exactly one relationship independently of other filters', () => {
   const db = library();
   const tag = db.prepare('INSERT INTO tags (work_id,kind,name) VALUES (?,?,?)');

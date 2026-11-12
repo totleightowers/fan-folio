@@ -804,7 +804,11 @@ function workRow(w) {
   node.dataset.density = libraryDisplay.density;
   node.style.setProperty('--spine', spineColour(w.fandom || w.title));
   const p = progressOf(w);
-  const tags = [w.fandom, w.relationship].filter(Boolean);
+  /* Every pairing, not the first: a work with one is an OTP and still shows
+     one. Listings that carry only the single column keep working. */
+  const relationships = w.relationships ? String(w.relationships).split('\n').filter(Boolean)
+    : [w.relationship].filter(Boolean);
+  const tags = [w.fandom, ...relationships].filter(Boolean);
 
   const stats = [
     w.rating,
@@ -970,16 +974,16 @@ $('#sort').onchange = () => {
 /* ---------------------------------------------------------------- filters */
 
 /** Lists travel tab-separated: a tab cannot appear in an AO3 tag. */
-function filterParams(extra = {}) {
-  const p = new URLSearchParams({ sort: view.sort, state: view.state, availability: view.availability || '', collection: view.collection || '', ...extra });
+function filterParams(extra = {}, from = view) {
+  const p = new URLSearchParams({ sort: from.sort, state: from.state, availability: from.availability || '', collection: from.collection || '', ...extra });
   for (const key of ['include', 'exclude', 'rating', 'author']) {
-    if (view[key]?.length) p.set(key, view[key].join('\t'));
+    if (from[key]?.length) p.set(key, from[key].join('\t'));
   }
   for (const key of ['complete', 'language', 'wordsMin', 'wordsMax',
                      'chaptersMin', 'chaptersMax',
                      'updatedAfter', 'updatedBefore', 'crossover', 'otp',
                      'bookmarkedBy']) {
-    if (view[key]) p.set(key, view[key]);
+    if (from[key]) p.set(key, from[key]);
   }
   return p;
 }
@@ -5584,6 +5588,52 @@ function workFacts(w) {
 }
 
 /** A preview retains the collection it came from, including its loaded range. */
+function previewChoice(work, workId, origin) {
+  const button = document.createElement('button'); button.className = 'preview-choice';
+  const selected = String(work.work_id) === String(workId);
+  if (selected) button.setAttribute('aria-current', 'true');
+  const title = document.createElement('strong'); title.textContent = work.title || '(untitled)';
+  const by = document.createElement('small'); by.textContent = authorsOf(work.authors).join(', ') || 'Anonymous';
+  button.append(title, by);
+  button.onclick = () => {
+    if (!selected) openWork(work.work_id, { collection: origin, replacePreview: true });
+  };
+  return button;
+}
+
+function paintPreviewCount(origin) {
+  $('#preview-count').textContent = origin.works.length < origin.total
+    ? `${fmt(origin.works.length)} of ${fmt(origin.total)}`
+    : `${fmt(origin.total)} ${origin.total === 1 ? 'work' : 'works'}`;
+}
+
+/* The side list is the collection, not the part of it the Library happened to
+   have scrolled through: it fetches the rest as its own end comes into view. */
+let previewWatcher = null;
+async function loadMorePreview(origin, workId) {
+  if (origin.loadingMore || origin.works.length >= origin.total) return;
+  origin.loadingMore = true;
+  try {
+    const params = filterParams({ limit: '200', offset: String(origin.works.length) }, origin.filters);
+    const { works, total: n } = await api(`/api/works?${params}`);
+    const held = new Set(origin.works.map(w => String(w.work_id)));
+    const fresh = works.filter(w => !held.has(String(w.work_id)))
+      .map(w => ({ work_id: String(w.work_id), title: w.title, authors: w.authors }));
+    origin.works.push(...fresh);
+    // An answer with nothing new is the end, whatever the count said.
+    origin.total = fresh.length ? Math.max(n, origin.works.length) : origin.works.length;
+    if (previewCollection !== origin) return;
+    const more = $('#preview-more');
+    $('#preview-choices').append(...fresh.map(work => previewChoice(work, currentWork?.work_id ?? workId, origin)));
+    paintPreviewCount(origin);
+    more.hidden = origin.works.length >= origin.total;
+  } catch {
+    /* The list as far as it got is still a list; the next scroll asks again. */
+  } finally {
+    origin.loadingMore = false;
+  }
+}
+
 function paintPreviewCollection(workId) {
   const origin = previewCollection;
   $('#preview-return').hidden = !origin;
@@ -5591,22 +5641,20 @@ function paintPreviewCollection(workId) {
   $('#detail').classList.toggle('from-collection', Boolean(origin));
   const list = $('#preview-list');
   const before = list.scrollTop;
-  list.replaceChildren();
+  previewWatcher?.disconnect();
+  previewWatcher = null;
+  const more = $('#preview-more');
+  more.hidden = true;
+  $('#preview-choices').replaceChildren();
   if (!origin) return;
-  $('#preview-count').textContent = `${origin.works.length} loaded · ${fmt(origin.total)} in collection`;
-  for (const work of origin.works) {
-    const button = document.createElement('button'); button.className = 'preview-choice';
-    const selected = String(work.work_id) === String(workId);
-    if (selected) button.setAttribute('aria-current', 'true');
-    const title = document.createElement('strong'); title.textContent = work.title || '(untitled)';
-    const by = document.createElement('small'); by.textContent = authorsOf(work.authors).join(', ') || 'Anonymous';
-    button.append(title, by);
-    button.onclick = () => {
-      if (!selected) openWork(work.work_id, { collection: origin, replacePreview: true });
-    };
-    list.append(button);
-  }
+  paintPreviewCount(origin);
+  $('#preview-choices').append(...origin.works.map(work => previewChoice(work, workId, origin)));
+  more.hidden = origin.works.length >= origin.total;
   list.scrollTop = before;
+  previewWatcher = new IntersectionObserver((entries) => {
+    if (entries.some(e => e.isIntersecting)) loadMorePreview(origin, workId);
+  }, { root: list, rootMargin: '400px 0px' });
+  previewWatcher.observe(more);
 }
 $('#preview-return').onclick = () => {
   if (!previewCollection) return;

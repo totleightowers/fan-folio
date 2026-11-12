@@ -292,7 +292,8 @@ export function buildWorksQuery(filters = {}) {
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                  r.opened_at, r.offset, r.completed_before,
                  (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
-                 (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
+                 (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship,
+                 (SELECT group_concat(name, char(10)) FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship') AS relationships
           ${from} ORDER BY ${order} LIMIT ${limit} OFFSET ${offset}`,
   };
 }

@@ -800,6 +800,18 @@ try {
   await page.waitForFunction(() => !document.querySelector('#library').hidden && document.querySelectorAll('#works .work-card').length === 56);
   await page.waitForFunction(y => Math.abs(window.scrollY - y) < 3, collectionY);
   assert.equal(await page.locator('#availability').inputValue(), 'known');
+  // The side list is the whole collection, not only what the Library had loaded.
+  await page.locator('#sort').selectOption('words');
+  await page.locator('#sort').selectOption('title');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 50);
+  await page.locator('#works .work-title-link').first().click();
+  await page.locator('#preview-library').waitFor({ state: 'visible' });
+  await page.locator('#preview-more').scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => document.querySelectorAll('#preview-list button').length === 56);
+  assert.equal(await page.locator('#preview-more').isVisible(), false);
+  assert.match(await page.locator('#preview-count').textContent(), /^56 works$/);
+  await page.locator('#preview-return').click();
+  await page.locator('#library').waitFor({ state: 'visible' });
   // Updating a preview in place must not add a second copy to Back history.
   await chooseLibraryOption('availability', 'held');
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
