@@ -994,13 +994,10 @@ test('reading an archived copy does not move your place', () => {
   assert.match(body, /#prev'\)\.disabled = true/, 'as do the buttons');
 });
 
-test('both backends can hand back a kept chapter', () => {
-  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
-  const serve = readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8');
-  for (const [name, src] of [['api.js', api], ['serve.mjs', serve]]) {
-    assert.match(src, /FROM chapter_versions WHERE work_id = \?/, `${name} lists versions`);
-    assert.match(src, /versions\\\/(\(\\d\+\)|\\d)/, `${name} routes to one`);
-  }
+test('the shared routes can hand back a kept chapter', () => {
+  const routes = readFileSync(new URL('../app/core/routes.js', import.meta.url), 'utf8');
+  assert.match(routes, /FROM chapter_versions WHERE work_id = \?/, 'lists versions');
+  assert.match(routes, /\/versions\/\(\\\\d\+\)/, 'and routes to one');
 });
 
 /**
@@ -1486,7 +1483,7 @@ test('the front page hides what the library hides', () => {
   /* Home builds its shelves by hand rather than through buildWorksQuery, so
      the hiding is said in two places — which is exactly the arrangement that
      let Home and the Library disagree about what "reading" meant. */
-  for (const path of ['../app/api.js', '../tools/serve.mjs']) {
+  for (const path of ['../app/core/routes.js']) {
     const src = readFileSync(new URL(path, import.meta.url), 'utf8');
     const fn = src.slice(src.indexOf('const shelf = (where, order'));
     assert.match(fn.slice(0, 1400), /shown\(where\)/, `${path} hides them on the shelves`);
@@ -1578,8 +1575,10 @@ test('both backends agree on what continue reading means', () => {
     const at = src_.indexOf("key: 'reading', title: 'Continue reading'");
     return src_.slice(at, src_.indexOf('},', at)).replace(/\s+/g, ' ');
   };
-  const native = shelfOf(readFileSync(new URL('../app/api.js', import.meta.url), 'utf8'));
-  const server = shelfOf(readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8'));
+  const native = shelfOf(readFileSync(new URL('../app/core/routes.js', import.meta.url), 'utf8'));
+  // One definition now, so the dev server cannot hold a different one.
+  const server = native;
+  assert.equal(readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8').includes('Continue reading'), false);
   assert.match(native, /STATES\.reading/,
     'the shelf asks the Library filter its question, rather than writing out its own');
   assert.ok(!/opened_at IS NOT NULL/.test(native),
@@ -2202,7 +2201,7 @@ test('a shelf card says what the work is about', () => {
 });
 
 test('both backends fetch what the card needs', () => {
-  for (const [name, path] of [['native', '../app/api.js'], ['dev server', '../tools/serve.mjs']]) {
+  for (const [name, path] of [['the shared routes', '../app/core/routes.js']]) {
     const src = readFileSync(new URL(path, import.meta.url), 'utf8');
     const at = src.indexOf('const shelf = (where');
     const query = src.slice(at, src.indexOf('FROM works w', at));
@@ -2713,7 +2712,7 @@ test('a shelf says how much of it is not on it', () => {
 });
 
 test('both backends count a shelf as well as filling it', () => {
-  for (const path of ['../app/api.js', '../tools/serve.mjs']) {
+  for (const path of ['../app/core/routes.js']) {
     const src = readFileSync(new URL(path, import.meta.url), 'utf8');
     const fn = src.slice(src.indexOf('const shelf = (where, order'));
     assert.match(fn.slice(0, 1200), /total:/, `${path} returns the size of the shelf`);
@@ -3345,10 +3344,9 @@ test('recently added means new here, not newly exported', () => {
 });
 
 test('and Home asks both questions', () => {
-  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
-  const serve = readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8');
+  const routes = readFileSync(new URL('../app/core/routes.js', import.meta.url), 'utf8');
 
-  for (const [where, src] of [['the app', api], ['the dev server', serve]]) {
+  for (const [where, src] of [['the shared routes', routes]]) {
     assert.match(src, /key: 'added'[\s\S]{0,400}COALESCE\(w\.fetched_at, w\.downloaded_at\)/,
       `${where} orders Recently added by when it arrived here`);
     assert.match(src, /key: 'updated'[\s\S]{0,400}'w\.updated IS NOT NULL', 'w\.updated DESC'/,
@@ -3412,4 +3410,19 @@ test('work cards use the same explicit archive handoff as work details', () => {
   assert.ok(handler.indexOf('!r.isForMainFrame() || !r.hasGesture()') < handler.indexOf('startActivity('),
     'external handoff requires a deliberate top-level link tap');
   assert.match(handler, /u.getScheme\(\)/, 'blank popup navigation cannot open the browser');
+});
+
+test('the app and the dev server answer reads from one set of routes', () => {
+  const api = readFileSync(new URL('../app/api.js', import.meta.url), 'utf8');
+  const serve = readFileSync(new URL('../tools/serve.mjs', import.meta.url), 'utf8');
+  assert.match(api, /const LOCAL = createReadRoutes\(sql\);/);
+  assert.match(serve, /const routes = createReadRoutes\(runner\);/);
+  assert.match(serve, /routes\.read\(url\.pathname \+ url\.search\)/);
+  /* Neither keeps a query of its own for something the routes answer. */
+  for (const [name, src] of [['api.js', api], ['serve.mjs', serve]]) {
+    assert.equal(/buildWorksQuery|buildFacetQuery|snippet\(chapter_fts/.test(src), false, `${name} builds no read query itself`);
+  }
+  /* And the dev server binds the way Android does, so a query that needs a
+     real integer bound fails in a browser test rather than on a phone. */
+  assert.match(serve, /\.all\(\.\.\.args\.map\(String\)\)/);
 });

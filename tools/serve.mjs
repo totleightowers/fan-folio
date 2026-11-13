@@ -11,12 +11,11 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { RECORD_VISIT, FF_VISITS } from '../app/core/store/visits.js';
-import { renderChapter, sanitiseHtml } from '../app/core/render.js';
+import { RECORD_VISIT } from '../app/core/store/visits.js';
 import { INDEX_FIRST, deleteStatements, TOMBSTONE } from '../app/core/store/delete.js';
 import { isHidden, worksByPattern } from '../app/core/store/blocked.js';
-import { search } from '../app/core/discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, COMPLETED, CHAPTERS, shown } from '../app/core/query.js';
+import { createReadRoutes } from '../app/core/routes.js';
+import { CHAPTERS } from '../app/core/query.js';
 
 import { RESTART_READING } from '../app/core/store/reading.js';
 import { ensureColumns } from '../app/core/store/schema.js';
@@ -30,7 +29,11 @@ ensureColumns(db);
    in, rows out. On the phone the same signature runs against Android's
    SQLite through the bridge, which is the point — neither side gets to hold
    its own copy of a query. */
-const runner = (query, args = []) => db.prepare(query).all(...args);
+/* Arguments are bound as text, because that is all Android's rawQuery can
+   bind: a query that only works with a real integer bound fails here too,
+   rather than on the phone. */
+const runner = (query, args = []) => db.prepare(query).all(...args.map(String));
+const routes = createReadRoutes(runner);
 const APP = new URL('../app/', import.meta.url).pathname;
 
 const MIME = {
@@ -41,189 +44,8 @@ const MIME = {
 
 const Q = {
   count: db.prepare('SELECT count(*) n FROM works'),
-  work: db.prepare(`SELECT w.*, ${FF_VISITS} AS ff_visits FROM works w WHERE work_id = ?`),
-  chapters: db.prepare('SELECT number, title, words FROM chapters WHERE work_id = ? ORDER BY number'),
-  chapter: db.prepare('SELECT number, title, html FROM chapters WHERE work_id = ? AND number = ?'),
-  tags: db.prepare('SELECT kind, name FROM tags WHERE work_id = ? ORDER BY kind, name'),
-  images: db.prepare("SELECT url, sha256 FROM images WHERE work_id = ? AND status = 'stored'"),
   image: db.prepare("SELECT mime, bytes FROM images WHERE sha256 = ? AND status = 'stored' LIMIT 1"),
-  /* FTS4 has no bm25(); matchinfo travels back and is scored in JS so the
-     dev server and the app rank identically. */
-  search: db.prepare(`
-    SELECT c.work_id, c.number, w.title, w.authors,
-           snippet(chapter_fts, '<mark>', '</mark>', '…', -1, 18) AS snippet,
-           matchinfo(chapter_fts, 'pcnalx') AS matchinfo
-    FROM chapter_fts JOIN chapters c ON c.id = chapter_fts.docid
-    JOIN works w ON w.work_id = c.work_id
-    WHERE chapter_fts MATCH ? LIMIT ?`),
-  searchMeta: db.prepare(`
-    SELECT work_id, title, authors, summary FROM work_fts
-    WHERE work_fts MATCH ? LIMIT ?`),
 };
-
-/**
- * What is worth tapping next.
- *
- * Counted against the filters already applied rather than the whole library,
- * so narrowing further can never land on an empty result — a filter panel that
- * offers a tag yielding nothing is worse than one that offers nothing at all.
- */
-function facets(filters = {}) {
-  const counts = {};
-  for (const state of Object.keys(STATES)) {
-    const q = buildWorksQuery({ ...filters, state });
-    counts[state] = db.prepare(q.countSql).get(...q.args).n;
-  }
-  const tags = {};
-  for (const kind of TAG_KINDS) {
-    const q = buildFacetQuery(filters, kind, 40);
-    tags[kind] = db.prepare(q.sql).all(...q.args);
-  }
-  /* Rating and language are counted from the work itself rather than from
-     its tags. The panel draws those sections only when it has counts for
-     them, and nothing was working them out — so they never appeared, and the
-     filters behind them could not be reached. */
-  for (const column of ['rating', 'language']) {
-    const q = buildColumnFacet(filters, column);
-    tags[column] = db.prepare(q.sql).all(...q.args);
-  }
-  let authorTotal = 0;
-  try {
-    const q = buildAuthorFacet(filters, 40);
-    tags.author = db.prepare(q.sql).all(...q.args);
-    const c = buildAuthorCount(filters);
-    authorTotal = db.prepare(c.sql).get(...c.args)?.n ?? 0;
-  } catch { tags.author = []; }
-  return { counts, tags, fandoms: tags.fandom, languages: tags.language, authorTotal };
-}
-
-/** Filters as they arrive on the query string. Lists are tab-separated. */
-function filtersFrom(params) {
-  const filters = {
-    state: params.get('state') || params.get('filter') || 'all',
-    ...Object.fromEntries(['availability', 'collection', 'bookmarkedBy', 'updatedAfter', 'updatedBefore', 'crossover', 'otp'].map(key => [key, params.get(key) || ''])),
-    ids: params.get('ids') || '',
-    include: params.get('include') || '',
-    exclude: params.get('exclude') || '',
-    rating: params.get('rating') || '',
-    author: params.get('author') || '',
-    language: params.get('language') || '',
-    wordsMin: params.get('wordsMin'), wordsMax: params.get('wordsMax'),
-    chaptersMin: params.get('chaptersMin'), chaptersMax: params.get('chaptersMax'),
-    sort: params.get('sort') || 'title',
-  };
-  const complete = params.get('complete');
-  if (complete === '0' || complete === '1') filters.complete = complete;
-  // a single tag, as the browse chips send it, is just one included tag
-  const tag = params.get('tag');
-  if (tag) filters.include = filters.include ? `${filters.include}\t${tag}` : tag;
-  return filters;
-}
-
-/**
- * The home screen: a few short shelves rather than one long list.
- *
- * 1596 works sorted alphabetically is a filing cabinet, not a library. What a
- * reader actually wants on opening is the thing they were in the middle of,
- * then a few ways in — what they meant to read, what arrived recently, which
- * fandoms they have most of.
- */
-function home() {
-  /*
-   * A shelf, and how much of it is not on it.
-   *
-   * Twelve works at most, with nothing anywhere saying so — twenty active
-   * works showed as twelve and the other eight looked lost rather than folded
-   * away. See all is the way to the rest, and it can only be trusted if the
-   * shelf admits there is a rest.
-   */
-  const shelf = (where, order, limit = 12) => ({
-    works: db.prepare(`
-    SELECT w.work_id, w.title, w.authors, w.summary, w.words, w.chapter_count, w.complete, w.rating,
-           w.rec, w.visits, ${FF_VISITS} AS ff_visits,
-           r.chapter AS at_chapter, r.chapters_read, r.marked_later,
-             r.opened_at, r.offset, r.completed_before, w.has_text,
-           (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'fandom' LIMIT 1) AS fandom,
-           (SELECT name FROM tags t WHERE t.work_id = w.work_id AND t.kind = 'relationship' LIMIT 1) AS relationship
-    FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-    WHERE ${shown(where)} ORDER BY ${order} LIMIT ?`).all(limit),
-    total: db.prepare(`SELECT count(*) AS n FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-                       WHERE ${shown(where)}`).get().n,
-  });
-
-  const totals = db.prepare(`
-    SELECT count(*) AS works, COALESCE(sum(words), 0) AS words,
-           COALESCE(sum(chapter_count), 0) AS chapters FROM works w
-    WHERE COALESCE(w.hidden, 0) = 0`).get();
-  const read = db.prepare(`
-    SELECT COALESCE(sum(CASE WHEN ${COMPLETED} THEN w.words ELSE 0 END), 0) AS words,
-           count(CASE WHEN ${COMPLETED} THEN 1 END) AS finished
-    FROM works w JOIN reading r ON r.work_id = w.work_id
-    WHERE COALESCE(w.hidden, 0) = 0`).get();
-
-  return {
-    stats: {
-      works: totals.works,
-      words: totals.words,
-      chapters: totals.chapters,
-      finished: read.finished,
-      wordsRead: read.words,
-      later: db.prepare('SELECT count(*) n FROM reading WHERE marked_later = 1').get().n,
-    },
-    shelves: [
-      { key: 'reading', title: 'Continue reading',
-        ...shelf(
-          /* The Library's Reading filter and nothing else — see STATES in
-             core/query.js. These were two hand-written predicates that
-             disagreed, so a work could sit on this shelf and then vanish
-             when See all asked the same question in the other file's words. */
-          STATES.reading,
-          /* Most recently opened first, whichever shelf it was opened from. */
-          'COALESCE(r.opened_at, r.updated_at) DESC') },
-      { key: 'later', title: 'Marked for later',
-        ...shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
-      { key: 'added', title: 'Recently added',
-        ...shelf('1=1', 'COALESCE(w.fetched_at, w.downloaded_at) DESC') },
-      { key: 'updated', title: 'Updated on the archive',
-        ...shelf('w.updated IS NOT NULL', 'w.updated DESC') },
-      { key: 'long', title: 'Settle in',
-        ...shelf(`w.complete = 1 AND ${STATES.unread}`, 'w.words DESC') },
-      { key: 'short', title: 'One sitting',
-        ...shelf(`w.complete = 1 AND w.words < 5000 AND ${STATES.unread}`,
-          'RANDOM()') },
-    ].filter((s) => s.works.length),
-    /*
-     * Ways in, rather than one long list.
-     *
-     * Fic is navigated by fandom and pairing far more than by title, so the
-     * tags people actually browse by get counted and offered. Ratings too —
-     * "something explicit" and "something gen" are real moods.
-     */
-    browse: {
-      fandom: topTags('fandom', 14),
-      relationship: topTags('relationship', 14),
-      character: topTags('character', 12),
-      freeform: topTags('freeform', 14),
-      rating: db.prepare(`
-        SELECT rating AS name, count(*) AS n FROM works w
-        WHERE rating IS NOT NULL AND rating <> '' AND COALESCE(w.hidden, 0) = 0
-        GROUP BY rating ORDER BY n DESC`).all(),
-    },
-  };
-}
-
-const topTags = (kind, limit) => db.prepare(`
-  SELECT t.name, count(*) AS n FROM tags t JOIN works w ON w.work_id = t.work_id
-  WHERE t.kind = ? AND COALESCE(w.hidden, 0) = 0
-  GROUP BY t.name ORDER BY n DESC LIMIT ?`).all(kind, limit);
-
-/** One work, chosen at random from those not yet started. */
-function surprise() {
-  const row = db.prepare(`
-    SELECT w.work_id FROM works w LEFT JOIN reading r ON r.work_id = w.work_id
-    WHERE ${shown(STATES.unread)} ORDER BY RANDOM() LIMIT 1`).get();
-  return { work_id: row?.work_id ?? null };
-}
 
 const json = (res, body, status = 200) => {
   const text = JSON.stringify(body);
@@ -248,36 +70,17 @@ createServer(async (req, res) => {
   const p = url.pathname;
 
   try {
-    if (p === '/api/works') {
-      const filters = {
-        ...filtersFrom(url.searchParams),
-        limit: url.searchParams.get('limit') || 50,
-        offset: url.searchParams.get('offset') || 0,
-      };
-      // a single tag, as the browse chips send it, is just one included tag
-      const tag = url.searchParams.get('tag');
-      if (tag) filters.include = filters.include ? `${filters.include}\t${tag}` : tag;
-      const { sql, args, countSql } = buildWorksQuery(filters);
-      return json(res, {
-        total: db.prepare(countSql).get(...args).n,
-        works: db.prepare(sql).all(...args),
-      });
-    }
-
-    if (p === '/api/facets') return json(res, facets(filtersFrom(url.searchParams)));
-
-    /* One section's options, searched across the whole library rather than
-       sifting the handful the panel happens to be showing. */
-    if (p === '/api/facet-search') {
-      const kind = url.searchParams.get('kind');
-      const needle = url.searchParams.get('q') ?? '';
-      const filters = filtersFrom(url.searchParams);
+    /* Every read is the app's own route, run against this database: the
+       dev server holds no second copy of a query to drift from the first. */
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      let answer;
       try {
-        const built = kind === 'author'
-          ? buildAuthorFacet(filters, 60, needle)
-          : buildFacetQuery(filters, kind, 60, needle);
-        return json(res, { items: db.prepare(built.sql).all(...built.args) });
-      } catch { return json(res, { items: [] }); }
+        answer = routes.read(url.pathname + url.search);
+      } catch (e) {
+        if (/^no such /.test(e.message)) return json(res, { error: e.message }, 404);
+        throw e;
+      }
+      if (answer !== undefined) return json(res, answer);
     }
 
     if (p === '/api/restart' && req.method === 'POST') {
@@ -448,48 +251,7 @@ createServer(async (req, res) => {
         return json(res, { error: e.message }, 200);
       }
     }
-    if (p === '/api/home') return json(res, home());
-    if (p === '/api/surprise') return json(res, surprise());
-
     let m;
-    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))$/))) {
-      const work = Q.work.get(m[1]);
-      if (!work) return json(res, { error: 'no such work' }, 404);
-      const tags = {};
-      for (const t of Q.tags.all(m[1])) (tags[t.kind] ??= []).push(t.name);
-      let authors = [];
-      try { authors = JSON.parse(work.authors || '[]'); } catch { authors = []; }
-      const progress = db.prepare(
-        'SELECT chapter, offset, chapters_read, opened_at, completed_before FROM reading WHERE work_id = ?').get(m[1]);
-      return json(res, {
-        ...work,
-        at_chapter: progress?.chapter ?? null,
-        chapters_read: progress?.chapters_read ?? 0,
-      offset: progress?.offset ?? 0,
-      opened_at: progress?.opened_at ?? null,
-      completed_before: progress?.completed_before ?? 0,
-        // AO3's own markup, generated from stored data so it works for every
-        // work in the library rather than only the ones fetched from AO3
-          // author-written HTML reaching innerHTML gets the same treatment as a
-        // chapter body — there is no safer class of author markup
-        end_notes_html: work.end_notes_html ? sanitiseHtml(work.end_notes_html) : null,
-        tags,
-        chapters: Q.chapters.all(m[1]),
-        versions: db.prepare('SELECT count(*) AS n FROM chapter_versions WHERE work_id = ?').get(m[1])?.n ?? 0,
-      });
-    }
-
-    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/chapters\/(\d+)$/))) {
-      const row = Q.chapter.get(m[1], Number(m[2]));
-      if (!row) return json(res, { error: 'no such chapter' }, 404);
-      const work = Q.work.get(m[1]);
-      // captured images replace their remote URLs; anything not captured keeps
-      // its placeholder rather than reaching out to a third-party host
-      const images = new Map(Q.images.all(m[1]).map((i) => [i.url, `/img/${i.sha256}`]));
-      const rendered = renderChapter(row, { skinCss: work?.skin_css ?? null, images });
-      return json(res, { number: row.number, title: row.title, ...rendered });
-    }
-
     if ((m = p.match(/^\/img\/([0-9a-f]{64})$/))) {
       const img = Q.image.get(m[1]);
       if (!img) { res.writeHead(404); return res.end(); }
@@ -508,43 +270,6 @@ createServer(async (req, res) => {
         const raw = await readFile(new URL('../data/prefs.json', import.meta.url).pathname, 'utf8');
         return json(res, JSON.parse(raw));
       } catch { return json(res, { prefs: null }); }
-    }
-
-    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/versions$/))) {
-      return json(res, { versions: db.prepare(`
-        SELECT id, number, title, words, reason, archived_at
-          FROM chapter_versions WHERE work_id = ?
-         ORDER BY archived_at DESC, number ASC`).all(m[1]) });
-    }
-
-    if ((m = p.match(/^\/api\/works\/((?:\d+|epub-[a-z0-9]+))\/versions\/(\d+)$/))) {
-      const row = db.prepare(`SELECT id, number, title, html, words, reason, archived_at
-                                FROM chapter_versions WHERE work_id = ? AND id = ?`).get(m[1], Number(m[2]));
-      if (!row) { res.writeHead(404); return res.end(); }
-      const work = Q.work.get(m[1]);
-      const images = new Map(Q.images.all(m[1]).map((i) => [i.url, `/img/${i.sha256}`]));
-      return json(res, {
-        ...row,
-        workTitle: work?.title ?? '',
-        ...renderChapter(row, { skinCss: work?.skin_css ?? null, images }),
-      });
-    }
-
-    if (p === '/api/search') {
-      const started = Date.now();
-      try {
-        const out = search(runner, url.searchParams.get('q'),
-          url.searchParams.get('scope') || 'text', {
-            limit: url.searchParams.get('limit'),
-            workId: url.searchParams.get('workId'),
-            filters: filtersFrom(url.searchParams),
-          });
-        return json(res, { ...out, ms: Date.now() - started });
-      } catch (e) {
-        /* FTS rejects a half-typed query — a lone quote, a stray operator.
-           That is somebody typing, not a fault, so it reports rather than 500s. */
-        return json(res, { error: e.message, hits: [], works: [], tags: [] });
-      }
     }
 
     return serveStatic(res, p);
