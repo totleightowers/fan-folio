@@ -1351,6 +1351,49 @@ public class FolioRuntime extends android.content.ContextWrapper {
             }
         }
 
+        /*
+         * The same query, without the page waiting on it.
+         *
+         * query() returns when SQLite does, and the page can do nothing until
+         * then. This takes the question, runs it on a thread of its own, and
+         * tells the page when the answer can be collected. The answer is held
+         * here and fetched by takeQuery rather than written into a script: a
+         * chapter is megabytes, and quoting megabytes into JavaScript source
+         * on the UI thread would give back the pause this exists to remove.
+         *
+         * It goes through query() itself, so every check on what may be asked
+         * applies exactly as it does there.
+         */
+        private final java.util.concurrent.ExecutorService queryThread =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+        private final java.util.concurrent.ConcurrentHashMap<String, String> queryAnswers =
+            new java.util.concurrent.ConcurrentHashMap<>();
+        private final java.util.regex.Pattern QUERY_ID = java.util.regex.Pattern.compile("q[0-9]{1,12}");
+
+        @JavascriptInterface
+        public void queryAsync(final String id, final String sql, final String argsJson) {
+            mustBeOurPage();
+            if (id == null || !QUERY_ID.matcher(id).matches()) return;
+            queryThread.execute(new Runnable() { @Override public void run() {
+                String answer;
+                try { answer = query(sql, argsJson); }
+                catch (Throwable e) { answer = "{\"error\":" + quote(String.valueOf(e.getMessage())) + "}"; }
+                // Answers nobody came for are not kept: the page asks again the other way.
+                if (queryAnswers.size() > 64) queryAnswers.clear();
+                queryAnswers.put(id, answer);
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    if (ready) toPage("window.__queryDone && window.__queryDone(\"" + id + "\")");
+                }});
+            }});
+        }
+
+        @JavascriptInterface
+        public String takeQuery(String id) {
+            mustBeOurPage();
+            String answer = id == null ? null : queryAnswers.remove(id);
+            return answer == null ? "{\"error\":\"no such query\"}" : answer;
+        }
+
         /**
          * Hold the screen awake while a chapter is open.
          *

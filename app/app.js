@@ -10,6 +10,10 @@
 import { diagnosticProgress, diagnosticQueue, diagnosticError } from './download-diagnostics.js';
 import { visitLabel, visitBreakdown } from './core/store/visits.js';
 import { snippetParts } from './core/snippet.js';
+import { $, $$, fmt, authorsOf, icon, reduceMotion } from './ui/dom.js';
+import { load, save } from './ui/store.js';
+import { SYSTEM_FACES, BUNDLED_FACES, loadGoogleFont, faceStack } from './ui/fonts.js';
+import './ui/press.js';
 import { customTheme, isDark, CUSTOM_THEME_TOKENS } from './core/theme.js';
 import { createImageCollector, brokenStoredImages, imageRetryStatus, imageResult } from './core/images.js';
 import { downloadStatus, downloadIdentity, downloadFailure } from './core/downloads.js';
@@ -34,8 +38,6 @@ import { api, isNative, nativeStatus, importDatabase, createDatabase, addWork, s
   keepWorking, stopWorking, workFinished, pendingLink, pendingOpen, takeDownloadCommand, downloadsReady, archiveRequest, pollArchiveRequests, downloadDiagnostic, exportDownloadDiagnostics,
   pickEpubs, readPickedEpub, pickedEpubName, saveEpub } from './api.js';
 
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => [...document.querySelectorAll(sel)];
 
 /* ------------------------------------------------------------------ state */
 
@@ -45,29 +47,6 @@ const PREFS_KEY = 'archive.prefs';
 const POS_KEY = 'archive.positions';
 const VIEW_KEY = 'archive.view';
 
-/*
- * Read something back out of the store, in the shape it was asked for.
- *
- * This used to spread whatever it found into an object literal, which is
- * right for the settings — a stored theme laid over the defaults, so a key
- * added in a later version still has a value. Applied to a list it is
- * quietly wrong: spreading an array into an object gives {0:…, 1:…}, which
- * is not an array and not iterable, so the queue threw on the `for…of` that
- * restored it and every job saved when the app closed was lost on the way
- * back in. The fallback says which of the two was meant.
- */
-const load = (key, fallback) => {
-  const empty = () => (Array.isArray(fallback) ? [...fallback] : { ...fallback });
-  try {
-    const stored = JSON.parse(localStorage.getItem(key) ?? 'null');
-    if (stored == null) return empty();
-    if (Array.isArray(fallback)) return Array.isArray(stored) ? stored : empty();
-    return { ...fallback, ...stored };
-  } catch { return empty(); }            // a corrupt or blocked store must not break reading
-};
-const save = (key, value) => {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode */ }
-};
 
 const STORED_PREFS = (() => {
   try { return JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); } catch { return null; }
@@ -98,45 +77,6 @@ let positions = load(POS_KEY, {});
 
 /* -------------------------------------------------------------- typography */
 
-const SYSTEM_FACES = {
-  Georgia: "Georgia, 'Times New Roman', serif",
-  System: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-  Monospace: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
-};
-/**
- * Faces that ship with the app, declared in fonts.css.
- *
- * An app whose whole point is a library that reads with no internet was asking
- * for the internet to change typeface: every family but the three the phone
- * already had was fetched from Google the first time it was chosen, so offline
- * the choice silently did nothing and the text stayed in the fallback. These
- * two are here already — a face made for long-form reading, and one drawn to
- * be legible to low vision, which is the one where needing a connection to
- * have it is least defensible.
- */
-const BUNDLED_FACES = new Set(['Literata', 'Atkinson Hyperlegible']);
-
-const loadedFonts = new Set();
-
-/**
- * Fonts come from Google Fonts, the way AO3 and Archive Reader both do, so any
- * family the reader names is reproducible. Only the font is fetched; every
- * word came from the archive on disk.
- */
-function loadGoogleFont(family, weight = 400) {
-  if (!family || SYSTEM_FACES[family] || BUNDLED_FACES.has(family)) return;
-  const key = `${family}:${weight}`;
-  if (loadedFonts.has(key)) return;
-  loadedFonts.add(key);
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  link.href = 'https://fonts.googleapis.com/css2?family='
-    + encodeURIComponent(family).replace(/%20/g, '+') + ':wght@300;400;500;600&display=swap';
-  link.onerror = () => loadedFonts.delete(key);      // offline: the fallback stands
-  document.head.append(link);
-}
-
-const faceStack = (family) => SYSTEM_FACES[family] ?? `'${String(family).replace(/'/g, '')}', Georgia, serif`;
 
 /**
  * Is the page dark right now, whatever route it took to get there?
@@ -684,8 +624,6 @@ function toast(message) {
 
 /* ---------------------------------------------------------------- helpers */
 
-const fmt = (n) => Number(n || 0).toLocaleString();
-const authorsOf = (raw) => { try { return JSON.parse(raw || '[]'); } catch { return []; } };
 
 /** "3 of 12 read" is more use than a bare percentage when chapters are long. */
 function progressOf(w) {
@@ -740,18 +678,6 @@ let previewCollection = null;
  * fandom and pairing, then the numbers that decide whether tonight is the
  * night — rating, length, chapters, whether it is finished. The full summary remains available in both expanded and compact views.
  */
-/**
- * One of the sprite's icons, as an element.
- *
- * The markup is ours and static — never author text — so innerHTML is safe
- * here in a way it is not two lines below, where a title goes in by
- * textContent because someone wrote it.
- */
-function icon(name, className = 'ic') {
-  const span = document.createElement('span');
-  span.innerHTML = `<svg class="${className}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
-  return span.firstChild;
-}
 
 /**
  * What a work is, at a glance, on any card that shows it.
@@ -1592,72 +1518,6 @@ $('#clear-filters').onclick = async () => {
   save(VIEW_KEY, view);
   await refreshAfterFilterChange();
 };
-
-/* ------------------------------------------------------ pointer feedback */
-
-/**
- * Acknowledge the finger before anything else happens.
- *
- * A WebView withholds `:active` while it works out whether a touch is the
- * beginning of a scroll, so on the surfaces that matter most — cards on a
- * shelf, rows in the library — the pressed state arrived late or not at all.
- * A tap could look identical to no tap until the next screen rendered, which
- * on a query-backed navigation is long enough to press again.
- *
- * One delegated listener rather than a handler per component: everything
- * tappable is already reachable by selector.
- */
-const TAPPABLE = [
-  '.work', '.hit', '.card', '.continue-card', '.start-tile', '.work-card', '.tagpill',
-  '.chip', '.icon', '.browse-tab', '.filter-btn', '.active-pill', '.close-x', '.sec-head',
-  '.show-more', '.opt', '.account-btn', '.chapters-open', '.shelf-head button',
-  '.fandom-list button', '#tabs button', '#chapter-list button', '#detail .chapters button',
-  '.rowactions button', '.addwork-signin button', '.filter-foot button', 'button.primary',
-  '.linkish', 'button.ghost', '.seg button', '#chapnav button', '#chappos', '.archive-act',
-  '#to-work', '#on-archive', '#kudos-here', '#bookmark-here', '#comment-here',
-  '#reader-more', '.menu-list button',
-  '.version-row', '#ab-current', '.job-act',
-].join(',');
-
-/* Far enough to be a scroll rather than an unsteady finger. Below this a
-   movement is still a tap, which matters on a train. */
-const DRAG_SLOP = 10;
-
-let pressed = null;
-let pressAt = null;
-
-function releasePress() {
-  pressed?.classList.remove('is-pressed');
-  pressed?.closest('.rail')?.classList.remove('dragging');
-  pressed = null;
-  pressAt = null;
-}
-
-document.addEventListener('pointerdown', (e) => {
-  if (e.button != null && e.button !== 0) return;
-  const target = e.target.closest?.(TAPPABLE);
-  if (!target || target.disabled) return;
-  releasePress();
-  pressed = target;
-  pressAt = { x: e.clientX, y: e.clientY };
-  target.classList.add('is-pressed');
-}, { passive: true });
-
-document.addEventListener('pointermove', (e) => {
-  if (!pressed || !pressAt) return;
-  /* Once the finger is clearly dragging, this is a scroll of the shelf and no
-     longer a press of the card it began on. Letting the press persist through
-     a drag is what makes a horizontal rail feel as though it might open
-     something at any moment. */
-  if (Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > DRAG_SLOP) {
-    pressed.closest('.rail')?.classList.add('dragging');
-    releasePress();
-  }
-}, { passive: true });
-
-for (const event of ['pointerup', 'pointercancel', 'pointerleave', 'scroll']) {
-  document.addEventListener(event, releasePress, { passive: true, capture: event === 'scroll' });
-}
 
 /* ------------------------------------------------------------------ rails */
 
@@ -6619,7 +6479,6 @@ const SWIPE = {
   IN: DURATION.enter,     // bringing the next one on, which travels further
 };
 
-const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * @param el        the view that receives the gesture

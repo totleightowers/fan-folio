@@ -8,7 +8,10 @@ import { SCHEMA } from '../app/core/store/schema.js';
 import { CHAPTERS } from '../app/core/query.js';
 
 const html = readFileSync(new URL('../app/index.html', import.meta.url), 'utf8');
-const js = readFileSync(new URL('../app/app.js', import.meta.url), 'utf8');
+/* The interface is app.js and the modules taken out of it. These tests ask
+   whether something is in the interface, not which file it is in. */
+const js = ['../app/app.js', '../app/ui/dom.js', '../app/ui/store.js', '../app/ui/fonts.js', '../app/ui/press.js']
+  .map((path) => readFileSync(new URL(path, import.meta.url), 'utf8')).join('\n');
 const css = readFileSync(new URL('../app/styles.css', import.meta.url), 'utf8');
 
 /* ---------------------------------------------------------------------------

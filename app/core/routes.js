@@ -24,6 +24,57 @@ const lim = (n, fallback = 50, max = 500) => {
 
 const WORK = '((?:\\d+|epub-[a-z0-9]+))';
 
+/** Thrown by a route that needs rows it does not have yet. */
+class Awaiting extends Error {
+  constructor(promise) { super('awaiting a query'); this.promise = promise; }
+}
+
+/**
+ * The same routes, over a database that answers later.
+ *
+ * On the phone a query crosses a bridge, and the page did nothing else while
+ * it waited: no tap acknowledged, no animation started, until SQLite came
+ * back. Asking without waiting needs the routes to pause mid-way, and they
+ * are written straight through, thirty queries of them.
+ *
+ * So they are run as written. A query whose rows are not in hand yet throws;
+ * that query is awaited, its rows are kept, and the route is run again from
+ * the top, this time getting further. Every query still runs exactly once,
+ * and a route is only reads, so starting it again changes nothing.
+ */
+export function createAsyncReadRoutes(sqlAsync) {
+  async function read(path) {
+    const answers = new Map();
+    const sql = (query, args = []) => {
+      const key = `${query}\u0000${JSON.stringify(args)}`;
+      const known = answers.get(key);
+      if (known) {
+        if (known.error) throw known.error;
+        return known.rows;
+      }
+      throw new Awaiting(Promise.resolve().then(() => sqlAsync(query, args)).then(
+        (rows) => { answers.set(key, { rows }); },
+        (error) => { answers.set(key, { error }); }));
+    };
+    const routes = createReadRoutes(sql);
+    // Far more passes than any route has queries; a route that never settles is a fault, not a wait.
+    for (let pass = 0; pass < 400; pass++) {
+      try {
+        return routes.read(path);
+      } catch (e) {
+        if (!(e instanceof Awaiting)) throw e;
+        await e.promise;
+      }
+    }
+    throw new Error(`a read did not settle: ${path}`);
+  }
+  return { read };
+}
+
+/* A route that catches its own errors must let a wait through, or it would
+   answer "nothing found" for rows that are merely on their way. */
+const waiting = (e) => { if (e instanceof Awaiting) throw e; };
+
 export function createReadRoutes(sql) {
   const one = (query, args) => sql(query, args)[0] ?? null;
 
@@ -145,7 +196,7 @@ export function createReadRoutes(sql) {
         try {
           const built = buildAuthorFacet(filters, 60, q);
           return { items: sql(built.sql, built.args) };
-        } catch { return { items: [] }; }
+        } catch (e) { waiting(e); return { items: [] }; }
       }
       const built = buildFacetQuery(filters, kind, 60, q);
       return { items: sql(built.sql, built.args) };
@@ -179,7 +230,7 @@ export function createReadRoutes(sql) {
         tags.author = sql(q.sql, q.args);
         const c = buildAuthorCount(filters);
         authorTotal = sql(c.sql, c.args)[0]?.n ?? 0;
-      } catch { tags.author = []; }
+      } catch (e) { waiting(e); tags.author = []; }
       return { counts, tags, fandoms: tags.fandom, languages: tags.language, authorTotal };
     },
 
@@ -256,6 +307,7 @@ export function createReadRoutes(sql) {
       try {
         return { ...search(sql, query, scope, options), ms: Date.now() - started };
       } catch (e) {
+        waiting(e);
         // a half-typed query is the reader typing, not a fault
         return { error: e.message, hits: [], works: [], tags: [] };
       }

@@ -36,7 +36,34 @@ go-ahead. Release a version per every 2 fixes." Worked in this order.
 10. ~~One set of routes for the dev server and the app; tests that run the
     code~~ — v3.19.1. Reads are shared; writes are still two implementations.
     Most of `test/app-shell.test.mjs` still reads source as text.
-11. `app.js` split; library queries off the UI thread.
+11. ~~Library queries off the UI thread~~ — v3.20.0, falling back to the old
+    way if the new one ever fails to answer. **`app.js` is begun, not split**:
+    the shared helpers, storage, fonts and press feedback are out, in
+    `app/ui/`; 6,959 lines remain. What stands in the way, measured by how
+    many names each section takes from the rest of the file:
+    - none or nearly: rails (1), sheets (6), search box (7).
+    - a handful: typography (11), filters (13), versions (17), library (22).
+    - the knot: views (41), author (43), home (46), the work page (47),
+      sync (51), settings (52), jobs (80).
+    The next step is a module for the state they share — `view`, `prefs`,
+    `positions`, `current`, `currentWork`, the Back trail — after which
+    sheets, filters and the library can move, in that order. Until that
+    exists, moving the larger sections only relocates the tangle.
+
+## Left over from that list, to pick up
+
+- The Library tab still opens the full-width list; the list-plus-story view
+  appears once a work is opened. Whether it should open straight into it.
+- `npm run lint` reports about twenty unused names as warnings. Dead code to
+  clear out.
+- Writes (progress, delete, block) are still implemented twice: native
+  methods on the phone, SQL in the dev server.
+- Most of `test/app-shell.test.mjs` still reads source as text.
+- Tags are stored in name order, so a work's main pairing is not known to be
+  first. Keeping the archive's order needs a position on each tag and a
+  re-read of every work.
+- The stray tag `v3.16.0` on the old commit, with no release, is still there.
+
 
 ## Stop 2.x. Port these into 1.x, and that is v2.
 

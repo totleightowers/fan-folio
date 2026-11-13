@@ -9,7 +9,7 @@
 
 import { fetchRecoverableWork, resolveRecoverableChapter } from './core/ao3/recovery.js';
 import { createArchiveTransport, archiveRetryAfter, createPublicRecoveryRequests } from './archive-transport.js';
-import { createReadRoutes } from './core/routes.js';
+import { createReadRoutes, createAsyncReadRoutes } from './core/routes.js';
 import { parseListing } from './core/ao3/parse.js';
 import { workPage, linkTarget, seriesPage, ORIGIN } from './core/ao3/urls.js';
 import { parseForm, encodeForm } from './core/ao3/forms.js';
@@ -57,13 +57,71 @@ const parseAuthors = (raw) => { try { return JSON.parse(raw || '[]'); } catch { 
 
 const LOCAL = createReadRoutes(sql);
 
+/**
+ * The same query, without the page standing still for it.
+ *
+ * `native.query` returns when SQLite does, and nothing else in the page runs
+ * until then. Where the shell offers it, the query is handed over instead:
+ * the shell runs it on a thread of its own, says when it is done, and the
+ * rows are collected then.
+ *
+ * It falls back rather than failing. A shell without the method, a call that
+ * throws, or an answer that does not come in time each send that query down
+ * the old synchronous path — and after one missed answer, every later one
+ * too, so a fault here costs one pause and never a library that will not open.
+ */
+const QUERY_WAIT_MS = 6000;
+const waitingQueries = new Map();
+let queryId = 0;
+let asyncQueries = Boolean(native?.queryAsync && native?.takeQuery);
+
+function parseRows(raw, query) {
+  let result;
+  try { result = JSON.parse(raw); }
+  catch { throw new Error(`bridge returned unparseable JSON: ${String(raw).slice(0, 120)}`); }
+  if (result.error) throw new Error(`${result.error} — in: ${query.trim().slice(0, 90)}…`);
+  return result.rows;
+}
+
+if (typeof window !== 'undefined') {
+  window.__queryDone = (id) => {
+    const wait = waitingQueries.get(id);
+    if (!wait) return;
+    waitingQueries.delete(id);
+    clearTimeout(wait.timer);
+    try { wait.resolve(parseRows(native.takeQuery(id), wait.query)); }
+    catch (e) { wait.reject(e); }
+  };
+}
+
+function sqlAsync(query, args = []) {
+  if (!asyncQueries) return sql(query, args);
+  return new Promise((resolve, reject) => {
+    const id = `q${++queryId}`;
+    const synchronously = () => {
+      asyncQueries = false;
+      waitingQueries.delete(id);
+      try { resolve(sql(query, args)); } catch (e) { reject(e); }
+    };
+    const timer = setTimeout(synchronously, QUERY_WAIT_MS);
+    waitingQueries.set(id, { resolve, reject, query, timer });
+    try {
+      native.queryAsync(id, query, JSON.stringify(args.map(String)));
+    } catch {
+      clearTimeout(timer);
+      synchronously();
+    }
+  });
+}
+const LATER = createAsyncReadRoutes(sqlAsync);
+
 export async function api(path) {
   if (!isNative) {
     const res = await fetch(path);
     return res.json();
   }
 
-  const answer = LOCAL.read(path);
+  const answer = await LATER.read(path);
   if (answer !== undefined) return answer;
   const p = new URL(path, 'https://local/').pathname;
 
