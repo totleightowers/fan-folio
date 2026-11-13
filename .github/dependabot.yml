@@ -1,6 +1,15 @@
 # The app itself has no dependencies — nothing is installed at build or run
 # time, which is the point. So Dependabot's job here is the CI supply chain:
-# the actions this repo trusts to build and sign an APK.
+# the actions this repo trusts to build and sign an APK, and the tools CI
+# installs beside the checkout to test it.
+#
+# Dependabot only sees a version written in a manifest. The tools were pinned
+# inside workflow steps, where it cannot look, so each has a manifest of its
+# own under .github/tools and the workflow installs from that.
+#
+# Still raised by hand, because Dependabot follows none of them: gitleaks (a
+# release download with a checksum), the Flutter SDK (held on purpose), the
+# Android platform and build-tools, and the Node and Java versions.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -22,9 +31,23 @@ updates:
       codeql-action:
         patterns:
           - "github/codeql-action*"
+  # The root package.json declares nothing and is listed so that it stays
+  # watched if it ever does. The other two are ESLint and Playwright.
   - package-ecosystem: npm
-    directory: /
+    directories:
+      - /
+      - /.github/tools/lint
+      - /.github/tools/browser
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
     labels: [dependencies]
+  # Semgrep, which releases most weeks; monthly is often enough for a linter.
+  - package-ecosystem: pip
+    directory: /.github/tools/semgrep
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci

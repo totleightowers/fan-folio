@@ -1,0 +1,8 @@
+{
+  "name": "fan-folio-ci-lint",
+  "private": true,
+  "description": "The linter CI installs beside the checkout. Declared here so Dependabot can see it.",
+  "devDependencies": {
+    "eslint": "9.39.1"
+  }
+}

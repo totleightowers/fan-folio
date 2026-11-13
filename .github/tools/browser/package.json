@@ -1,0 +1,8 @@
+{
+  "name": "fan-folio-ci-browser",
+  "private": true,
+  "description": "The browser the journeys in test/browser run in. Declared here so Dependabot can see it.",
+  "devDependencies": {
+    "playwright": "1.55.0"
+  }
+}

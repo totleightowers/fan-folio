@@ -27,16 +27,22 @@ jobs:
       - name: Core logic tests
         run: npm test
       # Installed beside the checkout, as Playwright is: the project itself has
-      # no dependencies, and a linter is not a reason to acquire some.
+      # no dependencies, and a linter is not a reason to acquire some. Which
+      # version is declared in .github/tools/lint, where Dependabot reads it,
+      # and the lockfile there fixes every package under it by hash.
       - name: Nothing undefined, unreachable or assigned twice
         run: |
-          npm install --prefix /tmp/folio-lint eslint@9.39.1
+          mkdir -p /tmp/folio-lint
+          cp .github/tools/lint/package.json .github/tools/lint/package-lock.json /tmp/folio-lint/
+          npm ci --prefix /tmp/folio-lint --ignore-scripts
           ESLINT=/tmp/folio-lint/node_modules/.bin/eslint npm run lint
 
   browser:
     name: Settings and library in a browser
     # Playwright 1.55 has no browser build for the 26.04 image that
-    # ubuntu-latest moved to on 12 November.
+    # ubuntu-latest moved to on 12 November. The version is declared in
+    # .github/tools/browser; when Dependabot raises it to one that supports
+    # 26.04, this can go back to ubuntu-latest in the same pull request.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,7 +51,9 @@ jobs:
           node-version: '22'
       - name: Install browser test tools
         run: |
-          npm install --prefix /tmp/folio-browser playwright@1.55.0
+          mkdir -p /tmp/folio-browser
+          cp .github/tools/browser/package.json .github/tools/browser/package-lock.json /tmp/folio-browser/
+          npm ci --prefix /tmp/folio-browser --ignore-scripts
           /tmp/folio-browser/node_modules/.bin/playwright install --with-deps chromium
       - name: Exercise settings and library
         env:
@@ -109,7 +117,8 @@ jobs:
         with:
           # The Flutter app is put down. It is held at the release it last
           # passed on, so a new stable's deprecations do not fail work that
-          # has nothing to do with it.
+          # has nothing to do with it. Dependabot does not follow SDK
+          # versions, which here is what is wanted.
           channel: stable
           flutter-version: 3.47.9
           cache: true
@@ -154,19 +163,20 @@ jobs:
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
 
       # semgrep/semgrep-action is archived, so pin and run the CLI instead.
+      # The pin is in .github/tools/semgrep, where Dependabot reads it.
       - name: Semgrep
-        env:
-          SEMGREP_VERSION: 1.174.0
         run: |
           set -euo pipefail
           python3 -m venv /tmp/semgrep
-          /tmp/semgrep/bin/pip install --quiet "semgrep==${SEMGREP_VERSION}"
+          /tmp/semgrep/bin/pip install --quiet -r .github/tools/semgrep/requirements.txt
           /tmp/semgrep/bin/semgrep scan --error --quiet \
             --config p/javascript \
             --config p/security-audit \
             --config p/secrets \
             --config p/java
 
+      # Dependabot has no way to follow a release download, so this pin and
+      # its checksum are raised by hand.
       - name: Secret scan
         env:
           GITLEAKS_VERSION: 8.30.1

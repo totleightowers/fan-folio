@@ -1,0 +1,3 @@
+# The Semgrep CLI that CI's static analysis installs. Declared here, not in
+# the workflow, so Dependabot can see it.
+semgrep==1.174.0
