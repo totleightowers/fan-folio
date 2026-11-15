@@ -945,11 +945,9 @@ function filterParams(extra = {}, from = view) {
   }
   if (from.jobScope) {
     const job = jobForScope(from.jobScope);
-    p.set('jobIds', (job?.items.map(item => item.workId) ?? from.jobScope.ids ?? []).join('\t'));
-    const source = job ? jobLibrarySource(job) : from.jobScope.source;
-    if (source?.kind === 'author') {
-      p.set(source.part === 'bookmarks' ? 'jobBookmarkedBy' : 'jobAuthor', source.author);
-    }
+    // Older scopes stored every attempted ID. Only retain verified successes.
+    if (job) from.jobScope.downloadedIds = downloadedJobIds(job);
+    p.set('jobIds', (from.jobScope.downloadedIds ?? []).join('\t'));
   }
   if (from.showUnrevealed) p.set('showUnrevealed', from.showUnrevealed);
   return p;
@@ -2950,10 +2948,8 @@ function jobForScope(scope) {
   return match ? jobs.details(match.id) : null;
 }
 
-function jobLibrarySource(job) {
-  // A complete author walk can queue nothing because its works are already
-  // saved. Older queues also discarded their completed members.
-  return job.source.kind === 'author' && (!job.historyComplete || !job.items.length) ? job.source : null;
+function downloadedJobIds(job) {
+  return job.items.filter(item => jobItemGroup(item) === 'downloaded').map(item => item.workId);
 }
 
 function openJobCollection(id) {
@@ -2961,8 +2957,7 @@ function openJobCollection(id) {
   if (!job) return;
   openLibraryAs({ sort: 'title', availability: 'held', jobScope: {
     key: job.key, label: `${job.author || 'Download job'} · ${job.part || 'works'}`,
-    ids: job.items.map(item => item.workId),
-    source: jobLibrarySource(job),
+    downloadedIds: downloadedJobIds(job),
   } });
 }
 
@@ -2976,12 +2971,13 @@ function paintJobCollection() {
   const counts = { downloaded: 0, waiting: 0, failed: 0 };
   for (const item of job?.items ?? []) counts[jobItemGroup(item)]++;
   $('#job-collection-summary').textContent = !job
-    ? 'Job record removed. Showing the collection saved when you opened it.'
-    : jobLibrarySource(job)
-    ? `Includes library matches for ${job.source.author}’s ${job.source.part}. `
-      + (job.historyComplete ? 'No works were queued for this job.' : 'This older job’s download history is incomplete.')
-    : `${counts.downloaded} saved · ${counts.waiting} pending · ${counts.failed} need attention.`
-      + (job.historyComplete ? '' : ' This older job kept only part of its work list.');
+    ? scope.downloadedIds
+      ? 'Job record removed. Showing the recorded downloads saved when you last viewed it.'
+      : 'Job record removed. Its exact downloaded-work list is unavailable.'
+    : !job.historyComplete && !counts.downloaded
+      ? 'This older job did not retain its downloaded-work IDs. Its exact downloaded-work list is unavailable. Open Details & retry for any remaining records.'
+      : `${counts.downloaded} downloaded · ${counts.waiting} pending · ${counts.failed} need attention.`
+        + (job.historyComplete ? '' : ' This older job’s history is incomplete; only recorded downloads are shown.');
   $('#job-collection-details').onclick = () => openJob(job.id);
 }
 $('#job-browse').onclick = () => openJobCollection(jobShowing.id);

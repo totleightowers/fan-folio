@@ -44,6 +44,13 @@ try {
   assert.equal(await page.locator('#job-collection').isVisible(),false);
   await page.click('#back');
   await expectRows(['Apple orchard']);
+  // Upgrade a previously saved scope: attempted IDs/source hints must not leak.
+  await page.evaluate(()=>{
+    const view=JSON.parse(localStorage.getItem('archive.view'));
+    view.jobScope={key:'download',label:'Downloaded set · works',ids:['1','2','3'],source:{kind:'author',author:'gokurakuji',part:'works'}};
+    view.availability='';
+    localStorage.setItem('archive.view',JSON.stringify(view));
+  });
   await page.reload();
   await page.click('#tabs [data-tab=library]');
   await expectRows(['Apple orchard']);
@@ -60,30 +67,31 @@ try {
   await page.locator('#works .empty').filter({hasText:'No works match'}).waitFor();
   await openJob('Big set');
   await expectRows(['Apple orchard']);
-  // The screenshot's older 0-of-0 author job has no surviving IDs. Its row
-  // padding, title and keyboard activation all open the matching saved works.
+  // Older jobs must not invent membership from authors or bookmarks. Padding
+  // and keyboard activation still open the collection, even when it is empty.
   await page.click('#tabs [data-tab=activity]');
   const oldWorks=page.locator('.job-row').filter({has:page.locator('.job-who',{hasText:'gokurakuji · works'})}).first();
   await oldWorks.click({position:{x:4,y:4}});
-  await expectRows(['Apple orchard']);
-  assert.match(await page.locator('#job-collection-summary').innerText(),/download history is incomplete/);
+  await expectRows([]);
+  assert.match(await page.locator('#job-collection-summary').innerText(),/exact downloaded-work list is unavailable/);
   await page.click('#open-filters');
   await page.locator('#availability').selectOption('');
-  await page.click('#apply-filters');
-  await expectRows(['Apple orchard','Birch trees']);
+  await page.click('#filters [data-close]');
+  await expectRows([]);
   await page.reload();await page.click('#tabs [data-tab=library]');
-  await expectRows(['Apple orchard','Birch trees']);
+  await expectRows([]);
   await page.click('#tabs [data-tab=activity]');
   await page.locator('.job-open').filter({hasText:'gokurakuji · bookmarks'}).focus();
   await page.keyboard.press('Enter');
-  await expectRows(['Coastal path']);
+  await expectRows([]);
   await page.click('#tabs [data-tab=activity]');
   await page.locator('.job-open').filter({hasText:'gokurakuji · works'}).nth(1).click();
-  await expectRows(['Apple orchard']);
-  assert.match(await page.locator('#job-collection-summary').innerText(),/No works were queued/);
+  await expectRows([]);
+  assert.match(await page.locator('#job-collection-summary').innerText(),/0 downloaded/);
   await page.click('#tabs [data-tab=activity]');
   await page.locator('.job-open').filter({hasText:'gokurakuji · works'}).last().click();
-  await expectRows(['Apple orchard','Imported story']);
+  await expectRows(['Imported story']);
+  assert.match(await page.locator('#job-collection-summary').innerText(),/only recorded downloads are shown/);
   // Deleting a row stays on Downloads; it must not bubble into navigation.
   await page.click('#tabs [data-tab=activity]');
   await page.locator('.job-row').filter({hasText:'Empty set'}).getByRole('button',{name:'Delete',exact:true}).click();
@@ -104,20 +112,27 @@ try {
   assert.ok((await page.locator('#works').innerText()).includes('will be revealed soon'));
   await page.click('#open-filters');await page.click('#clear-filters');await page.click('#filters [data-close]');
   await expectRows(['Apple orchard','Birch trees','Coastal path','Imported story']);
-  // A fresh failure's status line is itself a link to saved works, including
-  // a retained local copy whose attempted refresh failed. No archive requests.
+  // A failure's status line links to this job's successful downloads only.
+  // A pre-existing local copy whose refresh failed is not one of them.
   await page.route('**/api/add?*',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({error:'This work was deleted'})}));
   await page.evaluate(()=>{
     localStorage.removeItem('archive.pacing');
     localStorage.setItem('fanfolio.jobs',JSON.stringify([
-      {key:'failed-refresh',author:'gokurakuji',part:'works',state:'queued',historyComplete:true,workIds:['1']},
+      {key:'failed-refresh',author:'gokurakuji',part:'works',state:'queued',historyComplete:true,workIds:['1'],items:[{workId:'epub-demo',state:'downloaded'}]},
     ]));
   });
   await page.reload();
   await page.click('#tabs [data-tab=activity]');
   await page.locator('.job-error-link').waitFor();
   await page.locator('.job-error-link').click();
-  await expectRows(['Apple orchard']);
+  await expectRows(['Imported story']);
+  await page.click('#open-filters');
+  await page.locator('#availability').selectOption('');
+  await page.click('#apply-filters');
+  await expectRows(['Imported story']);
+  await page.click('#job-collection-details');
+  await page.locator('#job-works [data-work-id="1"]').waitFor();
+  assert.match(await page.locator('#job-works [data-work-id="1"]').innerText(),/deleted/);
   await page.click('#tabs [data-tab=activity]');
   await page.locator('.job-row').getByRole('button',{name:'Delete',exact:true}).click();
   assert.equal(await page.locator('.job-error-link').count(),0, 'a removed job leaves no broken status link');

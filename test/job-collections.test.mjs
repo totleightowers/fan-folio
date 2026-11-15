@@ -79,7 +79,7 @@ test('a job keeps a stable collection key across restarts and changed numeric ID
   assert.deepEqual(next.details(imported.id).items.map(i=>i.workId),['epub-demo']);
 });
 
-test('legacy author jobs recover library matches without confusing works, bookmarks or ordinary filters', () => {
+test('legacy author and bookmark source hints never expand exact job membership', () => {
   const {db,works}=fixture();
   try {
     db.exec(`UPDATE works SET authors='["Rowan"]' WHERE work_id='2';
@@ -87,12 +87,12 @@ test('legacy author jobs recover library matches without confusing works, bookma
       UPDATE works SET has_text=1 WHERE work_id IN ('2','3');
       INSERT INTO chapters(work_id,number,html,text) VALUES('2',1,'saved','saved');
       INSERT INTO bookmarked_by(person,work_id) VALUES('Rowan','3'),('Rowan Longer','2');`);
-    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan'}),['2','epub-demo']);
-    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',availability:'held'}),['2']);
-    assert.deepEqual(works({jobIds:['3'],jobAuthor:'Rowan',availability:'held'}),['2','3'],
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan'}),[]);
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',availability:'held'}),[]);
+    assert.deepEqual(works({jobIds:['3'],jobAuthor:'Rowan',availability:'held'}),['3'],
       'surviving job members remain even if their current author metadata differs');
-    assert.deepEqual(works({jobIds:[],jobBookmarkedBy:'Rowan',availability:'held'}),['3']);
-    assert.deepEqual(works({jobIds:['2'],jobBookmarkedBy:'Rowan',availability:'held'}),['2','3']);
+    assert.deepEqual(works({jobIds:[],jobBookmarkedBy:'Rowan',availability:'held'}),[]);
+    assert.deepEqual(works({jobIds:['2'],jobBookmarkedBy:'Rowan',availability:'held'}),['2']);
     assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',include:['Missing tag']}),[]);
     assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',author:['Rowan Longer']}),[]);
     assert.deepEqual(works({jobIds:[],jobAuthor:'Row%'}),[]);

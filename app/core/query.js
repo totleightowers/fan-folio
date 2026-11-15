@@ -222,26 +222,14 @@ export function buildWorksQuery(filters = {}) {
   // IN keeps the work_id index usable even for a 20,000-work import.
   if (filters.jobIds != null) {
     const members = list(filters.jobIds);
-    const matches = [];
-    if (!members.length) matches.push('0=1');
+    if (!members.length) where.push('0=1');
     else if (members.length <= 500) {
-      matches.push(`w.work_id IN (${members.map(() => '?').join(',')})`);
+      where.push(`w.work_id IN (${members.map(() => '?').join(',')})`);
       args.push(...members);
     } else {
       const safe = members.filter(id => /^(?:[0-9]+|epub-[a-z0-9]+)$/.test(id));
-      matches.push(safe.length ? `w.work_id IN (${safe.map(id => `'${id}'`).join(',')})` : '0=1');
+      where.push(safe.length ? `w.work_id IN (${safe.map(id => `'${id}'`).join(',')})` : '0=1');
     }
-    // Old queues discarded completed IDs. Match their known source as well as
-    // surviving IDs, without guessing that a person's bookmarks are their works.
-    if (filters.jobAuthor) {
-      matches.push("w.authors LIKE ? ESCAPE '\\'");
-      args.push(`%${likeLiteral(JSON.stringify(String(filters.jobAuthor)))}%`);
-    }
-    if (filters.jobBookmarkedBy) {
-      matches.push('EXISTS (SELECT 1 FROM bookmarked_by b WHERE b.work_id = w.work_id AND b.person = ?)');
-      args.push(String(filters.jobBookmarkedBy));
-    }
-    where.push(`(${matches.join(' OR ')})`);
   }
 
   /* Authors are stored as a JSON array on the work, so a name is matched as
