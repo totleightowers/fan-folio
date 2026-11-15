@@ -209,7 +209,7 @@
       </div>
     </div>
     <div class="settings-panel"><label class="settings-row setting-toggle">
-      <span><strong>Download all known works</strong><small>Keep downloading works without saved chapters, including newly discovered works. Uses the paced queue; Pause all still applies. Turning this off pauses its jobs. Unavailable works stay in Downloads for manual retry.</small></span>
+      <span><strong>Download all known works</strong><small>Save missing and newly discovered works using the paced queue. Switch off to pause; retry failures from their jobs.</small></span>
       <input id="auto-download-known" type="checkbox" role="switch">
     </label></div>
     <div id="job-list"></div>
@@ -244,7 +244,7 @@
 
     <div id="history-sync" class="setting-group">
       <h3 class="group">Your reading history</h3>
-      <p class="setting-note">Counts your AO3 visits for Most read. Nothing is downloaded.</p>
+      <p class="setting-note">Syncs AO3 visits into History and Most read. With automatic downloads on, newly discovered works also join the queue.</p>
       <button id="sync-history" class="ghost">Sync AO3 history</button>
       <button id="view-history" class="ghost">View reading history</button>
       <p id="history-sync-status" class="setting-note" aria-live="polite"></p>
