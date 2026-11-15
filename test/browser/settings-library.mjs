@@ -655,7 +655,9 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await screenshot('v3-download-status-' + width, { fullPage: false });
   }
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('.job-open').filter({ hasText: 'Rowan' }).click();
+  await page.locator('#job-collection-details').click();
   await page.locator('#job-works [data-work-id="1"] .primary').waitFor();
   assert.equal(await page.locator('#job-works .job-work').count(), 3);
   assert.equal(await page.locator('#job-works [data-work-id="2"]').count(), 0, 'a job only shows its own works');
@@ -675,24 +677,33 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
   await page.locator('#back').click();
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('.job-open').filter({ hasText: 'Waiting collection' }).click();
+  await page.locator('#job-collection-details').click();
   await page.locator('#job-works [data-work-id="2"]').waitFor();
   assert.match(await page.locator('#job-works [data-work-id="2"]').innerText(), /Paused/);
   assert.equal(await page.locator('#job-works .primary').count(), 0, 'a waiting work is not offered as readable');
   await page.locator('#back').click();
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('.job-open').filter({ hasText: 'Older collection' }).click();
+  await page.locator('#job-collection-details').click();
   assert.equal(await page.locator('#job-history-note').isVisible(), true);
   await page.locator('#back').click();
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('.job-open').filter({ hasText: 'Large collection' }).click();
+  await page.locator('#job-collection-details').click();
   await page.waitForFunction(() => document.querySelectorAll('#job-works .job-work').length === 50);
   await page.locator('#job-next').click();
   await page.waitForFunction(() => document.querySelectorAll('#job-works .job-work').length === 5);
   assert.equal(await page.locator('#job-next').isDisabled(), true);
   await page.reload();
   await page.locator('#tabs [data-tab="activity"]').click();
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('.job-open').filter({ hasText: 'Rowan' }).click();
+  await page.locator('#job-collection-details').click();
   await page.locator('#job-works [data-work-id="epub-demo"] .primary').waitFor();
   await page.locator('#back').click();
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('#downloads-library').click();
   await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 2);
   assert.equal(await page.locator('#availability').inputValue(), 'held');
@@ -834,7 +845,9 @@ try {
     return route.fulfill({ json: { workId: id, title: 'Recovered work', authors: ['Rowan'], chapters: 1 } });
   });
   await page.locator('#tabs [data-tab="activity"]').click();
+  await page.locator('#tabs [data-tab="activity"]').click();
   await page.locator('.job-open').filter({ hasText: 'Rowan' }).click();
+  await page.locator('#job-collection-details').click();
   await page.locator('[data-job-filter="failed"]').click();
   await page.locator('#job-works [data-work-id="9999"] .job-retry').click();
   await page.locator('#job-summary').filter({ hasText: '3 downloaded' }).waitFor();

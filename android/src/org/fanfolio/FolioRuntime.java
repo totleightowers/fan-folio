@@ -1545,8 +1545,9 @@ public class FolioRuntime extends android.content.ContextWrapper {
          *
          * Cannot damage anything by construction: a work already held is left
          * exactly as it is, because a blurb knows less than the work page a
-         * held copy came from. Only rows that do not exist are written, with
-         * has_text at 0, so the app knows the chapters are still to come.
+         * held copy came from. New rows and unrevealed placeholders without chapters are written,
+         * with has_text at 0. Refreshing a placeholder lets a newly revealed
+         * work become visible on the next listing sync.
          */
         @JavascriptInterface
         public String saveStubs(String json) {
@@ -1589,8 +1590,13 @@ public class FolioRuntime extends android.content.ContextWrapper {
 
                         long row = db.insertWithOnConflict("works", null, v,
                                 SQLiteDatabase.CONFLICT_IGNORE);
-                        if (row == -1) continue;      // already held, and left alone
-                        added++;
+                        if (row == -1) {
+                            // Only replace an unrevealed placeholder. Real saved chapters,
+                            // progress, bookmarks and versions remain untouched.
+                            String refreshUnrevealed = "work_id = ? AND work_id IN (SELECT w.work_id FROM works w WHERE ((instr(lower(COALESCE(w.summary, '')), 'this is part of an ongoing challenge and will be revealed soon') > 0 OR (lower(trim(COALESCE(w.title, ''))) = 'mystery work' AND COALESCE(w.words, 0) = 0) OR (trim(COALESCE(w.title, '')) IN ('', '(untitled)') AND trim(COALESCE(w.summary, '')) = '' AND COALESCE(w.words, 0) = 0 AND COALESCE(w.chapter_count, 0) = 0 AND COALESCE(trim(w.authors), '[]') IN ('[]', '[\"Anonymous\"]', '[\"anonymous\"]') AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id))) AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id)))";
+                            if (db.update("works", v, refreshUnrevealed, new String[]{ id }) == 0) continue;
+                            db.delete("tags", "work_id = ?", new String[]{ id });
+                        } else added++;
 
                         org.json.JSONObject tags = b.optJSONObject("tags");
                         java.util.Iterator<String> kinds = tags == null ? null : tags.keys();

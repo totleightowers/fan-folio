@@ -8,6 +8,7 @@
  */
 
 import { diagnosticProgress, diagnosticQueue, diagnosticError } from './download-diagnostics.js';
+import { shown } from './core/query.js';
 import { visitLabel, visitBreakdown } from './core/store/visits.js';
 import { snippetParts } from './core/snippet.js';
 import { $, $$, fmt, authorsOf, icon, reduceMotion } from './ui/dom.js';
@@ -68,7 +69,7 @@ const view = load(VIEW_KEY, {
   include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
   complete: '', language: '', wordsMin: '', wordsMax: '',
   chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
-  otp: '',
+  otp: '', jobScope: null, showUnrevealed: '',
 });
 // Carry older saved views into the independent filter dimensions.
 if (['held', 'known'].includes(view.state)) { view.availability = view.state; view.state = 'all'; }
@@ -942,6 +943,11 @@ function filterParams(extra = {}, from = view) {
                      'bookmarkedBy']) {
     if (from[key]) p.set(key, from[key]);
   }
+  if (from.jobScope) {
+    const job = jobForScope(from.jobScope);
+    p.set('jobIds', (job?.items.map(item => item.workId) ?? from.jobScope.ids ?? []).join('\t'));
+  }
+  if (from.showUnrevealed) p.set('showUnrevealed', from.showUnrevealed);
   return p;
 }
 
@@ -952,6 +958,7 @@ const activeCount = () =>
   + (view.wordsMin || view.wordsMax ? 1 : 0)
   + (view.chaptersMin || view.chaptersMax ? 1 : 0)
   + (view.updatedAfter || view.updatedBefore ? 1 : 0)
+  + (view.jobScope ? 1 : 0) + (view.showUnrevealed ? 1 : 0)
   + (view.crossover ? 1 : 0) + (view.otp ? 1 : 0)
   + (view.state !== 'all' && !saidByTab('state') ? 1 : 0) + (view.availability ? 1 : 0)
   + (view.collection && !saidByTab('collection') ? 1 : 0);
@@ -1141,6 +1148,16 @@ async function buildFilterPanel(request) {
       box.append(opts);
     });
   }
+
+  section('unrevealed', 'Unavailable placeholders', [view.showUnrevealed ? 'Shown' : 'Hidden'], box => {
+    const opts = document.createElement('div'); opts.className = 'opts';
+    opts.append(chip('Show unrevealed and empty placeholders', null, view.showUnrevealed ? 'on' : '', () => {
+      view.showUnrevealed = view.showUnrevealed ? '' : '1'; save(VIEW_KEY, view);
+    }));
+    const help = document.createElement('p'); help.className = 'filter-hint';
+    help.textContent = 'Unrevealed works and empty, untitled placeholders are hidden by default. Saved chapters and ordinary anonymous works stay visible.';
+    box.append(opts, help);
+  });
 
   section('status', 'Archive completion', view.complete ? [view.complete === '1' ? 'Complete' : 'WIP'] : [], (box) => {
     const opts = document.createElement('div');
@@ -1477,6 +1494,8 @@ function paintActiveFilters() {
   if (view.state !== 'all' && !saidByTab('state')) {
     pill(STATE_LABELS[view.state] ?? view.state, 'state', () => { view.state = 'all'; });
   }
+  if (view.jobScope) pill(view.jobScope.label, 'in', () => { view.jobScope = null; });
+  if (view.showUnrevealed) pill('Including unavailable placeholders', 'in', () => { view.showUnrevealed = ''; });
   if (view.availability) pill(AVAILABILITY_LABELS[view.availability], 'state', () => { view.availability = ''; });
   if (view.collection && !saidByTab('collection')) pill(COLLECTION_LABELS[view.collection], 'state', () => { view.collection = ''; });
   for (const t of view.include) pill(t, 'in', () => { view.include = view.include.filter((x) => x !== t); });
@@ -1547,7 +1566,7 @@ $('#clear-filters').onclick = async () => {
   Object.assign(view, {
     state: 'all', availability: '', collection: '', include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
     complete: '', language: '', wordsMin: '', wordsMax: '',
-    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '', jobScope: null, showUnrevealed: '',
   });
   currentAuthor = null;
   for (const key of Object.keys(sectionSearch)) delete sectionSearch[key];
@@ -1828,8 +1847,8 @@ function stubIds(limit = STUBS_AT_ONCE) {
   if (!nativeStatus().hasDatabase) return [];
   try {
     const out = JSON.parse(window.ArchiveNative.query(
-      `SELECT work_id FROM works WHERE COALESCE(hidden, 0) = 0
-        AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = works.work_id)
+      `SELECT work_id FROM works w WHERE ${shown('1=1')}
+        AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id)
         ORDER BY COALESCE(updated, published) DESC, work_id DESC LIMIT ${Number(limit) || STUBS_AT_ONCE}`,
       JSON.stringify([])));
     return (out.rows ?? []).map((r) => String(r.work_id));
@@ -1843,8 +1862,8 @@ function stubTotal() {
   if (!nativeStatus().hasDatabase) return 0;
   try {
     const out = JSON.parse(window.ArchiveNative.query(
-      `SELECT count(*) AS n FROM works WHERE COALESCE(hidden, 0) = 0
-        AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = works.work_id)`, JSON.stringify([])));
+      `SELECT count(*) AS n FROM works w WHERE ${shown('1=1')}
+        AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id)`, JSON.stringify([])));
     return Number(out.rows?.[0]?.n ?? 0);
   } catch {
     return 0;
@@ -2551,6 +2570,10 @@ const jobs = createQueue({
     if (!$('#author').hidden) paintAuthor();
     if (!$('#activity').hidden) { paintJobs(); paintStubs(); }
     if (showing() === 'download-job') paintJobDetail();
+    if (view.jobScope && view.jobScope.key === e.job?.key) {
+      paintJobCollection();
+      if (['grew', 'item', 'progress'].includes(e.type)) freshenSoon();
+    }
   },
 });
 
@@ -2627,6 +2650,7 @@ function paintActivityBadge() {
 }
 
 function paintCollections() {
+  paintJobCollection();
   $('#visits-help').hidden = view.sort !== 'visits';
   $('#history-help').hidden = view.collection !== 'visited';
   for (const button of $$('#library-collections [data-collection]')) {
@@ -2685,7 +2709,7 @@ function openLibraryAs(patch) {
   Object.assign(view, {
     state: 'all', availability: '', collection: '', include: [], exclude: [], rating: [], author: [],
     bookmarkedBy: '', complete: '', language: '', wordsMin: '', wordsMax: '',
-    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '', jobScope: null, showUnrevealed: '',
   }, patch);
   save(VIEW_KEY, view);
   paintActiveFilters();
@@ -2912,6 +2936,37 @@ const JOB_PAGE_SIZE = 50;
 const jobItemGroup = item => ['downloaded', 'version'].includes(item.state) ? 'downloaded'
   : ['failed', 'stopped'].includes(item.state) ? 'failed' : 'waiting';
 
+function jobForScope(scope) {
+  const match = jobs.list().find(job => job.key === scope?.key);
+  return match ? jobs.details(match.id) : null;
+}
+
+function openJobCollection(id) {
+  const job = jobs.details(id);
+  if (!job) return;
+  openLibraryAs({ sort: 'title', jobScope: {
+    key: job.key, label: `${job.author || 'Download job'} · ${job.part || 'works'}`,
+    ids: job.items.map(item => item.workId),
+  } });
+}
+
+function paintJobCollection() {
+  const scope = view.jobScope;
+  $('#job-collection').hidden = !scope;
+  if (!scope) return;
+  const job = jobForScope(scope);
+  $('#job-collection').setAttribute('aria-label', scope.label);
+  $('#job-collection-details').hidden = !job;
+  const counts = { downloaded: 0, waiting: 0, failed: 0 };
+  for (const item of job?.items ?? []) counts[jobItemGroup(item)]++;
+  $('#job-collection-summary').textContent = job
+    ? `${counts.downloaded} saved · ${counts.waiting} pending · ${counts.failed} need attention.`
+      + (job.historyComplete ? '' : ' This older job kept only part of its work list.')
+    : 'Job record removed. Showing the works recorded when you opened it.';
+  $('#job-collection-details').onclick = () => openJob(job.id);
+}
+$('#job-browse').onclick = () => openJobCollection(jobShowing.id);
+
 function openJob(id) {
   go('download-job', { id });
   jobShowing = { id, filter: 'all', page: 0 };
@@ -2969,7 +3024,7 @@ async function paintJobDetail() {
   $('#job-next').disabled = start + JOB_PAGE_SIZE >= filtered.length;
   $('#job-page').textContent = `${start + 1}–${Math.min(start + JOB_PAGE_SIZE, filtered.length)} of ${filtered.length}`;
   try {
-    const params = new URLSearchParams({ ids: items.map(item => item.workId).join('\t'), limit: String(JOB_PAGE_SIZE) });
+    const params = new URLSearchParams({ ids: items.map(item => item.workId).join('\t'), showUnrevealed: '1', limit: String(JOB_PAGE_SIZE) });
     const out = items.length ? await api(`/api/works?${params}`) : { works: [] };
     if (request !== jobDetailRequest || showing() !== 'download-job') return;
     if (out.error) throw new Error(out.error);
@@ -3109,7 +3164,7 @@ function paintJobs() {
     const text = document.createElement('button');
     text.className = 'job-text job-open';
     text.setAttribute('aria-label', `View works in ${job.author} · ${job.part}`);
-    text.onclick = () => openJob(job.id);
+    text.onclick = () => openJobCollection(job.id);
     const who = document.createElement('span');
     who.className = 'job-who';
     who.textContent = `${job.author || 'Download job'} · ${job.part || 'works'}`;
@@ -5278,7 +5333,7 @@ function filterBy(kind, value) {
        once, which is the handful of works they wrote and also bookmarked. */
     bookmarkedBy: '',
     complete: '', language: '', wordsMin: '', wordsMax: '',
-    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
+    chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '', jobScope: null, showUnrevealed: '',
   });
   apply(value);
   save(VIEW_KEY, view);

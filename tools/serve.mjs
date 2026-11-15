@@ -65,7 +65,9 @@ async function serveStatic(res, pathname) {
   }
 }
 
-createServer(async (req, res) => {
+// Job collections can contain thousands of IDs. Android passes these directly
+// to the shared read routes; allow the equivalent local development request.
+createServer({ maxHeaderSize: 2 * 1024 * 1024 }, async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p = url.pathname;
 

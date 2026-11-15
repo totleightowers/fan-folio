@@ -1490,7 +1490,7 @@ test('the front page hides what the library hides', () => {
     const src = readFileSync(new URL(path, import.meta.url), 'utf8');
     const fn = src.slice(src.indexOf('const shelf = (where, order'));
     assert.match(fn.slice(0, 1400), /shown\(where\)/, `${path} hides them on the shelves`);
-    assert.match(src, /COALESCE\(w\.hidden, 0\) = 0/, `${path} hides them in the counts`);
+    assert.match(src, /shown\('1=1'\)/, `${path} hides them in the counts`);
   }
   const query = readFileSync(new URL('../app/core/query.js', import.meta.url), 'utf8');
   assert.match(query, /export const shown = \(where\)/, 'one helper, imported by both');

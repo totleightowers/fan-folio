@@ -6,10 +6,9 @@
  * and not the other, and the app failed on a real device in ways no test could
  * see. One builder, two callers.
  *
- * Nothing a reader types is ever concatenated into SQL. Column and sort names
- * come from the maps below and are looked up, never interpolated; every value
- * is bound. The only interpolated things are integers this module has already
- * validated.
+ * Filter text is bound. Column and sort names come from the maps below.
+ * Integer limits and large collections of work IDs are interpolated only
+ * after validation against their complete allowed formats.
  */
 
 import { FF_VISITS, TOTAL_VISITS } from './store/visits.js';
@@ -73,7 +72,19 @@ export const COMPLETED = `(${FINISHED} OR COALESCE(r.completed_before, 0) = 1)`;
  * imported by both, so the two cannot drift into a blocked author being
  * hidden from the library and offered on the front page.
  */
-export const shown = (where) => `COALESCE(w.hidden, 0) = 0 AND (${where})`;
+// Hide unrevealed works and empty, untitled records with no metadata, never a
+// normal anonymous work or a
+// copy with saved chapters. Query-time detection also covers existing libraries;
+// refreshed metadata makes a revealed work visible without a separate unhide.
+export const UNAVAILABLE_PLACEHOLDER = `((instr(lower(COALESCE(w.summary, '')), 'this is part of an ongoing challenge and will be revealed soon') > 0
+  OR (lower(trim(COALESCE(w.title, ''))) = 'mystery work' AND COALESCE(w.words, 0) = 0)
+  OR (trim(COALESCE(w.title, '')) IN ('', '(untitled)')
+    AND trim(COALESCE(w.summary, '')) = '' AND COALESCE(w.words, 0) = 0
+    AND COALESCE(w.chapter_count, 0) = 0
+    AND COALESCE(trim(w.authors), '[]') IN ('[]', '["Anonymous"]', '["anonymous"]')
+    AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id)))
+  AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id))`;
+export const shown = (where) => `COALESCE(w.hidden, 0) = 0 AND NOT ${UNAVAILABLE_PLACEHOLDER} AND (${where})`;
 
 /** Reading state, which lives in the reading table rather than on the work. */
 /* One definition each, used everywhere: Home, the Library filter, the shelf's
@@ -177,6 +188,7 @@ export function buildWorksQuery(filters = {}) {
    * remembering separately and one of them forgetting.
    */
   where.push('COALESCE(w.hidden, 0) = 0');
+  if (filters.showUnrevealed !== '1') where.push(`NOT ${UNAVAILABLE_PLACEHOLDER}`);
 
   where.push(STATES[filters.state] ?? STATES.all);
   if (['held', 'known'].includes(filters.availability)) where.push(STATES[filters.availability]);
@@ -202,6 +214,23 @@ export function buildWorksQuery(filters = {}) {
   if (ids.length) {
     where.push(`w.work_id IN (${ids.map(() => '?').join(',')})`);
     args.push(...ids);
+  }
+
+  // A job is a separate scope, intersected with search candidates and filters.
+  // Empty jobs must not accidentally turn into the entire library. Large imports
+  // exceed older Android bind limits. Only complete numeric/EPUB IDs may be
+  // inlined; the closed character set cannot contain SQL quotes or operators.
+  // IN keeps the work_id index usable even for a 20,000-work import.
+  if (filters.jobIds != null) {
+    const members = list(filters.jobIds);
+    if (!members.length) where.push('0=1');
+    else if (members.length <= 500) {
+      where.push(`w.work_id IN (${members.map(() => '?').join(',')})`);
+      args.push(...members);
+    } else {
+      const safe = members.filter(id => /^(?:[0-9]+|epub-[a-z0-9]+)$/.test(id));
+      where.push(safe.length ? `w.work_id IN (${safe.map(id => `'${id}'`).join(',')})` : '0=1');
+    }
   }
 
   /* Authors are stored as a JSON array on the work, so a name is matched as

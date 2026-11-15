@@ -2887,3 +2887,9 @@ body:has(#now-reading:not([hidden])) .view { padding-bottom: 10rem; }
 @media (min-width: 44.01rem) and (max-width: 60rem) {
   .from-collection .preview-layout { grid-template-columns: minmax(13rem, 34%) minmax(0, 1fr); gap: 1.25rem; }
 }
+
+/* A job is a normal Library collection; its status fits beside the filters. */
+.job-collection:not([hidden]) {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .25rem .75rem;
+  margin-top: .35rem; font-size: .84rem; color: var(--muted);
+}

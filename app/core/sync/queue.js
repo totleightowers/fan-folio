@@ -16,6 +16,7 @@ import { jobSource } from './job-source.js';
  */
 
 let nextId = 1;
+const newKey = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${nextId}-${Math.random()}`;
 
 /*
  * `listing` is a job that exists before its work does.
@@ -67,7 +68,7 @@ export function createQueue({
     return { total, added, failed, stopped, done: added + failed, waiting: Math.max(0, total - added - failed - stopped) };
   };
   const view = (j) => ({
-    id: j.id, author: j.author, part: j.part, state: j.state, source: { ...j.source },
+    id: j.id, key: j.key, author: j.author, part: j.part, state: j.state, source: { ...j.source },
     ...counts(j),
     open: Boolean(j.open), page: j.page ?? 0, pages: j.pages ?? null,
     say: j.say ?? null, issue: j.issue ?? null,
@@ -96,7 +97,7 @@ export function createQueue({
       return existing.id;
     }
     const job = {
-      id: nextId++, author, part, source, workIds: [...new Set(workIds.map(String))],
+      id: nextId++, key: newKey(), author, part, source, workIds: [...new Set(workIds.map(String))],
       items: initialItems(workIds), historyComplete: true,
       done: 0, added: 0, failed: 0, open,
       /* How far through the index the walk had read, so a restart carries on
@@ -345,7 +346,7 @@ export function createQueue({
   function restore(saved) {
     const owed = (saved.workIds ?? []).map(String);
     const job = {
-      id: nextId++, author: saved.author, part: saved.part, source: jobSource(saved),
+      id: nextId++, key: saved.key || newKey(), author: saved.author, part: saved.part, source: jobSource(saved),
       workIds: owed,
       items: initialItems([...(saved.items ?? []).map(item => item.workId).filter(Boolean), ...owed, ...(saved.unfinished ?? [])]),
       historyComplete: Boolean(saved.historyComplete),
@@ -548,7 +549,7 @@ export function createQueue({
       .map((j) => {
         const settled = j.state === 'done';
         return {
-          author: j.author, part: j.part, source: { ...j.source },
+          key: j.key, author: j.author, part: j.part, source: { ...j.source },
           state: j.state,
           items: [...j.items.values()].map(item => ({ ...item })),
           historyComplete: j.historyComplete,

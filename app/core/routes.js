@@ -123,16 +123,16 @@ export function createReadRoutes(sql) {
       });
 
       const totals = sql('SELECT count(*) AS works, COALESCE(sum(words),0) AS words FROM works w '
-        + 'WHERE COALESCE(w.hidden, 0) = 0')[0];
+        + `WHERE ${shown('1=1')}`)[0];
       const read = sql(`
         SELECT COALESCE(sum(CASE WHEN ${COMPLETED} THEN w.words ELSE 0 END),0) AS words,
                count(CASE WHEN ${COMPLETED} THEN 1 END) AS finished
         FROM works w JOIN reading r ON r.work_id = w.work_id
-        WHERE COALESCE(w.hidden, 0) = 0`)[0];
+        WHERE ${shown('1=1')}`)[0];
 
       const top = (kind, limit) => sql(
         `SELECT t.name, count(*) AS n FROM tags t JOIN works w ON w.work_id = t.work_id
-         WHERE t.kind = ? AND COALESCE(w.hidden, 0) = 0
+         WHERE t.kind = ? AND ${shown('1=1')}
          GROUP BY t.name ORDER BY n DESC LIMIT ${lim(limit, 12)}`,
         [kind]);
 
@@ -140,7 +140,7 @@ export function createReadRoutes(sql) {
         stats: {
           works: totals.works, words: totals.words,
           finished: read.finished, wordsRead: read.words,
-          later: sql('SELECT count(*) AS n FROM reading WHERE marked_later = 1')[0].n,
+          later: sql(`SELECT count(*) AS n FROM reading r JOIN works w ON w.work_id = r.work_id WHERE ${shown('r.marked_later = 1')}`)[0].n,
         },
         shelves: [
           { key: 'reading', title: 'Continue reading',
@@ -173,7 +173,7 @@ export function createReadRoutes(sql) {
           fandom: top('fandom', 14), relationship: top('relationship', 14),
           character: top('character', 12), freeform: top('freeform', 14),
           rating: sql(`SELECT rating AS name, count(*) AS n FROM works w
-                       WHERE rating IS NOT NULL AND rating <> '' AND COALESCE(w.hidden, 0) = 0
+                       WHERE rating IS NOT NULL AND rating <> '' AND ${shown('1=1')}
                        GROUP BY rating ORDER BY n DESC`),
         },
       };
