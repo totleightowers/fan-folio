@@ -737,7 +737,7 @@ function whenParts({ label, date }) {
   return [name, time];
 }
 
-function workRow(w) {
+function workRow(w, { showHistory = false } = {}) {
   const node = document.createElement('div');
   node.className = 'work-card';
   node.dataset.density = libraryDisplay.density;
@@ -778,7 +778,7 @@ function workRow(w) {
   node.querySelector('.statline').textContent = stats;
   const visits = visitLabel(w);
   if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; line.title = visitBreakdown(w); node.querySelector('.statline').after(line); }
-  if (view.collection === 'visited' || (view.sort === 'recent' && w.last_read_at)) {
+  if (showHistory) {
     const line = document.createElement('div');
     line.className = 'visit-count last-read';
     const date = w.last_read_at && new Date(w.last_read_at.replace(' ', 'T') + 'Z');
@@ -859,7 +859,8 @@ async function loadMore(reset = false, limit = 50) {
     if (request !== libraryRequest) return;
     total = n;
     const box = $('#works');
-    for (const w of works) box.append(workRow(w));
+    for (const w of works) box.append(workRow(w, { showHistory: view.collection === 'visited'
+      || (view.sort === 'recent' && Boolean(w.last_read_at)) }));
     libraryRows.push(...works.map(w => ({ work_id: String(w.work_id), title: w.title, authors: w.authors })));
     offset += works.length;
     $('#more').textContent = offset < total
