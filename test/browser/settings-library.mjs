@@ -505,7 +505,9 @@ try {
     return Math.abs(first.top - next.top) < 2 && first.right <= next.left;
   }), true, 'phone reading choices share a compact horizontal shelf');
   await screenshot('v3-resume-phone', { fullPage: false });
-  assert.equal(await page.locator('#now-reading').isVisible(), false, 'Home already offers the reading shelf');
+  assert.equal(await page.locator('#now-reading').isVisible(), true, 'Home keeps the return pill available alongside its shelves');
+  assert.match(await page.locator('#now-reading-title').innerText(), /The long way home/);
+  assert.match(await page.locator('#now-reading-place').innerText(), /Chapter 1/);
   // The whole reading card previews the work; Resume remains a distinct action.
   const returnToReadingShelf = async () => {
     const previousCard = await resume.elementHandle();
