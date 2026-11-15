@@ -1937,7 +1937,7 @@ test('background failures are shown in settings and nowhere else', () => {
      cannot act on, while they are doing something else. */
   const walk = js.slice(js.indexOf('async function walkAuthor('));
   const body = walk.slice(0, walk.indexOf('\n}\n'));
-  assert.match(body, /jobError =/, 'the failure is recorded for settings');
+  assert.match(body, /setJobError\(/, 'the failure is recorded for settings');
   assert.ok(!/authorSay\(e\.message\)/.test(body), 'and not printed over the library');
   assert.match(js, /jobError\b[\s\S]{0,400}job-error/, 'settings is where it appears');
 });

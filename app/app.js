@@ -946,6 +946,10 @@ function filterParams(extra = {}, from = view) {
   if (from.jobScope) {
     const job = jobForScope(from.jobScope);
     p.set('jobIds', (job?.items.map(item => item.workId) ?? from.jobScope.ids ?? []).join('\t'));
+    const source = job ? jobLibrarySource(job) : from.jobScope.source;
+    if (source?.kind === 'author') {
+      p.set(source.part === 'bookmarks' ? 'jobBookmarkedBy' : 'jobAuthor', source.author);
+    }
   }
   if (from.showUnrevealed) p.set('showUnrevealed', from.showUnrevealed);
   return p;
@@ -2431,6 +2435,11 @@ const JOBS_KEY = 'fanfolio.jobs';
 
 /* The last thing that went wrong in the background, shown in settings. */
 let jobError = null;
+let jobErrorKey = null;
+function setJobError(message, id = null) {
+  jobError = message;
+  jobErrorKey = jobs.details(id)?.key ?? null;
+}
 
 /*
  * Redraw what the new work has changed, without pulling the rug.
@@ -2554,7 +2563,7 @@ const jobs = createQueue({
       toast(`${e.job.author} · ${e.job.part}: `
         + (e.job.say ?? `finished, ${e.job.added} added`));
       if (e.job.failed && e.job.lastError) {
-        jobError = `${e.job.author} · ${e.job.part}: ${e.job.failed} skipped — ${e.job.lastError}`;
+        setJobError(`${e.job.author} · ${e.job.part}: ${e.job.failed} skipped — ${e.job.lastError}`, e.job.id);
       }
       freshen();
     }
@@ -2941,12 +2950,19 @@ function jobForScope(scope) {
   return match ? jobs.details(match.id) : null;
 }
 
+function jobLibrarySource(job) {
+  // A complete author walk can queue nothing because its works are already
+  // saved. Older queues also discarded their completed members.
+  return job.source.kind === 'author' && (!job.historyComplete || !job.items.length) ? job.source : null;
+}
+
 function openJobCollection(id) {
   const job = jobs.details(id);
   if (!job) return;
-  openLibraryAs({ sort: 'title', jobScope: {
+  openLibraryAs({ sort: 'title', availability: 'held', jobScope: {
     key: job.key, label: `${job.author || 'Download job'} · ${job.part || 'works'}`,
     ids: job.items.map(item => item.workId),
+    source: jobLibrarySource(job),
   } });
 }
 
@@ -2959,10 +2975,13 @@ function paintJobCollection() {
   $('#job-collection-details').hidden = !job;
   const counts = { downloaded: 0, waiting: 0, failed: 0 };
   for (const item of job?.items ?? []) counts[jobItemGroup(item)]++;
-  $('#job-collection-summary').textContent = job
-    ? `${counts.downloaded} saved · ${counts.waiting} pending · ${counts.failed} need attention.`
-      + (job.historyComplete ? '' : ' This older job kept only part of its work list.')
-    : 'Job record removed. Showing the works recorded when you opened it.';
+  $('#job-collection-summary').textContent = !job
+    ? 'Job record removed. Showing the collection saved when you opened it.'
+    : jobLibrarySource(job)
+    ? `Includes library matches for ${job.source.author}’s ${job.source.part}. `
+      + (job.historyComplete ? 'No works were queued for this job.' : 'This older job’s download history is incomplete.')
+    : `${counts.downloaded} saved · ${counts.waiting} pending · ${counts.failed} need attention.`
+      + (job.historyComplete ? '' : ' This older job kept only part of its work list.');
   $('#job-collection-details').onclick = () => openJob(job.id);
 }
 $('#job-browse').onclick = () => openJobCollection(jobShowing.id);
@@ -3139,9 +3158,19 @@ function paintJobs() {
     /* Failures from background work belong here, next to the thing that
        failed — not over the library, where the reader is doing something
        else and cannot act on it anyway. */
-    const bad = document.createElement('p');
-    bad.className = 'job-error';
+    const failedJob = list.find(job => job.key === jobErrorKey);
+    const bad = document.createElement(failedJob ? 'button' : 'p');
+    bad.className = `job-error${failedJob ? ' job-error-link' : ''}`;
     bad.textContent = jobError;
+    if (failedJob) {
+      bad.type = 'button';
+      bad.setAttribute('aria-label', `View saved works in ${failedJob.author} · ${failedJob.part}: ${jobError}`);
+      bad.onclick = () => openJobCollection(failedJob.id);
+      const caption = document.createElement('span');
+      caption.className = 'job-link-caption';
+      caption.textContent = ' View saved works ›';
+      bad.append(caption);
+    }
     box.append(bad);
   }
 
@@ -3160,10 +3189,14 @@ function paintJobs() {
   for (const job of list) {
     const row = document.createElement('div');
     row.className = 'job-row';
+    row.onclick = event => {
+      if (event.target.closest('button, a, input, select, textarea, .job-acts') || window.getSelection()?.toString()) return;
+      openJobCollection(job.id);
+    };
 
     const text = document.createElement('button');
     text.className = 'job-text job-open';
-    text.setAttribute('aria-label', `View works in ${job.author} · ${job.part}`);
+    text.setAttribute('aria-label', `View saved works in ${job.author} · ${job.part}`);
     text.onclick = () => openJobCollection(job.id);
     const who = document.createElement('span');
     who.className = 'job-who';
@@ -3774,7 +3807,7 @@ async function catchUpOn(name, parts = ['works', 'bookmarks']) {
      404s even though the byline still links to it. Queueing a walk here would
      spend a request to be told no, every time one of these is opened. */
   if (isOrphan(name)) {
-    jobError = `${name}: this work was orphaned, so there is no author page to read`;
+    setJobError(`${name}: this work was orphaned, so there is no author page to read`);
     paintJobs();
     return;
   }
@@ -3798,7 +3831,7 @@ async function catchUpOn(name, parts = ['works', 'bookmarks']) {
   try {
     counts = parseUserCounts(await archivePage(authorProfileUrl(name)));
   } catch (e) {
-    jobError = `${name}: ${e.message}`;
+    setJobError(`${name}: ${e.message}`, opened[parts[0]]);
     for (const id of Object.values(opened)) jobs.note(id, { issue: e.message });
     closeAll();
     return;
@@ -3872,7 +3905,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
      of fetching somebody there is. Refused here rather than only at the
      button, because a job restored after a restart comes back through this. */
   if (blockedNames().has(String(name))) {
-    jobError = `${name} is blocked, so nothing of theirs was read`;
+    setJobError(`${name} is blocked, so nothing of theirs was read`);
     return { complete: false, reached: 0, pages: null, top: null };
   }
   const url = listing === 'works' ? authorWorksUrl : authorBookmarksUrl;
@@ -3945,7 +3978,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
       } catch (e) {
         complete = false;
         missed++;
-        jobError = `${name} · ${listing}: page ${page} of ${pages} — ${e.message}`;
+        setJobError(`${name} · ${listing}: page ${page} of ${pages} — ${e.message}`, jobId);
       }
     }
     if (missed) throw new Error(`${missed} of ${pages} pages could not be read`);
@@ -3953,7 +3986,7 @@ async function walkAuthor(name, { listing = 'works', jobId = null,
   } catch (e) {
     /* Kept for settings. "The archive answered 500" over a shelf is a sentence
        the reader cannot act on while doing something else. */
-    jobError = `${name} · ${listing}: ${e.message}`;
+    setJobError(`${name} · ${listing}: ${e.message}`, jobId);
     if (jobId !== null) jobs.note(jobId, { issue: e.message });
     throw e;
   }
@@ -4111,7 +4144,7 @@ async function bringInEpubs(count) {
     if (failed.length) said.push(`${failed.length} could not be read`);
     jobs.note(job, { say: said.length ? said.join(', ') : 'nothing to bring in' });
     jobs.seal(job);
-    if (failed.length) jobError = `${EPUB_JOB.author}: ${failed[0]}`;
+    if (failed.length) setJobError(`${EPUB_JOB.author}: ${failed[0]}`, job);
     await refresh({ works: true, force: true });
     paintJobs();
   } finally {

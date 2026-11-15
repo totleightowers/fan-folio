@@ -79,6 +79,28 @@ test('a job keeps a stable collection key across restarts and changed numeric ID
   assert.deepEqual(next.details(imported.id).items.map(i=>i.workId),['epub-demo']);
 });
 
+test('legacy author jobs recover library matches without confusing works, bookmarks or ordinary filters', () => {
+  const {db,works}=fixture();
+  try {
+    db.exec(`UPDATE works SET authors='["Rowan"]' WHERE work_id='2';
+      UPDATE works SET authors='["Rowan Longer"]' WHERE work_id='3';
+      UPDATE works SET has_text=1 WHERE work_id IN ('2','3');
+      INSERT INTO chapters(work_id,number,html,text) VALUES('2',1,'saved','saved');
+      INSERT INTO bookmarked_by(person,work_id) VALUES('Rowan','3'),('Rowan Longer','2');`);
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan'}),['2','epub-demo']);
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',availability:'held'}),['2']);
+    assert.deepEqual(works({jobIds:['3'],jobAuthor:'Rowan',availability:'held'}),['2','3'],
+      'surviving job members remain even if their current author metadata differs');
+    assert.deepEqual(works({jobIds:[],jobBookmarkedBy:'Rowan',availability:'held'}),['3']);
+    assert.deepEqual(works({jobIds:['2'],jobBookmarkedBy:'Rowan',availability:'held'}),['2','3']);
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',include:['Missing tag']}),[]);
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Rowan',author:['Rowan Longer']}),[]);
+    assert.deepEqual(works({jobIds:[],jobAuthor:'Row%'}),[]);
+    assert.deepEqual(works({jobIds:[],jobBookmarkedBy:"Rowan' OR 1=1 --"}),[]);
+    assert.deepEqual(works({jobIds:[]}),[], 'an unknown empty job never becomes the whole library');
+  } finally {db.close();}
+});
+
 test('native listing refresh updates only unrevealed placeholders and preserves reading and saved copies', () => {
   const {db,works}=fixture();
   const sql=JSON.parse(nativeSource().match(/String refreshUnrevealed = ("(?:[^"\\]|\\.)*");/)[1]);
