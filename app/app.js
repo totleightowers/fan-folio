@@ -2507,9 +2507,6 @@ const jobs = createQueue({
   },
   onEvent: (e) => {
     autoDownloads.event(e);
-    // Refill before reporting completion to Android: a batch boundary must
-    // not stop the foreground service while more automatic work is owed.
-    if (e.type === 'finished') autoDownloads.refresh();
     if (['queued', 'grew', 'finished', 'stopped', 'removed', 'resumed'].includes(e.type)) scheduleAutoDownloads();
     lastDownloadProgress = Date.now();
     try { downloadDiagnostic('queue_progress', diagnosticProgress(e.job)); } catch { /* diagnostic only */ }
@@ -2523,6 +2520,9 @@ const jobs = createQueue({
       freshenSoon();
     }
     if (e.type === 'finished') {
+      // Refill before reporting completion to Android: a batch boundary must
+      // not stop the foreground service while more automatic work is owed.
+      autoDownloads.refresh();
       /*
        * What the job says about itself, where it has said anything.
        *
