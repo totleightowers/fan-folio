@@ -1521,6 +1521,7 @@ $('#open-filters').onclick = async () => {
   await refreshAfterFilterChange();
 };
 $('#apply-filters').onclick = () => {
+  applyLibraryFilters();
   closeSheet($('#filters'));
 };
 // Choices are saved as they are made. Every dismissal must display that saved
