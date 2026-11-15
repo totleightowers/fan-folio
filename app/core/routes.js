@@ -152,8 +152,6 @@ export function createReadRoutes(sql) {
               STATES.reading,
               /* Most recently opened first, whichever shelf it was opened from. */
               `${LOCAL_LAST_READ} DESC, w.work_id DESC`) },
-          { key: 'later', title: 'Marked for later',
-            ...shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
           { key: 'added', title: 'Recently added',
             /* New to this library, whenever the work itself was written. A book
                read off a file is new here today even if the export is a year

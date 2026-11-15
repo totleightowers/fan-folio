@@ -16,7 +16,8 @@ function fixture() {
   add.run('3', 'Saved before hiding', '[]', placeholder);
   add.run('epub-demo', 'Imported book', '["Rowan"]', 'An imported story.');
   add.run('4', 'Mystery Work', '[]', null);
-  add.run('5', null, '[]', null); // incomplete metadata alone proves nothing
+  add.run('5', null, '[ "Anonymous" ]', null); // empty listing with leftover tags and a default chapter count
+  db.exec("UPDATE works SET chapter_count=1 WHERE work_id='5'");
   add.run('6', 'Blocked', '["Blocked"]', '');
   db.exec("UPDATE works SET hidden=1 WHERE work_id='6'; INSERT INTO chapters(work_id,number,html,text) VALUES('3',1,'<p>saved</p>','saved');");
   db.exec("INSERT INTO reading(work_id,marked_later) SELECT work_id,1 FROM works");
@@ -29,16 +30,19 @@ function fixture() {
 test('unrevealed works are hidden consistently, without hiding anonymous or saved works', () => {
   const {db,routes,works}=fixture();
   try {
-    assert.deepEqual(works({}), ['2','3','5','epub-demo']);
+    assert.deepEqual(works({}), ['2','3','epub-demo']);
     assert.deepEqual(works({showUnrevealed:'1'}), ['1','2','3','4','5','epub-demo']);
     const home=routes.read('/api/home');
-    assert.equal(home.stats.works,4); assert.equal(home.stats.later,4);
+    assert.equal(home.stats.works,3); assert.equal(home.stats.later,3);
+    assert.ok(!home.shelves.some(s => s.key === 'later'), 'Marked for later is not a permanent Home shelf');
+    assert.deepEqual(routes.read('/api/works?collection=later').works.map(w=>w.work_id).sort(), ['2','3','epub-demo'],
+      'the existing For later collection remains accessible');
     for (const shelf of home.shelves) {
-      assert.ok(!shelf.works.some(w=>['1','4','6'].includes(w.work_id)));
-      assert.ok(shelf.total <= 4);
+      assert.ok(!shelf.works.some(w=>['1','4','5','6'].includes(w.work_id)));
+      assert.ok(shelf.total <= 3);
     }
-    assert.equal(home.browse.fandom[0].n,4);
-    assert.equal(routes.read('/api/works?collection=visited').total,4);
+    assert.equal(home.browse.fandom[0].n,3);
+    assert.equal(routes.read('/api/works?collection=visited').total,3);
     // The records still exist; current metadata makes a revealed work reappear.
     db.prepare('UPDATE works SET title=?, summary=? WHERE work_id=?').run('Revealed story','A new story.','1');
     assert.ok(works({}).includes('1'));
@@ -80,10 +84,11 @@ test('native listing refresh updates only unrevealed placeholders and preserves 
   const sql=JSON.parse(nativeSource().match(/String refreshUnrevealed = ("(?:[^"\\]|\\.)*");/)[1]);
   try {
     const update=db.prepare(`UPDATE works SET title=?,summary=? WHERE ${sql}`);
-    for (const id of ['1','2','3','4']) update.run('Revealed title','A story.',id);
+    for (const id of ['1','2','3','4','5']) update.run('Revealed title','A story.',id);
     const title=id=>db.prepare('SELECT title FROM works WHERE work_id=?').get(id).title;
     assert.equal(title('1'),'Revealed title');
     assert.equal(title('4'),'Revealed title');
+    assert.equal(title('5'),'Revealed title');
     assert.equal(title('2'),'Anonymous story');
     assert.equal(title('3'),'Saved before hiding');
     assert.equal(db.prepare('SELECT count(*) n FROM chapters').get().n,1);
@@ -95,9 +100,14 @@ test('native listing refresh updates only unrevealed placeholders and preserves 
 test('empty untitled metadata can be hidden without confusing named anonymous works or untagged books', () => {
   const {db,works}=fixture();
   try {
-    db.exec("DELETE FROM tags WHERE work_id='5'");
     assert.ok(!works({}).includes('5'));
     assert.ok(works({showUnrevealed:'1'}).includes('5'));
+    for (const authors of [null, '', '[]', '[ ]', '["Anonymous"]', '[\n "anonymous"\n]', '[""]', 'null']) {
+      db.prepare('UPDATE works SET authors=? WHERE work_id=?').run(authors, '5');
+      assert.ok(!works({}).includes('5'), `empty authors: ${authors}`);
+    }
+    db.exec("UPDATE works SET authors='[]', title='(Untitled)' WHERE work_id='5'");
+    assert.ok(!works({}).includes('5'));
     // Even one substantive field is enough to keep an anonymous work visible.
     for (const [column,value] of [['title','A title'],['summary','A summary'],['words',5],['authors','["Rowan"]']]) {
       db.prepare(`UPDATE works SET ${column}=? WHERE work_id='5'`).run(value);

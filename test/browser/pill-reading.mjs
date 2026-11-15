@@ -9,17 +9,31 @@ const app = await startApp({ port: 18773, seed(db) {
   const read = db.prepare(`INSERT INTO reading (work_id,chapter,offset,chapters_read,chapter_count,updated_at,opened_at) VALUES (?,?,0,1,3,?,?)`);
   read.run('1', 2, '2026-10-01T10:00:00Z', '2026-10-01T10:00:00Z');
   read.run('2', 2, '2026-11-01T10:00:00Z', '2026-11-01T10:00:00Z');
+  db.exec("UPDATE reading SET marked_later=1 WHERE work_id='1'");
 } });
 const { page, base, errors } = app;
 const titles = () => page.locator('#works .work-card h3').allInnerTexts();
 try {
   await page.goto(base + '/');
   await page.waitForSelector('#shelves > *');
+  await page.locator('#now-reading').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('#now-reading-title').innerText(), 'Zebra crossing');
+  assert.match(await page.locator('#now-reading-place').innerText(), /Chapter 2/);
+  assert.equal(await page.locator('#shelves').innerText().then(t => t.includes('Marked for later')), false);
+  await page.mouse.wheel(0, 600);
+  await page.waitForFunction(() => window.scrollY > 96);
+  assert.equal(await page.locator('#now-reading').evaluate(el => el.classList.contains('tucked') || el.inert), false,
+    'the return pill stays available while browsing Home');
   // Home says each shelf's size once, and a card's visits as one number.
   assert.deepEqual([...new Set(await page.locator('.shelf-head button').allInnerTexts())], ['See all']);
   await page.click('#tabs [data-tab=library]');
   await page.waitForSelector('#works .work-card');
   assert.deepEqual(await titles(), ['Apple orchard', 'Middle distance', 'Zebra crossing'], 'everything, by title');
+  await page.click('#library-collections [data-collection=later]');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 1);
+  assert.deepEqual(await titles(), ['Apple orchard'], 'For later remains in its existing tab');
+  await page.click('#library-collections [data-collection=all]');
+  await page.waitForFunction(() => document.querySelectorAll('#works .work-card').length === 3);
 
   // Compact is one tap on the toolbar: shorter rows, the same setting as in View & filters.
   const rowHeight = () => page.locator('#works .work-card').first().evaluate(el => el.getBoundingClientRect().height);
@@ -32,6 +46,13 @@ try {
   assert.ok(await page.locator('#toolbar .toolrow').evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'the toolbar still fits');
   await page.reload();
   await page.waitForSelector('#shelves > *');
+  await page.locator('#now-reading').waitFor({ state: 'visible' });
+  await page.locator('#now-reading').click();
+  await page.waitForSelector('#workskin .userstuff');
+  assert.match(await page.locator('#rh-title').innerText(), /Zebra crossing/);
+  assert.match(await page.locator('#chappos').innerText(), /2\s*\/\s*3/);
+  await page.locator('#back').click();
+  await page.locator('#home').waitFor({ state: 'visible' });
   await page.click('#tabs [data-tab=library]');
   await page.waitForSelector('#works .work-card');
   assert.equal(await page.locator('#density-toggle').getAttribute('aria-pressed'), 'true', 'and it is remembered');

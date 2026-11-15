@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 const library = () => {
   const db = new DatabaseSync(':memory:');
   db.exec(SCHEMA);
-  db.exec("INSERT INTO works(work_id,chapter_count,has_text) VALUES('1',4,1)");
+  db.exec("INSERT INTO works(work_id,title,chapter_count,has_text) VALUES('1','A story to reread',4,1)");
   return db;
 };
 const matches = (db, state) => {

@@ -72,17 +72,16 @@ export const COMPLETED = `(${FINISHED} OR COALESCE(r.completed_before, 0) = 1)`;
  * imported by both, so the two cannot drift into a blocked author being
  * hidden from the library and offered on the front page.
  */
-// Hide unrevealed works and empty, untitled records with no metadata, never a
-// normal anonymous work or a
-// copy with saved chapters. Query-time detection also covers existing libraries;
-// refreshed metadata makes a revealed work visible without a separate unhide.
+// Hide unrevealed works and empty, untitled anonymous records, never a normal
+// anonymous work or a copy with saved chapters. Default chapter counts and
+// leftover tags do not make an empty listing a story. Detection covers existing
+// libraries; refreshed metadata makes a revealed work visible without an unhide.
 export const UNAVAILABLE_PLACEHOLDER = `((instr(lower(COALESCE(w.summary, '')), 'this is part of an ongoing challenge and will be revealed soon') > 0
   OR (lower(trim(COALESCE(w.title, ''))) = 'mystery work' AND COALESCE(w.words, 0) = 0)
-  OR (trim(COALESCE(w.title, '')) IN ('', '(untitled)')
+  OR (lower(trim(COALESCE(w.title, ''))) IN ('', '(untitled)')
     AND trim(COALESCE(w.summary, '')) = '' AND COALESCE(w.words, 0) = 0
-    AND COALESCE(w.chapter_count, 0) = 0
-    AND COALESCE(trim(w.authors), '[]') IN ('[]', '["Anonymous"]', '["anonymous"]')
-    AND NOT EXISTS (SELECT 1 FROM tags t WHERE t.work_id = w.work_id)))
+    AND lower(replace(replace(replace(replace(COALESCE(w.authors, '[]'), ' ', ''), char(9), ''), char(10), ''), char(13), ''))
+      IN ('', '[]', '[""]', '["anonymous"]', 'null')))
   AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = w.work_id))`;
 export const shown = (where) => `COALESCE(w.hidden, 0) = 0 AND NOT ${UNAVAILABLE_PLACEHOLDER} AND (${where})`;
 

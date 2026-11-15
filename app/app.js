@@ -207,7 +207,7 @@ let detailWorkId = null;
 function paintNowReading(name = showing()) {
   const pill = $('#now-reading');
   const onItsOwnPage = name === 'detail' && nowReading && detailWorkId === nowReading.workId;
-  pill.hidden = !nowReading || name === 'home' || !KEEPS_TABS.has(name) || Boolean(onItsOwnPage);
+  pill.hidden = !nowReading || !KEEPS_TABS.has(name) || Boolean(onItsOwnPage);
   untuckNowReading();
   if (!nowReading) return;
   $('#now-reading-title').textContent = nowReading.title;
@@ -230,7 +230,7 @@ function untuckNowReading() {
 window.addEventListener('scroll', () => {
   const pill = $('#now-reading');
   const y = window.scrollY;
-  if (!pill.hidden) {
+  if (!pill.hidden && showing() !== 'home') {
     const tuck = y > 96 && y > pillScrollY + 6 ? true : (y < pillScrollY - 6 || y <= 96 ? false : null);
     if (tuck !== null) { pill.classList.toggle('tucked', tuck); pill.inert = tuck; }
   }
