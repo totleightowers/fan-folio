@@ -64,7 +64,7 @@ const prefs = load(PREFS_KEY, READING_DEFAULTS);
 /* The full filter set, kept together so it can be sent, saved and shown as one. */
 const view = load(VIEW_KEY, {
   sort: 'title', state: 'all', availability: '', collection: '',
-  include: [], exclude: [], rating: [], author: [],
+  include: [], exclude: [], rating: [], author: [], bookmarkedBy: '',
   complete: '', language: '', wordsMin: '', wordsMax: '',
   chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '',
   otp: '',
@@ -906,7 +906,8 @@ $('#library-density').onchange = () => setLibraryDensity($('#library-density').v
 $('#density-toggle').onclick = () => setLibraryDensity(libraryDisplay.density === 'compact' ? 'expanded' : 'compact');
 $('#availability').value = view.availability || '';
 $('#availability').onchange = () => {
-  view.availability = $('#availability').value; save(VIEW_KEY, view); paintActiveFilters(); loadMore(true);
+  view.availability = $('#availability').value; save(VIEW_KEY, view);
+  refreshAfterFilterChange();
 };
 $('#sort').value = view.sort;
 $('#sort').onchange = () => {
@@ -1051,17 +1052,20 @@ async function searchFacet(kind, needle) {
   }
 }
 
-async function buildFilterPanel() {
+async function buildFilterPanel(request) {
   const body = $('#filter-body');
   if (!body.dataset.painted) body.innerHTML = '<p class="empty">Counting…</p>';
 
   let facets;
   try { facets = await api(`/api/facets?${filterParams()}`); }
   catch (e) {
+    if (request !== filterPanelRequest) return;
     body.innerHTML = '<p class="empty"></p>';
     body.querySelector('.empty').textContent = e.message;
     return;
   }
+
+  if (request !== filterPanelRequest) return;
 
   body.textContent = '';
   body.dataset.painted = '1';
@@ -1414,21 +1418,25 @@ async function buildFilterPanel() {
 }
 
 /** Re-count and repaint after any filter change, keeping the panel open. */
+let filterPanelRequest = 0;
 async function refreshAfterFilterChange() {
+  const request = ++filterPanelRequest;
   const params = filterParams({ limit: '1', offset: '0' });
   try {
     const { total } = await api(`/api/works?${params}`);
+    if (request !== filterPanelRequest) return;
     $('#apply-filters').textContent = total
       ? `Apply · ${fmt(total)}` : 'Nothing matches';
     $('#apply-filters').disabled = !total;
   } catch { /* the count is a nicety, not a requirement */ }
-  await buildFilterPanelKeepingScroll();
+  if (request === filterPanelRequest) await buildFilterPanelKeepingScroll(request);
 }
 
 let panelScroll = 0;
-async function buildFilterPanelKeepingScroll() {
+async function buildFilterPanelKeepingScroll(request) {
   panelScroll = $('#filter-body').scrollTop;
-  await buildFilterPanel();
+  await buildFilterPanel(request);
+  if (request !== filterPanelRequest) return;
   $('#filter-body').scrollTop = panelScroll;
 }
 
@@ -1481,6 +1489,7 @@ function paintActiveFilters() {
     pill(view.crossover === '1' ? 'crossovers' : 'no crossovers', 'in', () => { view.crossover = ''; });
   }
   if (view.updatedAfter) pill(`updated since ${view.updatedAfter}`, 'in', () => { view.updatedAfter = ''; });
+  if (view.updatedBefore) pill(`updated before ${view.updatedBefore}`, 'in', () => { view.updatedBefore = ''; });
   if (view.language) pill(languageName(view.language) ?? view.language, 'in', () => { view.language = ''; });
   if (view.chaptersMin || view.chaptersMax) {
     const label = CHAPTER_PRESETS.find(([a, b]) => a === view.chaptersMin && b === view.chaptersMax)?.[2];
@@ -1496,17 +1505,30 @@ function paintActiveFilters() {
   }
 }
 
+let filterSheetView = '';
+function applyLibraryFilters() {
+  save(VIEW_KEY, view);
+  paintActiveFilters();
+  loadMore(true);
+  refillPreviewCollection();
+  filterSheetView = JSON.stringify(view);
+}
+
 $('#open-filters').onclick = async () => {
+  filterSheetView = JSON.stringify(view);
   $('#filter-body').dataset.painted = '';
   openSheet($('#filters'));
   await refreshAfterFilterChange();
 };
 $('#apply-filters').onclick = () => {
   closeSheet($('#filters'));
-  paintActiveFilters();
-  loadMore(true);
-  refillPreviewCollection();      // when the filters were opened from beside a story
 };
+// Choices are saved as they are made. Every dismissal must display that saved
+// selection, including Close, Back, a backdrop tap and a swipe down.
+$('#filters').addEventListener('close', () => {
+  ++filterPanelRequest;
+  if (filterSheetView !== JSON.stringify(view)) applyLibraryFilters();
+});
 $('#clear-filters').onclick = async () => {
   /* Every filter the panel can set. Miss one and Clear leaves it on, with the
      count in the header disagreeing with the list underneath it. */
@@ -1515,7 +1537,11 @@ $('#clear-filters').onclick = async () => {
     complete: '', language: '', wordsMin: '', wordsMax: '',
     chaptersMin: '', chaptersMax: '', updatedAfter: '', updatedBefore: '', crossover: '', otp: '',
   });
-  save(VIEW_KEY, view);
+  currentAuthor = null;
+  for (const key of Object.keys(sectionSearch)) delete sectionSearch[key];
+  facetMatches.clear();
+  ++facetSearchAt;
+  applyLibraryFilters();
   await refreshAfterFilterChange();
 };
 
@@ -5194,12 +5220,7 @@ $('#detail').addEventListener('click', (e) => {
 });
 
 function openTag(tag, rating) {
-  if (tag && !view.include.includes(tag)) view.include = [...view.include, tag];
-  if (rating && !view.rating.includes(rating)) view.rating = [...view.rating, rating];
-  save(VIEW_KEY, view);
-  paintActiveFilters();
-  loadMore(true);
-  show('library');
+  filterBy(tag ? 'tag' : 'rating', tag || rating);
 }
 
 async function buildStartHere() {
@@ -5521,10 +5542,12 @@ function paintPreviewCount(origin) {
 let previewWatcher = null;
 async function loadMorePreview(origin, workId) {
   if (origin.loadingMore || origin.works.length >= origin.total) return;
+  const request = origin.request = (origin.request || 0) + 1;
   origin.loadingMore = true;
   try {
     const params = filterParams({ limit: '200', offset: String(origin.works.length) }, origin.filters);
     const { works, total: n } = await api(`/api/works?${params}`);
+    if (request !== origin.request) return;
     const held = new Set(origin.works.map(w => String(w.work_id)));
     const fresh = works.filter(w => !held.has(String(w.work_id)))
       .map(w => ({ work_id: String(w.work_id), title: w.title, authors: w.authors }));
@@ -5539,7 +5562,7 @@ async function loadMorePreview(origin, workId) {
   } catch {
     /* The list as far as it got is still a list; the next scroll asks again. */
   } finally {
-    origin.loadingMore = false;
+    if (request === origin.request) origin.loadingMore = false;
   }
 }
 
@@ -5580,8 +5603,9 @@ async function refillPreviewCollection() {
   $('#preview-list').scrollTop = 0;
   $('#preview-count').textContent = 'Loading…';
   paintPreviewControls();
+  const request = (origin.request || 0) + 1;
   await loadMorePreview(origin, currentWork?.work_id);
-  if (previewCollection !== origin) return;
+  if (previewCollection !== origin || request !== origin.request) return;
   paintPreviewCollection(currentWork?.work_id ?? detailWorkId);
 }
 
@@ -5659,6 +5683,12 @@ async function openWork(workId, options = {}) {
   paintNowReading('detail');
   currentWork = null;
   previewCollection = collection;
+  if (collection?.filters) {
+    Object.assign(view, collection.filters);
+    save(VIEW_KEY, view);
+    paintActiveFilters();
+    $('#sort').value = view.sort;
+  }
   paintPreviewCollection(workId);
   const box = $('#preview-story');
   box.replaceChildren(skeleton('title', 'line', 'line', 'meta', 'button'));
