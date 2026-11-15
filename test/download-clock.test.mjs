@@ -7,7 +7,7 @@ const flush = async () => { for (let n = 0; n < 100; n++) await Promise.resolve(
 
 function clocks() {
   const source = js.slice(js.indexOf('const waitingOnTheArchive = new Set();'), js.indexOf('function paced(run) {'));
-  const queueWait = js.match(/runTask: \(workId\) => paced[\s\S]*?wait: ([^\n]+),\n/)[1];
+  const queueWait = js.match(/runTask: \(workId, job\) => paced[\s\S]*?wait: ([^\n]+),\n/)[1];
   const listingWait = js.match(/const wait = ([^\n]+);/)[1];
   let now = 1000000;
   const window = {};

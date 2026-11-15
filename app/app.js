@@ -25,6 +25,7 @@ import { reachedTheEnd, chromeHidden, readingStatus } from './core/reading.js';
 import { isHidden, worksByPattern } from './core/store/blocked.js';
 import { findNewBookmarks, nextGap, isTransient, retryDelay } from './core/sync/run.js';
 import { createQueue } from './core/sync/queue.js';
+import { createAutoDownloads, isAutoDownload } from './core/sync/auto-downloads.js';
 import { parseListing, signedInUser, parseUserCounts, blurbDate } from './core/ao3/parse.js';
 import { languageName } from './core/ao3/markup.js';
 import { readings as historyUrl, bookmarks as bookmarksUrl, authorWorks as authorWorksUrl,
@@ -777,6 +778,15 @@ function workRow(w) {
   node.querySelector('.statline').textContent = stats;
   const visits = visitLabel(w);
   if (visits) { const line = document.createElement('div'); line.className = 'visit-count'; line.textContent = visits; line.title = visitBreakdown(w); node.querySelector('.statline').after(line); }
+  if (view.collection === 'visited' || (view.sort === 'recent' && w.last_read_at)) {
+    const line = document.createElement('div');
+    line.className = 'visit-count last-read';
+    const date = w.last_read_at && new Date(w.last_read_at.replace(' ', 'T') + 'Z');
+    line.textContent = date && Number.isFinite(date.getTime())
+      ? `Last read ${date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })}`
+      : 'Read date unavailable';
+    node.querySelector('.statline').after(line);
+  }
   /* Known, but not here. Saying so on the row matters more than it looks:
      otherwise a work opens into an empty reader and the reader assumes the app
      has lost it. */
@@ -948,7 +958,7 @@ const activeCount = () =>
 /* The tabs above the list already say which collection this is. Saying it
    again as a removable pill, and counting it on the filter button, made the
    plain Reading tab look like a filtered view with one filter on. */
-const COLLECTION_TABS = new Set(['reading', 'finished', 'later', 'bookmarked']);
+const COLLECTION_TABS = new Set(['reading', 'finished', 'later', 'bookmarked', 'visited']);
 function saidByTab(kind) {
   const tab = view.collection || view.state;
   return COLLECTION_TABS.has(tab) && view[kind] === tab;
@@ -976,7 +986,7 @@ const STATE_LABELS = {
   finished: 'Finished',
 };
 
-const COLLECTION_LABELS = { '': 'Any collection', later: 'For later', bookmarked: 'AO3 bookmarks', rec: 'Recommended on AO3', history: 'AO3 history' };
+const COLLECTION_LABELS = { '': 'Any collection', later: 'For later', bookmarked: 'AO3 bookmarks', rec: 'Recommended on AO3', history: 'AO3 history', visited: 'Reading history' };
 const AVAILABILITY_LABELS = { '': 'Any availability', held: 'Downloaded', known: 'Not downloaded' };
 
 const FILTER_SECTIONS = [
@@ -1784,6 +1794,7 @@ async function buildSettings() {
 function buildActivity() {
   paintJobs();
   paintStubs();
+  scheduleAutoDownloads();
   paintSyncButtons();
 }
 
@@ -1816,8 +1827,9 @@ function stubIds(limit = STUBS_AT_ONCE) {
   if (!nativeStatus().hasDatabase) return [];
   try {
     const out = JSON.parse(window.ArchiveNative.query(
-      `SELECT work_id FROM works WHERE COALESCE(has_text, 0) = 0
-        ORDER BY COALESCE(updated, published) DESC LIMIT ${Number(limit) || STUBS_AT_ONCE}`,
+      `SELECT work_id FROM works WHERE COALESCE(hidden, 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = works.work_id)
+        ORDER BY COALESCE(updated, published) DESC, work_id DESC LIMIT ${Number(limit) || STUBS_AT_ONCE}`,
       JSON.stringify([])));
     return (out.rows ?? []).map((r) => String(r.work_id));
   } catch {
@@ -1830,7 +1842,8 @@ function stubTotal() {
   if (!nativeStatus().hasDatabase) return 0;
   try {
     const out = JSON.parse(window.ArchiveNative.query(
-      'SELECT count(*) AS n FROM works WHERE COALESCE(has_text, 0) = 0', JSON.stringify([])));
+      `SELECT count(*) AS n FROM works WHERE COALESCE(hidden, 0) = 0
+        AND NOT EXISTS (SELECT 1 FROM chapters c WHERE c.work_id = works.work_id)`, JSON.stringify([])));
     return Number(out.rows?.[0]?.n ?? 0);
   } catch {
     return 0;
@@ -1840,6 +1853,9 @@ function stubTotal() {
 function paintStubs() {
   const note = $('#stub-count');
   const button = $('#fetch-stubs');
+  const toggle = $('#auto-download-known');
+  toggle.checked = autoDownloads.state().enabled;
+  toggle.disabled = !isNative;
   if (!note || !button) return;
   if (!isNative) {
     note.textContent = 'Only in the app.';
@@ -1868,6 +1884,17 @@ function paintStubs() {
     paintJobs();
   };
 }
+
+$('#auto-download-known').onchange = (event) => {
+  if (event.target.checked && !signedIn()) {
+    event.target.checked = false;
+    showAccountForDownloads();
+    return;
+  }
+  autoDownloads.setEnabled(event.target.checked);
+  paintStubs();
+  paintJobs();
+};
 
 $('#open-settings').onclick = () => { go('settings'); buildSettings(); };
 $('#nav-settings').onclick = () => { go('settings'); buildSettings(); };
@@ -2433,6 +2460,7 @@ function freshen() {
   clearTimeout(freshenTimer);
   freshenTimer = null;
   refresh({ works: true });
+  scheduleAutoDownloads();
 }
 
 function freshenSoon() {
@@ -2443,10 +2471,21 @@ function freshenSoon() {
 
 let lastDownloadProgress = Date.now();
 const jobs = createQueue({
-  runTask: (workId) => paced(() => addWork(String(workId)).catch((e) => {
-    if (/answered 429|rate limit|too many requests/i.test(String(e?.message))) slowDown();
-    throw e;
-  })),
+  runTask: (workId, job) => paced(() => {
+    // Pause/Stop may have arrived while this request waited for its paced turn.
+    if (jobs.details(job.id)?.state !== 'running') return { deferred: true };
+    // A work queued elsewhere or imported since this batch was assembled is
+    // already saved. Automatic downloads must not fetch another copy.
+    if (isAutoDownload(job)) {
+      const out = JSON.parse(window.ArchiveNative.query(
+        'SELECT 1 FROM chapters WHERE work_id = ? LIMIT 1', JSON.stringify([String(workId)])));
+      if (out.rows?.length) return {};
+    }
+    return addWork(String(workId)).catch((e) => {
+      if (/answered 429|rate limit|too many requests/i.test(String(e?.message))) slowDown();
+      throw e;
+    });
+  }),
   wait: (ms) => untilDue(ms),
   gap: () => nextGap(),
   shouldRetry: isTransient,
@@ -2466,6 +2505,8 @@ const jobs = createQueue({
     return ids.filter((id) => !held.has(id));
   },
   onEvent: (e) => {
+    autoDownloads.event(e);
+    if (['queued', 'grew', 'finished', 'stopped', 'removed', 'resumed'].includes(e.type)) scheduleAutoDownloads();
     lastDownloadProgress = Date.now();
     try { downloadDiagnostic('queue_progress', diagnosticProgress(e.job)); } catch { /* diagnostic only */ }
     if (e.type === 'progress') {
@@ -2508,6 +2549,29 @@ const jobs = createQueue({
     if (showing() === 'download-job') paintJobDetail();
   },
 });
+
+const AUTO_DOWNLOAD_KEY = 'auto-download-known';
+const autoDownloads = createAutoDownloads({
+  queue: jobs,
+  missing: () => stubIds(-1),
+  canRun: () => isNative && nativeStatus().hasDatabase && signedIn(),
+  read: () => {
+    try { return JSON.parse(readMeta(AUTO_DOWNLOAD_KEY)) ?? load(AUTO_DOWNLOAD_KEY, {}); }
+    catch { return load(AUTO_DOWNLOAD_KEY, {}); }
+  },
+  write: state => {
+    if (!isNative || !saveMeta(AUTO_DOWNLOAD_KEY, JSON.stringify(state))) save(AUTO_DOWNLOAD_KEY, state);
+  },
+});
+let autoDownloadScheduled = false;
+function scheduleAutoDownloads() {
+  if (autoDownloadScheduled) return;
+  autoDownloadScheduled = true;
+  queueMicrotask(() => {
+    autoDownloadScheduled = false;
+    autoDownloads.refresh();
+  });
+}
 
 /** "just now", "3h ago", "yesterday" — enough to place a finished job. */
 function whenShort(at) {
@@ -2560,6 +2624,7 @@ function paintActivityBadge() {
 
 function paintCollections() {
   $('#visits-help').hidden = view.sort !== 'visits';
+  $('#history-help').hidden = view.collection !== 'visited';
   for (const button of $$('#library-collections [data-collection]')) {
     const selected = button.dataset.collection === (view.collection || view.state);
     button.classList.toggle('on', selected);
@@ -2571,7 +2636,7 @@ function paintCollections() {
 for (const button of $$('#library-collections [data-collection]')) {
   button.onclick = () => {
     const key = button.dataset.collection;
-    const patch = ['later', 'bookmarked'].includes(key) ? { collection: key } : { state: key };
+    const patch = ['later', 'bookmarked', 'visited'].includes(key) ? { collection: key } : { state: key };
     /* What you are reading is asked for by when you last read it, not by
        title. The order chosen for everything else is kept, and comes back on
        the way out. */
@@ -2583,6 +2648,7 @@ for (const button of $$('#library-collections [data-collection]')) {
       patch.sort = view.sortElsewhere;
       patch.sortElsewhere = '';
     }
+    if (key === 'visited') patch.sort = 'recent';
     openLibraryAs(patch);
   };
 }
@@ -2599,6 +2665,8 @@ function openBookmarkSync() {
 }
 $('#library-sync').onclick = openBookmarkSync;
 $('#library-history-sync').onclick = () => { goToTab('activity'); $('#history-sync').scrollIntoView({ block: 'start' }); };
+$('#history-refresh').onclick = () => $('#library-history-sync').click();
+$('#view-history').onclick = () => openLibraryAs({ collection: 'visited', sort: 'recent' });
 
 /**
  * Land in the library, narrowed to one thing about yourself.
@@ -2635,7 +2703,7 @@ function openLibraryAs(patch) {
 async function runAgain(job) {
   const source = jobSource(job);
   if (source.kind === 'epub') { $('#import-epubs').click(); return; }
-  if (isStubsJob(job) || source.kind === 'saved') {
+  if (isStubsJob(job) || ['saved', 'saved-auto'].includes(source.kind)) {
     const queued = stubIds();
     if (!queued.length) { toast('Everything described has been downloaded'); paintStubs(); return; }
     jobs.add({ ...STUBS_JOB, workIds: queued });
@@ -2776,8 +2844,10 @@ window.__downloadsPending = () => jobs.list().some(j => ['running', 'queued', 'l
 
 window.__resumeAll = () => {
   for (const job of jobs.list()) {
+    if (isAutoDownload(job) && !autoDownloads.state().enabled) continue;
     if (job.state === 'paused' || job.state === 'pausing') jobs.resume(job.id);
   }
+  autoDownloads.resume();
   keepQueue();
   sayWhatIsHappening();
 };
@@ -2790,6 +2860,7 @@ window.__resumeAll = () => {
  * from a lock screen, which is the only reason to offer it there.
  */
 window.__stopAll = () => {
+  autoDownloads.stop();
   for (const job of jobs.list()) {
     if (['running', 'queued', 'listing', 'paused', 'pausing'].includes(job.state)) {
       jobs.stop(job.id);
@@ -2801,6 +2872,7 @@ window.__stopAll = () => {
 
 /* The notification's Pause. Everything stops; nothing is thrown away. */
 window.__pauseAll = () => {
+  autoDownloads.pause();
   for (const job of jobs.list()) {
     /* Including one still reading an index. Leaving that out meant Pause on
        the notification stopped the downloading and left the app asking the
@@ -2955,10 +3027,12 @@ $('#job-next').onclick = () => { jobShowing.page++; paintJobDetail(); };
 
 function paintDownloadStatus() {
   const status = downloadStatus(jobs.list(), { coolUntil });
-  $('#download-state').textContent = status.title;
-  $('#download-detail').textContent = status.detail;
-  $('#downloads-pause').hidden = !status.active;
-  $('#downloads-resume').hidden = !status.paused;
+  const auto = autoDownloads.state();
+  const held = auto.enabled && auto.paused;
+  $('#download-state').textContent = !status.active && held ? 'Automatic downloads paused' : status.title;
+  $('#download-detail').textContent = !status.active && held ? 'Resume to download newly discovered works too.' : status.detail;
+  $('#downloads-pause').hidden = !status.active && !(auto.enabled && !auto.paused);
+  $('#downloads-resume').hidden = !status.paused && !held;
 }
 $('#downloads-pause').onclick = () => { window.__pauseAll(); paintJobs(); };
 $('#downloads-resume').onclick = () => { window.__resumeAll(); paintJobs(); };
@@ -3265,7 +3339,8 @@ function resumeJobs(hold = false) {
       continue;
     }
 
-    const id = jobs.restore({ ...job, items, workIds: left, open: Boolean(job.open), ...(hold ? { state: 'paused' } : {}) });
+    const autoHeld = isAutoDownload(job) && (!autoDownloads.state().enabled || autoDownloads.state().paused);
+    const id = jobs.restore({ ...job, items, workIds: left, open: Boolean(job.open), ...(hold || autoHeld ? { state: 'paused' } : {}) });
 
     /*
      * A job that was still reading an index goes back to reading it, from the
@@ -4672,7 +4747,7 @@ function heldWithText(ids, { unknownIsHeld = true } = {}) {
     const marks = block.map(() => '?').join(',');
     try {
       const out = JSON.parse(window.ArchiveNative.query(
-        `SELECT work_id FROM works WHERE has_text = 1 AND work_id IN (${marks})`,
+        `SELECT DISTINCT work_id FROM chapters WHERE work_id IN (${marks})`,
         JSON.stringify(block.map(String))));
       for (const r of out.rows ?? []) held.add(String(r.work_id));
     } catch {
@@ -5622,9 +5697,10 @@ $('#preview-collection').onchange = () => {
   if (!key) return;
   const wasReading = view.state === 'reading';
   Object.assign(view, { state: 'all', collection: '' },
-    ['later', 'bookmarked'].includes(key) ? { collection: key } : { state: key });
+    ['later', 'bookmarked', 'visited'].includes(key) ? { collection: key } : { state: key });
   if (key === 'reading' && !wasReading) { view.sortElsewhere = view.sort; view.sort = 'recent'; }
   else if (key !== 'reading' && wasReading && view.sortElsewhere) { view.sort = view.sortElsewhere; view.sortElsewhere = ''; }
+  if (key === 'visited') view.sort = 'recent';
   $('#sort').value = view.sort;
   save(VIEW_KEY, view);
   paintActiveFilters();
@@ -6758,6 +6834,7 @@ window.__signedIn = (ok) => {
   paintAccount();
   toast(ok ? 'Signed in to the archive' : 'Not signed in');
   if (ok) $('#addwork-signin').hidden = true;
+  if (ok) scheduleAutoDownloads();
 };
 
 /* ------------------------------------------------------------ add a work */
@@ -6965,9 +7042,11 @@ async function start() {
   for (const chore of [
     () => {
       const command = takeDownloadCommand();
+      autoDownloads.start();
       // Restore held first so a cold Pause/Stop cannot make even one request.
       resumeJobs(Boolean(command));
       if (['__pauseAll', '__resumeAll', '__stopAll'].includes(command)) window[command]();
+      autoDownloads.refresh();
       downloadsReady(window.__downloadsPending());
     },
     () => paintAccount(),

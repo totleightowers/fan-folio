@@ -250,7 +250,11 @@ export function createQueue({
         attempts: (job.items.get(workId)?.attempts || 0) + 1, lastAttemptAt: Date.now(), nextRetryAt: null });
       announce('item', job);
       try {
-        const result = await runTask(workId);
+        const result = await runTask(workId, view(job));
+        if (result?.deferred && job.state !== 'running') {
+          itemChange(job, workId, { state: job.state === 'cancelled' ? 'stopped' : 'waiting' });
+          break;
+        }
         const identity = {};
         if (result?.title) identity.title = result.title;
         if (Array.isArray(result?.authors)) identity.authors = [...result.authors];

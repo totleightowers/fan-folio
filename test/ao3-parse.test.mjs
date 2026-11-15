@@ -76,7 +76,7 @@ test('a history blurb yields visit info', () => {
   const li = `<li id="work_123" class="work blurb group">
     <h4 class="viewed heading">Last visited: 12 Mar 2024 (Latest version.) Visited 3 times</h4></li>`;
   const w = parseBlurb(li);
-  assert.equal(w.lastVisited, '12 Mar 2024');
+  assert.equal(w.lastVisited, '2024-03-12');
   assert.equal(w.visits, 3);
   assert.equal(w.staleSinceVisit, false);
 });

@@ -67,3 +67,43 @@ test('history walk saves snapshots before checkpointing, resumes, and respects S
   await assert.rejects(walkHistory({...options,savePage:async()=>{throw new Error('storage failed');}}),/storage failed/);
   assert.equal(progress.length,2,'failed storage does not advance checkpoint');
 });
+
+test('History combines local, completed and AO3 reading, with true chronological dates', () => {
+  const db = new DatabaseSync(':memory:'); db.exec(SCHEMA);
+  try {
+    for (let id = 1; id <= 9; id++) db.prepare('INSERT INTO works(work_id,title,chapter_count) VALUES(?,?,1)').run(String(id), `Story ${id}`);
+    db.exec(`
+      INSERT INTO reading(work_id,opened_at,chapters_read,updated_at) VALUES
+        ('1','2026-11-15 09:00:00',1,'2026-11-15 09:00:00'),
+        ('2','2026-11-15T08:00:00Z',0,'2026-11-15T08:00:00Z'),
+        ('3',NULL,1,'2026-11-14 12:00:00');
+      UPDATE works SET in_history=1, last_visited='14 Nov 2026', visits_synced_at='2026-11-16' WHERE work_id='4';
+      UPDATE works SET in_history=1, last_visited='2026-11-13', visits=3 WHERE work_id='5';
+      UPDATE works SET in_history=1 WHERE work_id='6';
+      INSERT INTO reading_visits(id,work_id,started_at) VALUES('session','7','2026-11-15T10:00:00Z');
+      INSERT INTO reading(work_id,marked_later,updated_at) VALUES('8',1,'2026-11-16');
+      UPDATE works SET hidden=1, in_history=1, last_visited='2026-11-16' WHERE work_id='9';
+    `);
+    const q = buildWorksQuery({ collection: 'visited', sort: 'recent' });
+    const rows = db.prepare(q.sql).all(...q.args);
+    assert.deepEqual(rows.map(w => w.work_id), ['7','1','2','3','4','5','6']);
+    assert.equal(rows.find(w => w.work_id === '4').last_read_at, '2026-11-14 00:00:00');
+    assert.equal(rows.at(-1).last_read_at, null, 'unknown visit dates sort last without inventing a sync date');
+    assert.equal(db.prepare(q.countSql).get(...q.args).n, 7);
+    const ao3 = buildWorksQuery({ collection: 'history', sort: 'recent' });
+    assert.deepEqual(db.prepare(ao3.sql).all(...ao3.args).map(w => w.work_id), ['4','5','6'], 'AO3-only filter stays available');
+    db.exec("UPDATE works SET last_visited='16 Nov 2026', in_history=1 WHERE work_id='1'");
+    assert.equal(db.prepare(q.sql).all(...q.args)[0].work_id,'1','a later AO3 visit supersedes local reading');
+  } finally { db.close(); }
+});
+
+test('history parsing stores a sortable date and older single-digit AO3 dates remain readable', () => {
+  const w = parseBlurb('<li id="work_1"><h4 class="viewed heading">Last visited: 4 Sep 2026 Visited once</h4></li>');
+  assert.equal(w.lastVisited, '2026-09-04');
+  const db = library();
+  try {
+    db.exec("UPDATE works SET in_history=1,last_visited='4 Sep 2026' WHERE work_id='1'");
+    const q = buildWorksQuery({ collection:'history',sort:'recent' });
+    assert.equal(db.prepare(q.sql).get(...q.args).last_read_at,'2026-09-04 00:00:00');
+  } finally { db.close(); }
+});

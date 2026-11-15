@@ -1586,7 +1586,7 @@ test('both backends agree on what continue reading means', () => {
     'the shelf asks the Library filter its question, rather than writing out its own');
   assert.ok(!/opened_at IS NOT NULL/.test(native),
     'a predicate spelled out here is one that can disagree with the one over there');
-  assert.match(native, /COALESCE\(r\.opened_at, r\.updated_at\) DESC/,
+  assert.match(native, /\$\{LOCAL_LAST_READ\} DESC/,
     'most recently opened first, whichever shelf it was opened from');
   assert.equal(native, server, 'the two backends must not drift on this');
 });
@@ -1727,7 +1727,7 @@ test('everything asked of the archive shares one pace', () => {
   const page = js.slice(js.indexOf('async function archivePage('));
   assert.match(page.slice(0, page.indexOf('\n}\n')), /paced\(async \(\) => \{\s*const res = await archiveRequest\(/,
     'index pages go through it');
-  assert.match(js, /runTask: \(workId\) => paced\(/, 'and so does every work a job fetches');
+  assert.match(js, /runTask: \(workId, job\) => paced\(/, 'and so does every work a job fetches');
 });
 
 test('being told to slow down slows everything, not just whoever was told', () => {
@@ -1860,8 +1860,8 @@ test('there is one question about whether a work is held', () => {
 test('resuming asks whether the work is here, not whether a row is', () => {
   const fn = js.slice(js.indexOf('function heldWithText('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /has_text = 1/,
-    'a listing writes a row for every work it names, so a row is a description');
+  assert.match(body, /SELECT DISTINCT work_id FROM chapters/,
+    'actual chapters establish storage, including imported works with stale flags');
   assert.match(body, /work_id IN \(\$\{marks\}\)/, 'one statement, not one per work');
   assert.match(body, /i \+= 400/, 'in blocks, because a statement can only bind so many');
 
@@ -2108,8 +2108,8 @@ test('arriving at home rebuilds it', () => {
 test('everything described but not held can be asked for at once', () => {
   const fn = js.slice(js.indexOf('function stubIds('));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /COALESCE\(has_text, 0\) = 0/,
-    'a description is not the work; that column is what tells them apart');
+  assert.match(body, /NOT EXISTS \(SELECT 1 FROM chapters/,
+    'a description without chapters is not a downloaded work');
   assert.match(body, /ORDER BY COALESCE\(updated, published\) DESC/,
     'newest first, because a run this long may not finish in one sitting');
   assert.match(body, /LIMIT \$\{Number\(limit\) \|\| STUBS_AT_ONCE\}/,
@@ -2927,7 +2927,7 @@ test('the shell keeps the time only while there is work', () => {
 test('nothing outside the queue fetches a batch of works', () => {
   /* One place calls addWork in a loop, and it is the queue's runner, which is
      wrapped in the pacer. */
-  assert.match(js, /runTask: \(workId\) => paced\(\(\) => addWork\(/,
+  assert.match(js, /runTask: \(workId, job\) => paced\(\(\) => \{[\s\S]*?return addWork\(/,
     'the queue fetches through the pacer');
 
   for (const [what, fn] of [['a series', 'function queueSeries('],

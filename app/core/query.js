@@ -14,37 +14,6 @@
 
 import { FF_VISITS, TOTAL_VISITS } from './store/visits.js';
 
-export const SORTS = {
-  visits: `${TOTAL_VISITS} DESC, w.title COLLATE NOCASE ASC`,
-  title: 'w.title COLLATE NOCASE ASC',
-  author: 'w.authors COLLATE NOCASE ASC',
-  /* When the work changed, on the archive. Nothing about this library. */
-  updated: 'COALESCE(w.updated, w.published) DESC',
-  published: 'w.published DESC',
-  /*
-   * When it turned up here, which is a different date from when the copy was
-   * taken and a different one again from when the work last changed.
-   *
-   * fetched_at is written the moment this library writes the work down.
-   * downloaded_at is when the copy was taken from the archive — for a fetch
-   * those are the same minute, and for a book read off a file they are a year
-   * apart: an export made last March is new to this library today. Reading
-   * downloaded_at first put a shelf of imported EPUBs at the bottom of
-   * "recently added", which is where they are least likely to be looked for.
-   */
-  added: 'COALESCE(w.fetched_at, w.downloaded_at) DESC',
-  words: 'w.words DESC',
-  shortest: 'w.words ASC',
-  chapters: 'w.chapter_count DESC',
-  recent: 'COALESCE(r.opened_at, r.updated_at) DESC',
-  /* NULLS LAST, spelled out: a work whose counts we have never seen should
-     not outrank one with none, and in SQLite a NULL sorts first descending. */
-  kudos: 'w.kudos IS NULL, w.kudos DESC',
-  bookmarks: 'w.bookmark_count IS NULL, w.bookmark_count DESC',
-  hits: 'w.hits IS NULL, w.hits DESC',
-  random: 'RANDOM()',
-};
-
 /**
  * How many chapters a work really has.
  *
@@ -79,6 +48,18 @@ export const CHAPTERS = 'COALESCE(NULLIF(w.chapter_count, 0), '
 export const STARTED = '(r.opened_at IS NOT NULL OR COALESCE(r.offset, 0) > 0 '
   + 'OR COALESCE(r.chapters_read, 0) > 0 OR COALESCE(r.chapter, 0) > 1)';
 
+// Older history syncs stored AO3's "24 Sep 2026" verbatim. Read those too,
+// without requiring another sync or turning a sync timestamp into a visit.
+const archiveMonth = "instr('janfebmaraprmayjunjulaugsepoctnovdec', lower(substr(trim(w.last_visited), -8, 3)))";
+const ARCHIVE_VISITED = `COALESCE(julianday(w.last_visited), julianday(CASE
+  WHEN length(trim(w.last_visited)) IN (10, 11) AND ${archiveMonth} > 0
+  THEN printf('%04d-%02d-%02d', CAST(substr(trim(w.last_visited), -4) AS INTEGER),
+    (${archiveMonth} + 2) / 3, CAST(w.last_visited AS INTEGER)) END))`;
+export const LOCAL_LAST_READ = `NULLIF(max(
+  COALESCE(julianday(r.opened_at), CASE WHEN ${STARTED} THEN julianday(r.updated_at) END, 0),
+  COALESCE((SELECT max(julianday(v.started_at)) FROM reading_visits v WHERE v.work_id = w.work_id), 0)), 0)`;
+export const LAST_READ = `NULLIF(max(COALESCE(${LOCAL_LAST_READ}, 0), COALESCE(${ARCHIVE_VISITED}, 0)), 0)`;
+
 /** Every chapter accounted for. */
 export const FINISHED = `COALESCE(r.chapters_read, 0) >= ${CHAPTERS}`;
 export const COMPLETED = `(${FINISHED} OR COALESCE(r.completed_before, 0) = 1)`;
@@ -112,6 +93,40 @@ export const STATES = {
   known: 'w.has_text = 0',
   bookmarked: 'w.in_bookmarks = 1',
   history: 'w.in_history = 1',
+  visited: `(${STARTED} OR COALESCE(r.completed_before, 0) = 1 OR w.in_history = 1
+    OR COALESCE(w.visits, 0) > 0 OR w.last_visited IS NOT NULL
+    OR EXISTS (SELECT 1 FROM reading_visits v WHERE v.work_id = w.work_id))`,
+};
+
+export const SORTS = {
+  visits: `${TOTAL_VISITS} DESC, w.title COLLATE NOCASE ASC`,
+  title: 'w.title COLLATE NOCASE ASC',
+  author: 'w.authors COLLATE NOCASE ASC',
+  /* When the work changed, on the archive. Nothing about this library. */
+  updated: 'COALESCE(w.updated, w.published) DESC',
+  published: 'w.published DESC',
+  /*
+   * When it turned up here, which is a different date from when the copy was
+   * taken and a different one again from when the work last changed.
+   *
+   * fetched_at is written the moment this library writes the work down.
+   * downloaded_at is when the copy was taken from the archive — for a fetch
+   * those are the same minute, and for a book read off a file they are a year
+   * apart: an export made last March is new to this library today. Reading
+   * downloaded_at first put a shelf of imported EPUBs at the bottom of
+   * "recently added", which is where they are least likely to be looked for.
+   */
+  added: 'COALESCE(w.fetched_at, w.downloaded_at) DESC',
+  words: 'w.words DESC',
+  shortest: 'w.words ASC',
+  chapters: 'w.chapter_count DESC',
+  recent: `${LAST_READ} DESC, w.work_id DESC`,
+  /* NULLS LAST, spelled out: a work whose counts we have never seen should
+     not outrank one with none, and in SQLite a NULL sorts first descending. */
+  kudos: 'w.kudos IS NULL, w.kudos DESC',
+  bookmarks: 'w.bookmark_count IS NULL, w.bookmark_count DESC',
+  hits: 'w.hits IS NULL, w.hits DESC',
+  random: 'RANDOM()',
 };
 
 export const TAG_KINDS = ['fandom', 'relationship', 'character', 'freeform', 'warning', 'category'];
@@ -165,7 +180,7 @@ export function buildWorksQuery(filters = {}) {
 
   where.push(STATES[filters.state] ?? STATES.all);
   if (['held', 'known'].includes(filters.availability)) where.push(STATES[filters.availability]);
-  if (['later', 'bookmarked', 'history', 'rec'].includes(filters.collection)) where.push(STATES[filters.collection]);
+  if (['later', 'bookmarked', 'history', 'visited', 'rec'].includes(filters.collection)) where.push(STATES[filters.collection]);
 
   /* Included tags are an AND: "alpha/beta/omega" *and* "slow burn" is a much
      more useful question than either alone, and it is the one AO3's own filters
@@ -288,6 +303,7 @@ export function buildWorksQuery(filters = {}) {
                  w.skin_css IS NOT NULL AND w.skin_css <> '' AS has_skin,
                  w.rec, w.in_bookmarks, w.in_history, w.bookmarked_at,
                  w.visits, ${FF_VISITS} AS ff_visits,
+                 datetime(${LAST_READ}) AS last_read_at,
                  w.kudos, w.bookmark_count, w.hits, w.has_text,
                  r.chapter AS at_chapter, r.chapters_read, r.marked_later,
                  r.opened_at, r.offset, r.completed_before,

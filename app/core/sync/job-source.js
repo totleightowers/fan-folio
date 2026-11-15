@@ -4,7 +4,7 @@ export function jobSource(job) {
   if (source?.kind === 'history') return { kind: 'history', user: source.user || null };
   if (source?.kind === 'author' && source.author) return { kind: 'author', author: String(source.author), part: source.part === 'bookmarks' ? 'bookmarks' : 'works' };
   if (source?.kind === 'series' && /^\d+$/.test(String(source.seriesId))) return { kind: 'series', seriesId: String(source.seriesId) };
-  if (['bookmarks-new', 'bookmarks-all', 'saved', 'epub', 'works'].includes(source?.kind)) return { kind: source.kind };
+  if (['bookmarks-new', 'bookmarks-all', 'saved', 'saved-auto', 'epub', 'works'].includes(source?.kind)) return { kind: source.kind };
   if (job.author === 'Your bookmarks') return { kind: job.part === 'the whole list' ? 'bookmarks-all' : 'bookmarks-new' };
   if (job.author === 'Your library' && ['not downloaded', 'described but not held'].includes(job.part)) return { kind: 'saved' };
   if (job.author === 'Your EPUBs') return { kind: 'epub' };

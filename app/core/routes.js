@@ -14,7 +14,7 @@
 import { FF_VISITS } from './store/visits.js';
 import { renderChapter, sanitiseHtml } from './render.js';
 import { search } from './discover.js';
-import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, COMPLETED, shown } from './query.js';
+import { buildWorksQuery, buildFacetQuery, buildColumnFacet, buildAuthorFacet, buildAuthorCount, TAG_KINDS, STATES, COMPLETED, LOCAL_LAST_READ, shown } from './query.js';
 
 /** A count safe to inline: an integer, clamped, never reader-supplied text. */
 const lim = (n, fallback = 50, max = 500) => {
@@ -151,7 +151,7 @@ export function createReadRoutes(sql) {
                  when See all asked the same question in the other file's words. */
               STATES.reading,
               /* Most recently opened first, whichever shelf it was opened from. */
-              'COALESCE(r.opened_at, r.updated_at) DESC') },
+              `${LOCAL_LAST_READ} DESC, w.work_id DESC`) },
           { key: 'later', title: 'Marked for later',
             ...shelf('r.marked_later = 1', 'w.title COLLATE NOCASE') },
           { key: 'added', title: 'Recently added',

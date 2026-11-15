@@ -208,6 +208,10 @@
         <button id="downloads-add" class="ghost">Add works</button>
       </div>
     </div>
+    <div class="settings-panel"><label class="settings-row setting-toggle">
+      <span><strong>Download all known works</strong><small>Keep downloading works without saved chapters, including newly discovered works. Uses the paced queue; Pause all still applies. Turning this off pauses its jobs. Unavailable works stay in Downloads for manual retry.</small></span>
+      <input id="auto-download-known" type="checkbox" role="switch">
+    </label></div>
     <div id="job-list"></div>
     <details class="download-help">
       <summary>How downloading works</summary>
@@ -242,6 +246,7 @@
       <h3 class="group">Your reading history</h3>
       <p class="setting-note">Counts your AO3 visits for Most read. Nothing is downloaded.</p>
       <button id="sync-history" class="ghost">Sync AO3 history</button>
+      <button id="view-history" class="ghost">View reading history</button>
       <p id="history-sync-status" class="setting-note" aria-live="polite"></p>
     </div>
     <div id="bookmark-sync" class="setting-group">
@@ -386,11 +391,13 @@
     <div id="library-collections" class="collection-tabs" role="group" aria-label="Library collections">
       <button class="chip" data-collection="all">All works</button>
       <button class="chip" data-collection="reading">Reading</button>
+      <button class="chip" data-collection="visited">History</button>
       <button class="chip" data-collection="later">For later</button>
       <button class="chip" data-collection="finished">Finished</button>
       <button class="chip" data-collection="bookmarked">AO3 bookmarks</button>
     </div>
     <p id="visits-help" class="setting-note" hidden>Your AO3 history visits + Fan Folio reading visits. Fan Folio counts start with this update. <button id="library-history-sync" class="linkish">Sync AO3 history</button></p>
+    <p id="history-help" class="setting-note" hidden>Reading in Fan Folio and your last synced AO3 history, including finished works. AO3 dates have day-level precision. <button id="history-refresh" class="linkish">Sync AO3 history</button></p>
     <button id="library-sync" class="ghost" hidden>Check your AO3 bookmarks</button>
     </div>
     <div id="toolbar">
@@ -452,6 +459,7 @@
           <select id="preview-collection" aria-label="Collection">
             <option value="all">All works</option>
             <option value="reading">Reading</option>
+            <option value="visited">History</option>
             <option value="later">For later</option>
             <option value="finished">Finished</option>
             <option value="bookmarked">AO3 bookmarks</option>

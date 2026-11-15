@@ -719,3 +719,19 @@ test('a failed listing keeps its error after closing and restarting', () => {
   const restored = createQueue(); restored.restore(q.save()[0]);
   assert.equal(restored.list()[0].issue, 'Page 2 could not be read');
 });
+
+test('a request deferred by Pause while waiting for its paced turn stays pending', async () => {
+  let release, calls = 0;
+  const q = createQueue({
+    runTask: () => ++calls === 1 ? new Promise(resolve => { release = resolve; }) : Promise.resolve({}),
+    wait: async () => {}, gap: () => 0,
+  });
+  const id = q.add(job('Your library', 'automatic downloads', ['1']));
+  q.pause(id); release({ deferred: true }); await settle();
+  assert.equal(q.details(id).state, 'paused');
+  assert.equal(q.details(id).items[0].state, 'waiting');
+  assert.equal(q.details(id).failed, 0);
+  assert.equal(q.details(id).added, 0);
+  q.resume(id); await settle();
+  assert.equal(calls, 2); assert.equal(q.details(id).added, 1);
+});

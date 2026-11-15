@@ -96,6 +96,30 @@ try {
  await page.reload();await page.locator('#tabs [data-tab="library"]').click();
  await story.locator('.visit-count[title="10 on AO3 · 2 in Fan Folio"]').filter({hasText:/^12 visits$/}).waitFor();
  assert.equal(count(),2,'reloading a collection does not fabricate reading visits');
+ // History is a visible collection, not just a sort over every unread work.
+ db.exec(`INSERT INTO works(work_id,title,has_text,in_history,last_visited) VALUES
+   ('3','AO3-only story',0,1,'14 Nov 2026'), ('4','Unread story',0,0,NULL);
+   UPDATE reading SET opened_at='2026-11-15 09:00:00',chapters_read=2 WHERE work_id='1';
+   UPDATE reading_visits SET started_at='2026-11-15 08:00:00';`);
+ await page.setViewportSize({width:390,height:844});
+ await page.locator('[data-collection="visited"]').click();
+ await page.waitForFunction(()=>document.querySelector('#works').textContent.includes('AO3-only story'));
+ assert.equal(await page.locator('#sort').inputValue(),'recent');
+ assert.deepEqual(await page.locator('#works .work-title-link').allTextContents(),['Story 1','AO3-only story','Story 2']);
+ await story.locator('.last-read').filter({hasText:/Last read.*2026/}).waitFor();
+ assert.equal(await page.locator('#history-help').isVisible(),true);
+ await page.reload(); await page.locator('#tabs [data-tab="library"]').click();
+ assert.equal(await page.locator('[data-collection="visited"]').getAttribute('aria-pressed'),'true');
+ await page.locator('#works .work-title-link').filter({hasText:'AO3-only story'}).waitFor();
+ await page.setViewportSize({width:900,height:940});
+ await story.locator('.work-title-link').click();
+ await page.locator('#preview-library').waitFor({state:'visible'});
+ assert.equal(await page.locator('#preview-collection').inputValue(),'visited');
+ await page.locator('#preview-collection').selectOption('all');
+ await page.locator('#preview-list .preview-choice').filter({hasText:'Unread story'}).waitFor();
+ await page.locator('#preview-collection').selectOption('visited');
+ await page.waitForFunction(()=>!document.querySelector('#preview-list').textContent.includes('Unread story'));
+ assert.equal(await page.locator('#preview-sort').inputValue(),'recent');
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('Combined visits, native history sync, reader navigation and persistence passed');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));db.close();}

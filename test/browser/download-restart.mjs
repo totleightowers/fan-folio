@@ -156,6 +156,39 @@ try {
   await page.waitForFunction(()=>!window.__downloadsPending());
   assert.deepEqual(requests,['/works/1','/works/2'],'native downloads progress while browser archive dispatch is unavailable');
   assert.equal(saved()[0].added,2);
+  await page.close(); requests.length = 0;
+  db.exec('DELETE FROM chapters; DELETE FROM works; DELETE FROM meta;');
+  // Imported text is held even if an old flag says otherwise; metadata-only
+  // works are missing even if that flag incorrectly says downloaded.
+  db.exec(`INSERT INTO works(work_id,title,has_text,hidden) VALUES
+    ('1','Missing story',1,0), ('3','Imported story',0,0), ('4','Blocked story',0,1);
+    INSERT INTO chapters(work_id,number,html,text) VALUES('3',1,'<p>Imported</p>','Imported');`);
+  await open('',300000);
+  await page.locator('#tabs [data-tab="activity"]').click();
+  const toggle = page.locator('#auto-download-known');
+  assert.equal(await toggle.isChecked(),false);
+  await toggle.check();
+  assert.equal(saved()[0].source.kind,'saved-auto');
+  assert.deepEqual(saved()[0].workIds,['1'],'all known missing work, excluding imported and blocked works');
+  await toggle.uncheck(); await tick(600000);
+  assert.deepEqual(requests,[],'turning off holds the scheduled request');
+  await page.close(); await open(); await tick(600000);
+  assert.deepEqual(requests,[],'off survives restart');
+  await page.locator('#tabs [data-tab="activity"]').click();
+  assert.equal(await page.locator('#auto-download-known').isChecked(),false);
+  await page.locator('#auto-download-known').check(); await tick(600000);
+  await page.waitForFunction(()=>!window.__downloadsPending());
+  assert.deepEqual(requests,['/works/1']);
+  await page.evaluate(()=>window.__pauseAll());
+  db.exec("INSERT INTO works(work_id,title,has_text) VALUES('2','Newly discovered story',0)");
+  await page.close(); await open(); await tick(600000);
+  assert.deepEqual(requests,['/works/1'],'Pause all also holds new discoveries across restart');
+  await page.locator('#tabs [data-tab="activity"]').click();
+  assert.equal(await page.locator('#downloads-resume').isVisible(),true);
+  // A new fixture page resets its clock; move beyond the persisted last turn.
+  await page.locator('#downloads-resume').click(); await tick(1200000);
+  await page.waitForFunction(()=>!window.__downloadsPending());
+  assert.deepEqual(requests,['/works/1','/works/2'],'newly discovered metadata is picked up automatically');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  console.log('Cold Pause/Stop, saved pause, cooldown restoration and remaining-only downloads passed');
+  console.log('Cold Pause/Stop, saved pause, cooldown, remaining-only downloads and persistent download-all toggle passed');
 } finally { await browser.close();await new Promise(resolve=>server.close(resolve));db.close(); }
