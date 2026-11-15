@@ -12,7 +12,7 @@ const root = fileURLToPath(new URL('../../app/', import.meta.url));
 // a complete response whose posted chapter count agrees with those bodies.
 const fixture = (await readFile(new URL('../fixtures/work-page.html', import.meta.url), 'utf8'))
   .replace('<dd class="chapters">18/?</dd>', '<dd class="chapters">2/?</dd>');
-const requests = [], errors = [], external = [], ready = [], diagnostics = [];
+const requests = [], errors = [], external = [], ready = [], diagnostics = [], finished = [];
 let exportRequests = 0, nativeSerial = 0;
 const nativeResponses = new Map();
 const setQueue = (state, source = null) => {
@@ -44,6 +44,7 @@ const server = createServer(async (req,res) => {
       if (method==='query') return json({rows:db.prepare(args[0]).all(...JSON.parse(args[1]))});
       if (method==='saveMeta') db.prepare('INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)').run(...args);
       if (method==='downloadsReady') ready.push(args[0]);
+      if (method==='workFinished') finished.push(args[0]);
       if (method==='downloadDiagnostic') diagnostics.push({event:args[0],data:JSON.parse(args[1])});
       if (method==='exportDownloadDiagnostics') exportRequests++;
       if (method==='saveWork') {
@@ -87,7 +88,7 @@ async function open(command='',cooldown=0,nativeTransport=false) {
       status:()=>JSON.stringify({hasDatabase:true,search:true,nativeArchiveRequests:nativeTransport}),signedIn:()=>true,
       takePendingOpen:()=>'',takePendingLink:()=>'',databaseSize:()=>1,
       takeDownloadCommand:()=>command,
-      ...Object.fromEntries(['query','saveMeta','saveWork','downloadsReady','downloadDiagnostic','exportDownloadDiagnostics','startArchiveRequest','takeArchiveResponse'].map(method=>[method,bridge(method)])),
+      ...Object.fromEntries(['query','saveMeta','saveWork','downloadsReady','workFinished','downloadDiagnostic','exportDownloadDiagnostics','startArchiveRequest','takeArchiveResponse'].map(method=>[method,bridge(method)])),
     },{get:(target,key)=>target[key]||(()=>'{}')});
     if(nativeTransport) {
       const ordinaryFetch=window.fetch;
@@ -189,6 +190,19 @@ try {
   await page.locator('#downloads-resume').click(); await tick(1200000);
   await page.waitForFunction(()=>!window.__downloadsPending());
   assert.deepEqual(requests,['/works/1','/works/2'],'newly discovered metadata is picked up automatically');
+  await page.close(); requests.length = 0; finished.length = 0;
+  setQueue('running');
+  db.exec("INSERT INTO works(work_id,title,has_text) VALUES('1','First batch',0),('2','Next batch',0)");
+  db.prepare("UPDATE meta SET value=? WHERE key='queue'").run(JSON.stringify([
+    {author:'Your library',part:'automatic downloads',source:{kind:'saved-auto'},state:'running',workIds:['1'],total:1,historyComplete:true},
+  ]));
+  db.prepare('INSERT INTO meta(key,value) VALUES(?,?)').run('auto-download-known', JSON.stringify({enabled:true,considered:['1']}));
+  await open('',0,true);
+  await page.waitForFunction(()=>JSON.parse(window.ArchiveNative.query("SELECT value FROM meta WHERE key='queue'",'[]')).rows.some(row=>JSON.parse(row.value).length===2));
+  assert.deepEqual(finished,[],'a batch boundary must not tell Android to stop the foreground service');
+  await tick(600000); await page.waitForFunction(()=>!window.__downloadsPending());
+  assert.deepEqual(requests,['/works/1','/works/2']);
+  assert.equal(finished.length,1,'Android receives completion only after the final batch');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
   console.log('Cold Pause/Stop, saved pause, cooldown, remaining-only downloads and persistent download-all toggle passed');
 } finally { await browser.close();await new Promise(resolve=>server.close(resolve));db.close(); }
